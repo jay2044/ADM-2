@@ -42,9 +42,12 @@ class Task:
 
 class TaskList:
     def __init__(self):
+        self.title = title
+        self.pin = False
         self.tasks = []
         self.queue = False
         self.stack = False
+        self.added_date_time = datetime.now()
 
     def add_task(self, task):
         self.tasks.append(task)
