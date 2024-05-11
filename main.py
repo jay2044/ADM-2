@@ -1,9 +1,14 @@
+from PyQt6.QtWidgets import QApplication
+import sys
+from gui import MainWindow
+
+
 def main():
-    pass
+    app = QApplication(sys.argv)
+    main_window = MainWindow()
+    main_window.show()
+    sys.exit(app.exec())
 
 
-if __name__ == '__main__':
-    try:
-        pass
-    except Exception as e:
-        print(f"An error occurred in the application: {e}")
+if __name__ == "__main__":
+    main()
