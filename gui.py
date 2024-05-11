@@ -15,26 +15,28 @@ class MainWindow(QMainWindow):
         self.main_layout = QHBoxLayout()
         self.central_widget.setLayout(self.main_layout)
 
-        # Create left layout (a vertical box layout)
+        # left layout containing widgets related to handling tabs of task lists.
         self.left_layout = QVBoxLayout()
         self.main_layout.addLayout(self.left_layout, stretch=1)
 
-        # Setting up left widget for collection of task lists
+        # widget for collection of task lists
         self.task_list_collection = QListWidget()
         self.left_layout.addWidget(self.task_list_collection)
 
-        # Setting up right widget for displaying tasks
+        # right layout containing widgets related to handling tasks
         self.right_layout = QVBoxLayout()
         self.main_layout.addLayout(self.right_layout, stretch=3)
 
+        # Stack to switch between different task list tabs
         self.stack_widget = QStackedWidget()
         self.right_layout.addWidget(self.stack_widget)
 
-        # Create the add task button and connect to add_task function
+        # add task button
         add_task_button = QPushButton('Add Task')
         self.right_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
         add_task_button.clicked.connect(self.add_task)
 
+        # Button to create a new task list
         add_task_button = QPushButton('Add Tab')
         self.left_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
         add_task_button.clicked.connect(self.add_tab)
@@ -64,4 +66,4 @@ class MainWindow(QMainWindow):
             print(f"An error occurred while adding a task: {e}")
 
     def task_checked(self, state):
-        print(f"Task state changed to: {state}")
+        pass
