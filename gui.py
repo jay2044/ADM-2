@@ -59,8 +59,10 @@ class MainWindow(QMainWindow):
         self.task_list_collection.currentRowChanged.connect(self.stack_widget.setCurrentIndex)
 
     def add_task_list(self):
-        tab_name = f"Tab {self.task_list_collection.count() + 1}"
-        self.task_list_collection.addItem(tab_name)
+        task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
+        if not ok or not task_list_name.strip():
+            return
+        self.task_list_collection.addItem(task_list_name)
         task_list = QListWidget()
         self.stack_widget.addWidget(task_list)
 
@@ -112,6 +114,11 @@ class MainWindow(QMainWindow):
     def delete_task_list(self, task_list):
         try:
             row = self.task_list_collection.row(task_list)
+            # Remove the corresponding widget from the stack
+            widget_to_remove = self.stack_widget.widget(row)
+            if widget_to_remove:
+                self.stack_widget.removeWidget(widget_to_remove)
+                widget_to_remove.deleteLater()
             self.task_list_collection.takeItem(row)
         except Exception as e:
-            print(f"An error occurred while adding a task: {e}")
+            print(f"An error occurred while deleting a task list: {e}")
