@@ -34,6 +34,8 @@ class MainWindow(QMainWindow):
         # widget for collection of task lists
         self.task_list_collection = QListWidget()
         self.left_layout.addWidget(self.task_list_collection)
+        self.task_list_collection.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.task_list_collection.customContextMenuRequested.connect(self.task_list_collection_context_menu)
 
         # right layout containing widgets related to handling tasks
         self.right_layout = QVBoxLayout()
@@ -51,12 +53,12 @@ class MainWindow(QMainWindow):
         # Button to create a new task list
         add_task_button = QPushButton('Add Task List')
         self.left_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
-        add_task_button.clicked.connect(self.add_tab)
+        add_task_button.clicked.connect(self.add_task_list)
 
         # Connect the current row change to switching the stack index
         self.task_list_collection.currentRowChanged.connect(self.stack_widget.setCurrentIndex)
 
-    def add_tab(self):
+    def add_task_list(self):
         tab_name = f"Tab {self.task_list_collection.count() + 1}"
         self.task_list_collection.addItem(tab_name)
         task_list = QListWidget()
@@ -79,3 +81,37 @@ class MainWindow(QMainWindow):
 
     def task_checked(self, state):
         pass
+
+    def task_list_collection_context_menu(self, position):
+        try:
+            task_list = self.task_list_collection.itemAt(position)
+            if not task_list:
+                return
+
+            # Create the context menu
+            menu = QMenu()
+            edit_action = QAction('Edit', self)
+            delete_action = QAction('Delete', self)
+
+            # Connect actions to methods
+            edit_action.triggered.connect(lambda: self.edit_task_list(task_list))
+            delete_action.triggered.connect(lambda: self.delete_task_list(task_list))
+
+            # Add actions to the menu
+            menu.addAction(edit_action)
+            menu.addAction(delete_action)
+
+            # Show the context menu at the current mouse position
+            menu.exec(self.task_list_collection.viewport().mapToGlobal(position))
+        except Exception as e:
+            print(f"An error occurred while adding a task: {e}")
+
+    def edit_task_list(self, task_list):
+        print(f"Editing item: {task_list.text()}")
+
+    def delete_task_list(self, task_list):
+        try:
+            row = self.task_list_collection.row(task_list)
+            self.task_list_collection.takeItem(row)
+        except Exception as e:
+            print(f"An error occurred while adding a task: {e}")
