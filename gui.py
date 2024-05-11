@@ -33,6 +33,15 @@ class MainWindow(QMainWindow):
 
         # widget for collection of task lists
         self.task_list_collection = QListWidget()
+        self.task_list_collection.setDragEnabled(True)
+        self.task_list_collection.setAcceptDrops(True)
+        self.task_list_collection.setDropIndicatorShown(True)
+        self.task_list_collection.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+
+        # Mapping of hash values to stack widget pages
+        self.hash_to_widget = {}
+        self.task_list_collection.currentItemChanged.connect(self.switch_stack_widget_by_hash)
+
         self.left_layout.addWidget(self.task_list_collection)
         self.task_list_collection.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.task_list_collection.customContextMenuRequested.connect(self.task_list_collection_context_menu)
@@ -55,16 +64,26 @@ class MainWindow(QMainWindow):
         self.left_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
         add_task_button.clicked.connect(self.add_task_list)
 
-        # Connect the current row change to switching the stack index
-        self.task_list_collection.currentRowChanged.connect(self.stack_widget.setCurrentIndex)
-
     def add_task_list(self):
-        task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
-        if not ok or not task_list_name.strip():
-            return
-        self.task_list_collection.addItem(task_list_name)
-        task_list = QListWidget()
-        self.stack_widget.addWidget(task_list)
+        try:
+            task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
+            if not ok or not task_list_name.strip():
+                return
+            self.task_list_collection.addItem(task_list_name)
+            task_list = QListWidget()
+            self.stack_widget.addWidget(task_list)
+            self.hash_to_widget[hash(task_list_name)] = task_list
+        except Exception as e:
+            print(f"An error occurred while adding a task list: {e}")
+
+    def switch_stack_widget_by_hash(self, current, previous):
+        try:
+            if current:
+                hash_key = hash(current.text())
+                if hash_key in self.hash_to_widget:
+                    self.stack_widget.setCurrentWidget(self.hash_to_widget[hash_key])
+        except Exception as e:
+            print(f"An error occurred while switching stack: {e}")
 
     def add_task(self):
         # Determine the current QListWidget in the stack
@@ -106,7 +125,7 @@ class MainWindow(QMainWindow):
             # Show the context menu at the current mouse position
             menu.exec(self.task_list_collection.viewport().mapToGlobal(position))
         except Exception as e:
-            print(f"An error occurred while adding a task: {e}")
+            print(f"An error occurred in task_list_collection_context_menu: {e}")
 
     def edit_task_list(self, task_list):
         print(f"Editing item: {task_list.text()}")
@@ -114,9 +133,10 @@ class MainWindow(QMainWindow):
     def delete_task_list(self, task_list):
         try:
             row = self.task_list_collection.row(task_list)
+            hash_key = hash(task_list.text())
             # Remove the corresponding widget from the stack
-            widget_to_remove = self.stack_widget.widget(row)
-            if widget_to_remove:
+            if hash_key in self.hash_to_widget:
+                widget_to_remove = self.hash_to_widget.pop(hash_key)
                 self.stack_widget.removeWidget(widget_to_remove)
                 widget_to_remove.deleteLater()
             self.task_list_collection.takeItem(row)
