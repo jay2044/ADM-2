@@ -5,10 +5,22 @@ from PyQt6.QtGui import *
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, app):
         super().__init__()
+        font_id = QFontDatabase.addApplicationFont("fonts/entsans.ttf")
+        font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
+        # font = QFont(font_family)
+        font = QFont()
+        font.setPointSize(12)
+        app.setFont(font)
+
         self.setWindowTitle('ADM')
-        self.setGeometry(100, 100, 1000, 600)
+        screen_geometry = QApplication.primaryScreen().geometry()
+        center_point = screen_geometry.center()
+        window_width, window_height = 800, 600
+        self.resize(window_width, window_height)
+        top_left_point = center_point - QPoint(window_width // 2, window_height // 2)
+        self.move(top_left_point)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -25,7 +37,7 @@ class MainWindow(QMainWindow):
 
         # right layout containing widgets related to handling tasks
         self.right_layout = QVBoxLayout()
-        self.main_layout.addLayout(self.right_layout, stretch=3)
+        self.main_layout.addLayout(self.right_layout, stretch=4)
 
         # Stack to switch between different task list tabs
         self.stack_widget = QStackedWidget()
@@ -37,7 +49,7 @@ class MainWindow(QMainWindow):
         add_task_button.clicked.connect(self.add_task)
 
         # Button to create a new task list
-        add_task_button = QPushButton('Add Tab')
+        add_task_button = QPushButton('Add Task List')
         self.left_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
         add_task_button.clicked.connect(self.add_tab)
 
@@ -56,7 +68,7 @@ class MainWindow(QMainWindow):
 
         try:
             task = QListWidgetItem()
-            task.setSizeHint(QSize(100, 50))
+            task.setSizeHint(QSize(100, 40))
             checkbox = QCheckBox('Task')
             checkbox.setChecked(False)
             checkbox.stateChanged.connect(self.task_checked)
