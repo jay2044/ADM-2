@@ -65,7 +65,7 @@ class TaskList:
         elif self.stack:
             other_tasks.sort(key=lambda task: task.added_date_time)
             important_tasks.sort(key=lambda task: task.added_date_time)
-            return list(reversed(important_tasks) + reversed(other_tasks))
+            return list(reversed(important_tasks + other_tasks))
         return important_tasks + other_tasks
 
     def get_completed_tasks(self):
@@ -75,16 +75,26 @@ class TaskList:
         elif self.stack:
             sorted_completed_tasks = sorted(completed_tasks, key=lambda task: task.added_date_time)
             return list(reversed(sorted_completed_tasks))
-        return [task for task in self.tasks if task.completed]
+        return completed_tasks
 
     def get_important_tasks(self):
         return [task for task in self.tasks if task.is_important and not task.completed]
 
-    def filter_category(self, category):
-        return [task for task in self.tasks if task.is_category(category)]
+    def get_tasks_filter_category(self, category):
+        important_tasks = [task for task in self.tasks if task.is_important and task.is_category(category)]
+        other_tasks = [task for task in self.tasks if not task.is_important and task.is_category(category)]
+        if self.queue:
+            important_tasks.sort(key=lambda task: task.added_date_time)
+            other_tasks.sort(key=lambda task: task.added_date_time)
+            return important_tasks + other_tasks
+        elif self.stack:
+            important_tasks.sort(key=lambda task: task.added_date_time)
+            other_tasks.sort(key=lambda task: task.added_date_time)
+            return list(reversed(important_tasks + other_tasks))
+        return important_tasks + other_tasks
 
-    def filter_priority(self, priority):
-        return [task for task in self.tasks if task.priority == priority]
+    def get_tasks_filter_priority(self):
+        return sorted(self.tasks, key=lambda task: task.priority, reverse=True)
 
     def __str__(self):
         return '\n'.join(str(task) for task in self.tasks if not task.completed)
