@@ -4,6 +4,33 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 
 
+class Task(QListWidgetItem):
+    def __init__(self, task_list, task_name='Task'):
+        super().__init__()
+        self.task_list = task_list  # Store the reference to the QListWidget
+
+        self.widget = QWidget()
+        self.layout = QHBoxLayout()
+        self.checkbox = QCheckBox(task_name)
+        self.checkbox.setChecked(False)
+        self.checkbox.stateChanged.connect(self.task_checked)
+        self.layout.addWidget(self.checkbox)
+
+        self.delete_button = QPushButton('Delete')
+        self.delete_button.clicked.connect(self.delete_task)
+        self.layout.addWidget(self.delete_button)
+
+        self.widget.setLayout(self.layout)
+        self.setSizeHint(self.widget.sizeHint())
+
+    def task_checked(self, state):
+        pass
+
+    def delete_task(self):
+        row = self.task_list.row(self)
+        self.task_list.takeItem(row)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, app):
         super().__init__()
@@ -86,22 +113,16 @@ class MainWindow(QMainWindow):
             print(f"An error occurred while switching stack: {e}")
 
     def add_task(self):
-        # Determine the current QListWidget in the stack
         current_task_list = self.stack_widget.currentWidget()
+        if not isinstance(current_task_list, QListWidget):
+            return
 
         try:
-            task = QListWidgetItem()
-            task.setSizeHint(QSize(100, 40))
-            checkbox = QCheckBox('Task')
-            checkbox.setChecked(False)
-            checkbox.stateChanged.connect(self.task_checked)
+            task = Task(current_task_list, "New Task")
             current_task_list.addItem(task)
-            current_task_list.setItemWidget(task, checkbox)
+            current_task_list.setItemWidget(task, task.widget)
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
-
-    def task_checked(self, state):
-        pass
 
     def task_list_collection_context_menu(self, position):
         try:
