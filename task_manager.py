@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
 
+
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None):
         self.id = task_id
@@ -103,7 +104,8 @@ class TaskList:
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT INTO tasks (title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (task.title, task.description, task.due_date, task.due_time, task.completed, task.priority, task.is_important,
+            (task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
+             task.is_important,
              task.added_date_time.isoformat(), ','.join(task.categories), task.recurring, task.recur_every)
         )
         self.conn.commit()
@@ -124,9 +126,11 @@ class TaskList:
             UPDATE tasks
             SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?
             WHERE id=?
-        """, (task.title, task.description, task.due_date, task.due_time, task.completed, task.priority, task.is_important,
-              ','.join(task.categories), task.recurring, task.recur_every, task.id)
-        )
+        """, (
+            task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
+            task.is_important,
+            ','.join(task.categories), task.recurring, task.recur_every, task.id)
+                       )
         self.conn.commit()
 
     def __del__(self):
@@ -175,7 +179,6 @@ class TaskList:
 
     def __str__(self):
         return '\n'.join(str(task) for task in self.tasks if not task.completed)
-
 
 # if __name__ == "__main__":
 #     first = Task("task", "wadawd", "2024-02-29", "12:00")
