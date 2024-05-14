@@ -6,7 +6,6 @@ from task_manager import TaskList
 
 def main():
     app = QApplication(sys.argv)
-    task_manager = TaskList("tasks.db")
     main_window = MainWindow(app)
     main_window.show()
     sys.exit(app.exec())

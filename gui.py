@@ -2,12 +2,13 @@ import sys
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
+from task_manager import *
 
 
-class Task(QListWidgetItem):
+class TaskWidget(QListWidgetItem):
     def __init__(self, task_list, task_name='Task'):
         super().__init__()
-        self.task_list = task_list  # Store the reference to the QListWidget
+        self.task_list = task_list
 
         self.widget = QWidget()
         self.layout = QHBoxLayout()
@@ -29,6 +30,13 @@ class Task(QListWidgetItem):
     def delete_task(self):
         row = self.task_list.row(self)
         self.task_list.takeItem(row)
+
+
+class TaskListWidget(QListWidget):
+    def __init__(self, task_list_name):
+        super().__init__()
+        self.task_list_name = task_list_name
+        self.task_list = TaskList()
 
 
 class MainWindow(QMainWindow):
@@ -97,7 +105,7 @@ class MainWindow(QMainWindow):
             if not ok or not task_list_name.strip():
                 return
             self.task_list_collection.addItem(task_list_name)
-            task_list = QListWidget()
+            task_list = TaskListWidget(task_list_name)
             self.stack_widget.addWidget(task_list)
             self.hash_to_widget[hash(task_list_name)] = task_list
         except Exception as e:
@@ -118,7 +126,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            task = Task(current_task_list, "New Task")
+            task = TaskWidget(current_task_list, "New Task")
             current_task_list.addItem(task)
             current_task_list.setItemWidget(task, task.widget)
         except Exception as e:

@@ -45,8 +45,8 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, db_file):
-        self.conn = sqlite3.connect(db_file)
+    def __init__(self):
+        self.conn = sqlite3.connect("tasks.db")
         self.conn.row_factory = sqlite3.Row
         self.create_table()
         self.tasks = self.load_tasks()
