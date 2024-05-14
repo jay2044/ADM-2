@@ -1,5 +1,6 @@
 import sqlite3
 
+
 def create_connection(db_file):
     conn = None
     try:
@@ -7,6 +8,7 @@ def create_connection(db_file):
     except sqlite3.Error as e:
         print(e)
     return conn
+
 
 def create_table(conn):
     create_tasks_table = """
@@ -30,6 +32,7 @@ def create_table(conn):
         c.execute(create_tasks_table)
     except sqlite3.Error as e:
         print(e)
+
 
 conn = create_connection("tasks.db")
 if conn is not None:

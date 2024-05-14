@@ -1,4 +1,5 @@
 import sys
+import os
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
@@ -9,6 +10,7 @@ class TaskWidget(QListWidgetItem):
     def __init__(self, task_list, task_name='Task'):
         super().__init__()
         self.task_list = task_list
+        self.task = Task(task_name, None, None, None)
 
         self.widget = QWidget()
         self.layout = QHBoxLayout()
@@ -33,15 +35,27 @@ class TaskWidget(QListWidgetItem):
 
 
 class TaskListWidget(QListWidget):
-    def __init__(self, task_list_name):
+    def __init__(self, task_list_name, task_list):
         super().__init__()
         self.task_list_name = task_list_name
-        self.task_list = TaskList()
+        self.task_list = task_list
+        print("test 1")
+        self.load_tasks()
+
+    def load_tasks(self):
+        self.clear()
+        for task in self.task_list.get_tasks():
+            print("test 2")
+            task_widget = TaskWidget(self, task.title)
+            self.addItem(task_widget)
+            self.setItemWidget(task_widget, task_widget.widget)
 
 
 class MainWindow(QMainWindow):
     def __init__(self, app):
         super().__init__()
+        self.task_manager = TaskListManager()
+
         font_id = QFontDatabase.addApplicationFont("fonts/entsans.ttf")
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
         # font = QFont(font_family)
@@ -95,19 +109,31 @@ class MainWindow(QMainWindow):
         add_task_button.clicked.connect(self.add_task)
 
         # Button to create a new task list
-        add_task_button = QPushButton('Add Task List')
-        self.left_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
-        add_task_button.clicked.connect(self.add_task_list)
+        add_task_list_button = QPushButton('Add Task List')
+        self.left_layout.addWidget(add_task_list_button, alignment=Qt.AlignmentFlag.AlignBottom)
+        add_task_list_button.clicked.connect(self.add_task_list)
 
-    def add_task_list(self):
+        self.load_task_lists()
+
+    def load_task_lists(self):
+        for list_name in self.task_manager.get_task_lists():
+            self.add_task_list(list_name)
+
+    def add_task_list(self, task_list_name=""):
         try:
-            task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
-            if not ok or not task_list_name.strip():
-                return
+            if not task_list_name:  # Check if task_list_name is empty or None
+                task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
+                if not ok or not task_list_name.strip():
+                    return
+
+            task_list_name = str(task_list_name).strip()
             self.task_list_collection.addItem(task_list_name)
-            task_list = TaskListWidget(task_list_name)
-            self.stack_widget.addWidget(task_list)
-            self.hash_to_widget[hash(task_list_name)] = task_list
+
+            task_list = TaskList(task_list_name)
+            self.task_manager.add_task_list(task_list_name)
+            task_list_widget = TaskListWidget(task_list_name, task_list)
+            self.stack_widget.addWidget(task_list_widget)
+            self.hash_to_widget[hash(task_list_name)] = task_list_widget
         except Exception as e:
             print(f"An error occurred while adding a task list: {e}")
 
@@ -121,14 +147,19 @@ class MainWindow(QMainWindow):
             print(f"An error occurred while switching stack: {e}")
 
     def add_task(self):
-        current_task_list = self.stack_widget.currentWidget()
-        if not isinstance(current_task_list, QListWidget):
+        current_task_list_widget = self.stack_widget.currentWidget()
+        if not isinstance(current_task_list_widget, TaskListWidget):
             return
 
         try:
-            task = TaskWidget(current_task_list, "New Task")
-            current_task_list.addItem(task)
-            current_task_list.setItemWidget(task, task.widget)
+            task_name, ok = QInputDialog.getText(self, "New Task", "Enter task name:")
+            if not ok or not task_name.strip():
+                return
+            task = Task(task_name, "", "2024-01-01", "12:00")
+            current_task_list_widget.task_list.add_task(task)
+            task_widget = TaskWidget(current_task_list_widget, task_name)
+            current_task_list_widget.addItem(task_widget)
+            current_task_list_widget.setItemWidget(task_widget, task_widget.widget)
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
@@ -163,6 +194,8 @@ class MainWindow(QMainWindow):
         try:
             row = self.task_list_collection.row(task_list)
             hash_key = hash(task_list.text())
+            # Remove from database
+            self.task_manager.remove_task_list(task_list.text())
             # Remove the corresponding widget from the stack
             if hash_key in self.hash_to_widget:
                 widget_to_remove = self.hash_to_widget.pop(hash_key)

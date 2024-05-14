@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from datetime import datetime
 
 
@@ -45,8 +46,9 @@ class Task:
 
 
 class TaskList:
-    def __init__(self):
-        self.conn = sqlite3.connect("tasks.db")
+    def __init__(self, list_name):
+        self.list_name = list_name
+        self.conn = sqlite3.connect(f"{list_name}.db")
         self.conn.row_factory = sqlite3.Row
         self.create_table()
         self.tasks = self.load_tasks()
@@ -180,10 +182,56 @@ class TaskList:
     def __str__(self):
         return '\n'.join(str(task) for task in self.tasks if not task.completed)
 
-# if __name__ == "__main__":
-#     first = Task("task", "wadawd", "2024-02-29", "12:00")
-#     task_list = TaskList("tasks.db")
-#     task_list.add_task(first)
-#     task_list.remove_task(first)
-#     for task in task_list.get_tasks():
-#         print(task)
+
+class TaskListManager:
+    def __init__(self):
+        self.conn = sqlite3.connect("task_lists.db")
+        self.conn.row_factory = sqlite3.Row
+        self.create_table()
+        self.task_lists = self.load_task_lists()
+
+    def create_table(self):
+        create_task_lists_table = """
+        CREATE TABLE IF NOT EXISTS task_lists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            list_name TEXT NOT NULL UNIQUE
+        );
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(create_task_lists_table)
+        except sqlite3.Error as e:
+            print(e)
+
+    def load_task_lists(self):
+        task_lists = []
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT list_name FROM task_lists")
+        rows = cursor.fetchall()
+        for row in rows:
+            task_lists.append(row['list_name'])
+        return task_lists
+
+    def add_task_list(self, list_name):
+        if list_name not in self.task_lists:
+            cursor = self.conn.cursor()
+            cursor.execute("INSERT INTO task_lists (list_name) VALUES (?)", (list_name,))
+            self.conn.commit()
+            self.task_lists.append(list_name)
+            # Create a new TaskList database
+            TaskList(list_name)
+
+    def remove_task_list(self, list_name):
+        if list_name in self.task_lists:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM task_lists WHERE list_name=?", (list_name,))
+            self.conn.commit()
+            self.task_lists.remove(list_name)
+            # Delete the TaskList database file
+            os.remove(f"{list_name}.db")
+
+    def get_task_lists(self):
+        return self.task_lists
+
+    def __del__(self):
+        self.conn.close()
