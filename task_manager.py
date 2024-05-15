@@ -1,6 +1,8 @@
 import sqlite3
 import os
 from datetime import datetime
+import shutil
+import atexit
 
 
 class Task:
@@ -48,6 +50,7 @@ class Task:
 class TaskList:
     def __init__(self, list_name):
         self.list_name = list_name
+        self.db_file = f"{list_name}.db"
         self.conn = sqlite3.connect(f"{list_name}.db")
         self.conn.row_factory = sqlite3.Row
         self.create_table()
@@ -117,8 +120,12 @@ class TaskList:
     def remove_task(self, task):
         cursor = self.conn.cursor()
         unique_identifier = task.get_unique_identifier()
-        cursor.execute("DELETE FROM tasks WHERE title=? AND due_date=? AND due_time=?",
-                       (task.title, task.due_date, task.due_time))
+        cursor.execute("""
+            DELETE FROM tasks
+            WHERE title IS ? AND
+                  (due_date IS ? OR due_date IS NULL) AND
+                  (due_time IS ? OR due_time IS NULL)
+        """, (task.title, task.due_date, task.due_time))
         self.conn.commit()
         self.tasks = [t for t in self.tasks if t.get_unique_identifier() != unique_identifier]
 
@@ -135,8 +142,17 @@ class TaskList:
                        )
         self.conn.commit()
 
-    def __del__(self):
-        self.conn.close()
+    def close(self):
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+
+    def delete_database(self):
+        self.close()
+        try:
+            os.remove(self.db_file)
+        except PermissionError:
+            shutil.rmtree(self.db_file, ignore_errors=True)
 
     def get_tasks(self):
         important_tasks = [task for task in self.tasks if task.is_important and not task.completed]
@@ -228,7 +244,12 @@ class TaskListManager:
             self.conn.commit()
             self.task_lists.remove(list_name)
             # Delete the TaskList database file
-            os.remove(f"{list_name}.db")
+            task_list = TaskList(list_name)
+            task_list.close()
+            try:
+                os.remove(task_list.db_file)
+            except PermissionError:
+                shutil.rmtree(task_list.db_file, ignore_errors=True)
 
     def get_task_lists(self):
         return self.task_lists

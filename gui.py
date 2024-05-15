@@ -10,7 +10,7 @@ class TaskWidget(QListWidgetItem):
     def __init__(self, task_list, task_name='Task'):
         super().__init__()
         self.task_list = task_list
-        self.task = Task(task_name, None, None, None)
+        self.task = Task(task_name, "", "2024-01-01", "12:00")
 
         self.widget = QWidget()
         self.layout = QHBoxLayout()
@@ -30,8 +30,7 @@ class TaskWidget(QListWidgetItem):
         pass
 
     def delete_task(self):
-        row = self.task_list.row(self)
-        self.task_list.takeItem(row)
+        self.task_list.delete_task(self.task)
 
 
 class TaskListWidget(QListWidget):
@@ -39,16 +38,25 @@ class TaskListWidget(QListWidget):
         super().__init__()
         self.task_list_name = task_list_name
         self.task_list = task_list
-        print("test 1")
         self.load_tasks()
 
     def load_tasks(self):
         self.clear()
         for task in self.task_list.get_tasks():
-            print("test 2")
             task_widget = TaskWidget(self, task.title)
             self.addItem(task_widget)
             self.setItemWidget(task_widget, task_widget.widget)
+
+    def delete_task(self, task):
+        try:
+            self.task_list.remove_task(task)
+            for index in range(self.count()):
+                item = self.item(index)
+                if isinstance(item, TaskWidget) and item.task == task:
+                    self.takeItem(index)
+                    break
+        except Exception as e:
+            print(e)
 
 
 class MainWindow(QMainWindow):
@@ -157,9 +165,7 @@ class MainWindow(QMainWindow):
                 return
             task = Task(task_name, "", "2024-01-01", "12:00")
             current_task_list_widget.task_list.add_task(task)
-            task_widget = TaskWidget(current_task_list_widget, task_name)
-            current_task_list_widget.addItem(task_widget)
-            current_task_list_widget.setItemWidget(task_widget, task_widget.widget)
+            current_task_list_widget.load_tasks()
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
@@ -194,13 +200,13 @@ class MainWindow(QMainWindow):
         try:
             row = self.task_list_collection.row(task_list)
             hash_key = hash(task_list.text())
-            # Remove from database
-            self.task_manager.remove_task_list(task_list.text())
             # Remove the corresponding widget from the stack
             if hash_key in self.hash_to_widget:
                 widget_to_remove = self.hash_to_widget.pop(hash_key)
                 self.stack_widget.removeWidget(widget_to_remove)
                 widget_to_remove.deleteLater()
             self.task_list_collection.takeItem(row)
+            # Remove from database
+            self.task_manager.remove_task_list(task_list.text())
         except Exception as e:
             print(f"An error occurred while deleting a task list: {e}")
