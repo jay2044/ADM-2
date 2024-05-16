@@ -107,14 +107,19 @@ class MainWindow(QMainWindow):
         self.right_layout = QVBoxLayout()
         self.main_layout.addLayout(self.right_layout, stretch=4)
 
+        # right toolbar
+        self.right_toolbar = QToolBar()
+        self.right_layout.addWidget(self.right_toolbar)
+
+        add_task_action = QAction("+", self)
+        add_task_action.triggered.connect(self.add_task)
+        self.right_toolbar.addAction(add_task_action)
+
+        self.right_toolbar.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
         # Stack to switch between different task list tabs
         self.stack_widget = QStackedWidget()
         self.right_layout.addWidget(self.stack_widget)
-
-        # add task button
-        add_task_button = QPushButton('Add Task')
-        self.right_layout.addWidget(add_task_button, alignment=Qt.AlignmentFlag.AlignBottom)
-        add_task_button.clicked.connect(self.add_task)
 
         # Button to create a new task list
         add_task_list_button = QPushButton('Add Task List')
