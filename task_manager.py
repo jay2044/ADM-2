@@ -207,6 +207,7 @@ class TaskListManager:
         self.conn = sqlite3.connect("task_lists.db")
         self.conn.row_factory = sqlite3.Row
         self.create_table()
+        self.update_table_schema()
         self.task_lists = self.load_task_lists()
 
     def create_table(self):
@@ -222,30 +223,59 @@ class TaskListManager:
         except sqlite3.Error as e:
             print(e)
 
+    def update_table_schema(self):
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("ALTER TABLE task_lists ADD COLUMN pin BOOLEAN NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE task_lists ADD COLUMN queue BOOLEAN NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute("ALTER TABLE task_lists ADD COLUMN stack BOOLEAN NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        self.conn.commit()
+
     def load_task_lists(self):
         task_lists = []
         cursor = self.conn.cursor()
-        cursor.execute("SELECT list_name FROM task_lists")
+        cursor.execute("SELECT list_name, pin, queue, stack FROM task_lists")
         rows = cursor.fetchall()
         for row in rows:
-            task_lists.append(row['list_name'])
+            task_lists.append({
+                "list_name": row["list_name"],
+                "pin": row["pin"],
+                "queue": row["queue"],
+                "stack": row["stack"]
+            })
         return task_lists
 
-    def add_task_list(self, list_name):
-        if list_name not in self.task_lists:
+    def add_task_list(self, list_name, pin=False, queue=False, stack=False):
+        if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
-            cursor.execute("INSERT INTO task_lists (list_name) VALUES (?)", (list_name,))
+            cursor.execute(
+                "INSERT INTO task_lists (list_name, pin, queue, stack) VALUES (?, ?, ?, ?)",
+                (list_name, pin, queue, stack)
+            )
             self.conn.commit()
-            self.task_lists.append(list_name)
+            self.task_lists.append({
+                "list_name": list_name,
+                "pin": pin,
+                "queue": queue,
+                "stack": stack
+            })
             # Create a new TaskList database
             TaskList(list_name)
 
     def remove_task_list(self, list_name):
-        if list_name in self.task_lists:
+        if list_name in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM task_lists WHERE list_name=?", (list_name,))
             self.conn.commit()
-            self.task_lists.remove(list_name)
+            self.task_lists = [task_list for task_list in self.task_lists if task_list["list_name"] != list_name]
             # Delete the TaskList database file
             task_list = TaskList(list_name)
             task_list.close()
@@ -259,3 +289,5 @@ class TaskListManager:
 
     def __del__(self):
         self.conn.close()
+
+

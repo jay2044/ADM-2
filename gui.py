@@ -128,9 +128,13 @@ class MainWindow(QMainWindow):
         add_task_action.triggered.connect(self.add_task)
         self.right_toolbar.addAction(add_task_action)
 
-        # queue_action = QAction("Q", self)
-        # queue_action.triggered.connect(self.set_queue)
-        # self.right_toolbar.addAction(queue_action)
+        queue_action = QAction("Q", self)
+        queue_action.triggered.connect(self.set_queue)
+        self.right_toolbar.addAction(queue_action)
+
+        stack_action = QAction("S", self)
+        stack_action.triggered.connect(self.set_stack)
+        self.right_toolbar.addAction(stack_action)
 
         self.right_toolbar.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
@@ -146,10 +150,15 @@ class MainWindow(QMainWindow):
         self.load_task_lists()
 
     def load_task_lists(self):
-        for list_name in self.task_manager.get_task_lists():
-            self.add_task_list(list_name)
+        for task_list_info in self.task_manager.get_task_lists():
+            self.add_task_list(
+                task_list_info["list_name"],
+                pin=task_list_info["pin"],
+                queue=task_list_info["queue"],
+                stack=task_list_info["stack"]
+            )
 
-    def add_task_list(self, task_list_name=""):
+    def add_task_list(self, task_list_name="", pin=False, queue=False, stack=False):
         try:
             if not task_list_name:  # Check if task_list_name is empty or None
                 task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
@@ -157,8 +166,9 @@ class MainWindow(QMainWindow):
                     return
 
             task_list_name = str(task_list_name).strip()
+
             self.task_list_collection.addItem(task_list_name)
-            self.task_manager.add_task_list(task_list_name)
+            self.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
             task_list_widget = TaskListWidget(task_list_name)
             self.stack_widget.addWidget(task_list_widget)
             self.hash_to_widget[hash(task_list_name)] = task_list_widget
@@ -189,10 +199,27 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
-    # def set_queue(self):
-    #     # current_task_list_widget = self.stack_widget.currentWidget()
-    #     # current_task_list_widget.task_list.queue
-    #     pass
+    def set_queue(self):
+        current_task_list_widget = self.stack_widget.currentWidget()
+        if not isinstance(current_task_list_widget, TaskListWidget):
+            return
+
+        current_task_list = current_task_list_widget.task_list
+        current_task_list.queue = not current_task_list.queue
+        if current_task_list.queue:
+            current_task_list.stack = False
+        current_task_list_widget.load_tasks()
+
+    def set_stack(self):
+        current_task_list_widget = self.stack_widget.currentWidget()
+        if not isinstance(current_task_list_widget, TaskListWidget):
+            return
+
+        current_task_list = current_task_list_widget.task_list
+        current_task_list.stack = not current_task_list.stack
+        if current_task_list.stack:
+            current_task_list.queue = False
+        current_task_list_widget.load_tasks()
 
     def task_list_collection_context_menu(self, position):
         try:
