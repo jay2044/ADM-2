@@ -7,43 +7,54 @@ from task_manager import *
 
 
 class TaskWidget(QListWidgetItem):
-    def __init__(self, task_list, task_name='Task'):
+    def __init__(self, task_list_widget, task):
         super().__init__()
-        self.task_list = task_list
-        self.task = Task(task_name, "", "2024-01-01", "12:00")
+        self.task_list_widget = task_list_widget
+        self.task = task
 
         self.widget = QWidget()
         self.layout = QHBoxLayout()
-        self.checkbox = QCheckBox(task_name)
-        self.checkbox.setChecked(False)
+        self.checkbox = QCheckBox(task.title)
+        self.checkbox.setChecked(self.task.completed)
         self.checkbox.stateChanged.connect(self.task_checked)
         self.layout.addWidget(self.checkbox)
 
-        self.delete_button = QPushButton('Delete')
-        self.delete_button.clicked.connect(self.delete_task)
-        self.layout.addWidget(self.delete_button)
+        self.layout.addStretch()
+
+        self.radio_button = QRadioButton()
+        self.radio_button.setChecked(self.task.is_important)
+        self.radio_button.toggled.connect(self.mark_important)
+        self.layout.addWidget(self.radio_button)
 
         self.widget.setLayout(self.layout)
         self.setSizeHint(self.widget.sizeHint())
 
     def task_checked(self, state):
-        pass
+        self.task.completed = bool(state)
+        self.task_list.update_task(self.task)
 
     def delete_task(self):
-        self.task_list.delete_task(self.task)
+        self.task_list_widget.delete_task(self.task)
+
+    def mark_important(self):
+        if self.radio_button.isChecked():
+            self.task.mark_as_important()
+        else:
+            self.task.unmark_as_important()
+        self.task_list_widget.task_list.update_task(self.task)
 
 
 class TaskListWidget(QListWidget):
-    def __init__(self, task_list_name, task_list):
+    def __init__(self, task_list_name):
         super().__init__()
         self.task_list_name = task_list_name
-        self.task_list = task_list
+        self.task_list = TaskList(self.task_list_name)
         self.load_tasks()
 
     def load_tasks(self):
         self.clear()
         for task in self.task_list.get_tasks():
-            task_widget = TaskWidget(self, task.title)
+            task_widget = TaskWidget(self, task)
             self.addItem(task_widget)
             self.setItemWidget(task_widget, task_widget.widget)
 
@@ -141,10 +152,8 @@ class MainWindow(QMainWindow):
 
             task_list_name = str(task_list_name).strip()
             self.task_list_collection.addItem(task_list_name)
-
-            task_list = TaskList(task_list_name)
             self.task_manager.add_task_list(task_list_name)
-            task_list_widget = TaskListWidget(task_list_name, task_list)
+            task_list_widget = TaskListWidget(task_list_name)
             self.stack_widget.addWidget(task_list_widget)
             self.hash_to_widget[hash(task_list_name)] = task_list_widget
         except Exception as e:
