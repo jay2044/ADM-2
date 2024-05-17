@@ -158,7 +158,7 @@ class MainWindow(QMainWindow):
                 stack=task_list_info["stack"]
             )
 
-    def add_task_list(self, task_list_name, pin, queue, stack):
+    def add_task_list(self, task_list_name, pin=False, queue=False, stack=False):
         try:
             if not task_list_name:  # Check if task_list_name is empty or None
                 task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")

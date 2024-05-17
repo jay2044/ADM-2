@@ -53,8 +53,10 @@ class Task:
 class TaskList:
     def __init__(self, list_name, pin, queue, stack):
         self.list_name = list_name
-        self.db_file = f"{list_name}.db"
-        self.conn = sqlite3.connect(f"{list_name}.db")
+        self.data_dir = "data"
+        os.makedirs(self.data_dir, exist_ok=True)
+        self.db_file = os.path.join(self.data_dir, f"{list_name}.db")
+        self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_table()
         self.tasks = self.load_tasks()
@@ -204,7 +206,10 @@ class TaskList:
 
 class TaskListManager:
     def __init__(self):
-        self.conn = sqlite3.connect("task_lists.db")
+        self.data_dir = "data"
+        os.makedirs(self.data_dir, exist_ok=True)
+        self.db_file = os.path.join(self.data_dir, "task_lists.db")
+        self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_table()
         self.update_table_schema()
