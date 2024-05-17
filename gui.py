@@ -31,7 +31,8 @@ class TaskWidget(QListWidgetItem):
 
     def task_checked(self, state):
         self.task.completed = bool(state)
-        self.task_list.update_task(self.task)
+        self.task_list_widget.task_list.update_task(self.task)
+        self.task_list_widget.load_tasks()
 
     def delete_task(self):
         self.task_list_widget.delete_task(self.task)
@@ -42,6 +43,7 @@ class TaskWidget(QListWidgetItem):
         else:
             self.task.unmark_as_important()
         self.task_list_widget.task_list.update_task(self.task)
+        self.task_list_widget.load_tasks()
 
 
 class TaskListWidget(QListWidget):
@@ -126,6 +128,10 @@ class MainWindow(QMainWindow):
         add_task_action.triggered.connect(self.add_task)
         self.right_toolbar.addAction(add_task_action)
 
+        # queue_action = QAction("Q", self)
+        # queue_action.triggered.connect(self.set_queue)
+        # self.right_toolbar.addAction(queue_action)
+
         self.right_toolbar.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         # Stack to switch between different task list tabs
@@ -182,6 +188,11 @@ class MainWindow(QMainWindow):
             current_task_list_widget.load_tasks()
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
+
+    # def set_queue(self):
+    #     # current_task_list_widget = self.stack_widget.currentWidget()
+    #     # current_task_list_widget.task_list.queue
+    #     pass
 
     def task_list_collection_context_menu(self, position):
         try:

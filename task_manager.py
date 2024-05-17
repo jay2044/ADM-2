@@ -2,6 +2,7 @@ import sqlite3
 import os
 from datetime import datetime
 import shutil
+import atexit
 
 
 class Task:
@@ -18,6 +19,12 @@ class Task:
         self.categories = []
         self.recurring = False
         self.recur_every = 0
+
+    def mark_as_important(self):
+        self.is_important = True
+
+    def unmark_as_important(self):
+        self.is_important = False
 
     def set_priority(self, priority):
         self.priority = priority
@@ -36,12 +43,6 @@ class Task:
         self.recurring = True
         self.recur_every = every
 
-    def mark_as_important(self):
-        self.is_important = True
-
-    def unmark_as_important(self):
-        self.is_important = False
-
     def get_unique_identifier(self):
         return f"{self.title}_{self.due_date}_{self.due_time}"
 
@@ -53,7 +54,7 @@ class TaskList:
     def __init__(self, list_name):
         self.list_name = list_name
         self.db_file = f"{list_name}.db"
-        self.conn = sqlite3.connect(self.db_file)
+        self.conn = sqlite3.connect(f"{list_name}.db")
         self.conn.row_factory = sqlite3.Row
         self.create_table()
         self.tasks = self.load_tasks()
@@ -141,16 +142,8 @@ class TaskList:
             task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
             task.is_important,
             ','.join(task.categories), task.recurring, task.recur_every, task.id)
-        )
+                       )
         self.conn.commit()
-
-    def mark_task_as_important(self, task):
-        task.mark_as_important()
-        self.update_task(task)
-
-    def unmark_task_as_important(self, task):
-        task.unmark_as_important()
-        self.update_task(task)
 
     def close(self):
         if self.conn:
