@@ -47,10 +47,10 @@ class TaskWidget(QListWidgetItem):
 
 
 class TaskListWidget(QListWidget):
-    def __init__(self, task_list_name):
+    def __init__(self, task_list_name, pin, queue, stack):
         super().__init__()
         self.task_list_name = task_list_name
-        self.task_list = TaskList(self.task_list_name)
+        self.task_list = TaskList(self.task_list_name, pin, queue, stack)
         self.load_tasks()
 
     def load_tasks(self):
@@ -158,7 +158,7 @@ class MainWindow(QMainWindow):
                 stack=task_list_info["stack"]
             )
 
-    def add_task_list(self, task_list_name="", pin=False, queue=False, stack=False):
+    def add_task_list(self, task_list_name, pin, queue, stack):
         try:
             if not task_list_name:  # Check if task_list_name is empty or None
                 task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
 
             self.task_list_collection.addItem(task_list_name)
             self.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
-            task_list_widget = TaskListWidget(task_list_name)
+            task_list_widget = TaskListWidget(task_list_name, pin=pin, queue=queue, stack=stack)
             self.stack_widget.addWidget(task_list_widget)
             self.hash_to_widget[hash(task_list_name)] = task_list_widget
         except Exception as e:
@@ -209,6 +209,7 @@ class MainWindow(QMainWindow):
         if current_task_list.queue:
             current_task_list.stack = False
         current_task_list_widget.load_tasks()
+        self.task_manager.update_task_list(current_task_list_widget.task_list)
 
     def set_stack(self):
         current_task_list_widget = self.stack_widget.currentWidget()
@@ -220,6 +221,7 @@ class MainWindow(QMainWindow):
         if current_task_list.stack:
             current_task_list.queue = False
         current_task_list_widget.load_tasks()
+        self.task_manager.update_task_list(current_task_list_widget.task_list)
 
     def task_list_collection_context_menu(self, position):
         try:

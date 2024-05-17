@@ -51,16 +51,16 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name):
+    def __init__(self, list_name, pin, queue, stack):
         self.list_name = list_name
         self.db_file = f"{list_name}.db"
         self.conn = sqlite3.connect(f"{list_name}.db")
         self.conn.row_factory = sqlite3.Row
         self.create_table()
         self.tasks = self.load_tasks()
-        self.pin = False
-        self.queue = False
-        self.stack = False
+        self.pin = pin
+        self.queue = queue
+        self.stack = stack
 
     def create_table(self):
         create_tasks_table = """
@@ -253,7 +253,7 @@ class TaskListManager:
             })
         return task_lists
 
-    def add_task_list(self, list_name, pin=False, queue=False, stack=False):
+    def add_task_list(self, list_name, pin, queue, stack):
         if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
             cursor.execute(
@@ -267,7 +267,6 @@ class TaskListManager:
                 "queue": queue,
                 "stack": stack
             })
-            # Create a new TaskList database
             TaskList(list_name)
 
     def remove_task_list(self, list_name):
@@ -283,6 +282,15 @@ class TaskListManager:
                 os.remove(task_list.db_file)
             except PermissionError:
                 shutil.rmtree(task_list.db_file, ignore_errors=True)
+
+    def update_task_list(self, task_list):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE task_lists
+            SET pin = ?, queue = ?, stack = ?
+            WHERE list_name = ?
+        """, (task_list.pin, task_list.queue, task_list.stack, task_list.list_name))
+        self.conn.commit()
 
     def get_task_lists(self):
         return self.task_lists
