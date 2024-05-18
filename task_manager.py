@@ -169,7 +169,9 @@ class TaskList:
         elif self.stack:
             other_tasks.sort(key=lambda task: task.added_date_time)
             important_tasks.sort(key=lambda task: task.added_date_time)
-            return list(reversed(important_tasks + other_tasks))
+            other_tasks = list(reversed(other_tasks))
+            important_tasks = list(reversed(important_tasks))
+            return important_tasks + other_tasks
         return important_tasks + other_tasks
 
     def get_completed_tasks(self):
