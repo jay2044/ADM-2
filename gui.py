@@ -158,7 +158,7 @@ class MainWindow(QMainWindow):
                 stack=task_list_info["stack"]
             )
 
-    def add_task_list(self, task_list_name, pin=False, queue=False, stack=False):
+    def add_task_list(self, task_list_name="", pin=False, queue=False, stack=False):
         try:
             if not task_list_name:  # Check if task_list_name is empty or None
                 task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
@@ -167,18 +167,29 @@ class MainWindow(QMainWindow):
 
             task_list_name = str(task_list_name).strip()
 
+            # Check for duplicate task list names
+            if any(self.task_list_collection.item(i).text() == task_list_name for i in range(self.task_list_collection.count())):
+                QMessageBox.warning(self, "Duplicate Name", "A task list with this name already exists.")
+                return
+
             self.task_list_collection.addItem(task_list_name)
             self.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
             task_list_widget = TaskListWidget(task_list_name, pin=pin, queue=queue, stack=stack)
             self.stack_widget.addWidget(task_list_widget)
             self.hash_to_widget[hash(task_list_name)] = task_list_widget
+            self.stack_widget.setCurrentWidget(task_list_widget)  # Ensure the new list is selected
+            self.task_list_collection.setCurrentItem(
+                self.task_list_collection.findItems(task_list_name, Qt.MatchFlag.MatchExactly)[0])
+
         except Exception as e:
             print(f"An error occurred while adding a task list: {e}")
 
+    # responsible for showing tasklist of the widget item selected from the left layout
     def switch_stack_widget_by_hash(self, current, previous):
         try:
             if current:
                 hash_key = hash(current.text())
+                print(f"switching to {current.text()}")
                 if hash_key in self.hash_to_widget:
                     self.stack_widget.setCurrentWidget(self.hash_to_widget[hash_key])
         except Exception as e:
@@ -209,7 +220,7 @@ class MainWindow(QMainWindow):
         if current_task_list.queue:
             current_task_list.stack = False
         current_task_list_widget.load_tasks()
-        self.task_manager.update_task_list(current_task_list_widget.task_list)
+        self.task_manager.update_task_list(current_task_list)
 
     def set_stack(self):
         current_task_list_widget = self.stack_widget.currentWidget()
@@ -221,7 +232,7 @@ class MainWindow(QMainWindow):
         if current_task_list.stack:
             current_task_list.queue = False
         current_task_list_widget.load_tasks()
-        self.task_manager.update_task_list(current_task_list_widget.task_list)
+        self.task_manager.update_task_list(current_task_list)
 
     def task_list_collection_context_menu(self, position):
         try:
