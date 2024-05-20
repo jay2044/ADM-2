@@ -167,7 +167,6 @@ class MainWindow(QMainWindow):
 
             task_list_name = str(task_list_name).strip()
 
-
             # Check for duplicate task list names
             if any(self.task_list_collection.item(i).text() == task_list_name for i in range(self.task_list_collection.count())):
                 QMessageBox.warning(self, "Duplicate Name", "A task list with this name already exists.")
