@@ -34,9 +34,6 @@ class TaskWidget(QListWidgetItem):
         self.task_list_widget.task_list.update_task(self.task)
         self.task_list_widget.load_tasks()
 
-    def delete_task(self):
-        self.task_list_widget.delete_task(self.task)
-
     def mark_important(self):
         if self.radio_button.isChecked():
             self.task.mark_as_important()

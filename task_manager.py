@@ -2,8 +2,6 @@ import sqlite3
 import os
 from datetime import datetime
 import shutil
-import atexit
-
 
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None):
@@ -51,7 +49,7 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name, pin, queue, stack):
+    def __init__(self, list_name, pin=False, queue=False, stack=False):
         self.list_name = list_name
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
@@ -85,7 +83,7 @@ class TaskList:
             cursor = self.conn.cursor()
             cursor.execute(create_tasks_table)
         except sqlite3.Error as e:
-            print(e)
+            print(f"Error creating table: {e}")
 
     def load_tasks(self):
         tasks = []
@@ -144,7 +142,7 @@ class TaskList:
             task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
             task.is_important,
             ','.join(task.categories), task.recurring, task.recur_every, task.id)
-                       )
+        )
         self.conn.commit()
 
     def close(self):
@@ -228,7 +226,7 @@ class TaskListManager:
             cursor = self.conn.cursor()
             cursor.execute(create_task_lists_table)
         except sqlite3.Error as e:
-            print(e)
+            print(f"Error creating table: {e}")
 
     def update_table_schema(self):
         cursor = self.conn.cursor()
@@ -260,7 +258,7 @@ class TaskListManager:
             })
         return task_lists
 
-    def add_task_list(self, list_name, pin, queue, stack):
+    def add_task_list(self, list_name, pin=False, queue=False, stack=False):
         if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
             cursor.execute(
@@ -274,7 +272,7 @@ class TaskListManager:
                 "queue": queue,
                 "stack": stack
             })
-            TaskList(list_name)
+            TaskList(list_name, pin, queue, stack)
 
     def remove_task_list(self, list_name):
         if list_name in [task_list["list_name"] for task_list in self.task_lists]:
@@ -296,7 +294,7 @@ class TaskListManager:
             UPDATE task_lists
             SET pin = ?, queue = ?, stack = ?
             WHERE list_name = ?
-        """, (task_list.pin, task_list.queue, task_list.stack, task_list.list_name))
+        """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
         self.conn.commit()
 
     def get_task_lists(self):

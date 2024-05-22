@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QApplication
 import sys
 from gui import MainWindow
 from task_manager import TaskList
+import os
 
 
 def main():
