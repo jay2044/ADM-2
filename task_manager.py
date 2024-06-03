@@ -294,7 +294,7 @@ class TaskListManager:
             UPDATE task_lists
             SET pin = ?, queue = ?, stack = ?
             WHERE list_name = ?
-        """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
+        """, (task_list.pin, task_list.queue, task_list.stack, task_list.list_name))
         self.conn.commit()
 
     def get_task_lists(self):

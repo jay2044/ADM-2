@@ -49,6 +49,10 @@ class TaskListWidget(QListWidget):
         self.task_list_name = task_list_name
         self.task_list = TaskList(self.task_list_name, pin, queue, stack)
         self.load_tasks()
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
 
     def load_tasks(self):
         self.clear()
@@ -62,11 +66,68 @@ class TaskListWidget(QListWidget):
             self.task_list.remove_task(task)
             for index in range(self.count()):
                 item = self.item(index)
-                if isinstance(item, TaskWidget) and item.task == task:
+                task_widget = item.data(Qt.ItemDataRole.UserRole)
+                if task_widget.task == task:
                     self.takeItem(index)
                     break
         except Exception as e:
             print(e)
+
+    def startDrag(self, supportedActions):
+        try:
+            print("startDrag")
+            item = self.currentItem()
+            if item:
+                drag = QDrag(self)
+                mime_data = QMimeData()
+                drag.setMimeData(mime_data)
+
+                pixmap = QPixmap(item.sizeHint().width(), item.sizeHint().height())
+                item_widget = self.itemWidget(item)
+                item_widget.render(pixmap)
+                drag.setPixmap(pixmap)
+
+                drag.exec(Qt.DropAction.MoveAction)
+        except Exception as e:
+            print(f"Error in startDrag: {e}")
+
+    def dragEnterEvent(self, event):
+        try:
+            print("dragEnterEvent")
+            if event.source() == self:
+                event.setDropAction(Qt.DropAction.MoveAction)
+                event.accept()
+            else:
+                event.ignore()
+        except Exception as e:
+            print(f"Error in dragEnterEvent: {e}")
+
+    def dragMoveEvent(self, event):
+        try:
+            print("dragMoveEvent")
+            if event.source() == self:
+                event.setDropAction(Qt.DropAction.MoveAction)
+                event.accept()
+            else:
+                event.ignore()
+        except Exception as e:
+            print(f"Error in dragMoveEvent: {e}")
+
+    def dropEvent(self, event):
+        try:
+            print("dropEvent")
+            if event.source() == self:
+                event.setDropAction(Qt.DropAction.MoveAction)
+                event.accept()
+                super().dropEvent(event)
+                self.reorder_tasks()
+            else:
+                event.ignore()
+        except Exception as e:
+            print(f"Error in dropEvent: {e}")
+
+    def reorder_tasks(self):
+        pass
 
 
 class MainWindow(QMainWindow):
@@ -165,7 +226,8 @@ class MainWindow(QMainWindow):
             task_list_name = str(task_list_name).strip()
 
             # Check for duplicate task list names
-            if any(self.task_list_collection.item(i).text() == task_list_name for i in range(self.task_list_collection.count())):
+            if any(self.task_list_collection.item(i).text() == task_list_name for i in
+                   range(self.task_list_collection.count())):
                 QMessageBox.warning(self, "Duplicate Name", "A task list with this name already exists.")
                 return
 
@@ -208,28 +270,34 @@ class MainWindow(QMainWindow):
             print(f"An error occurred while adding a task: {e}")
 
     def set_queue(self):
-        current_task_list_widget = self.stack_widget.currentWidget()
-        if not isinstance(current_task_list_widget, TaskListWidget):
-            return
+        try:
+            current_task_list_widget = self.stack_widget.currentWidget()
+            if not isinstance(current_task_list_widget, TaskListWidget):
+                return
 
-        current_task_list = current_task_list_widget.task_list
-        current_task_list.queue = not current_task_list.queue
-        if current_task_list.queue:
-            current_task_list.stack = False
-        current_task_list_widget.load_tasks()
-        self.task_manager.update_task_list(current_task_list)
+            current_task_list = current_task_list_widget.task_list
+            current_task_list.queue = not current_task_list.queue
+            if current_task_list.queue:
+                current_task_list.stack = False
+            current_task_list_widget.load_tasks()
+            self.task_manager.update_task_list(current_task_list)
+        except Exception as e:
+            print(f"Error in set_queue: {e}")
 
     def set_stack(self):
-        current_task_list_widget = self.stack_widget.currentWidget()
-        if not isinstance(current_task_list_widget, TaskListWidget):
-            return
+        try:
+            current_task_list_widget = self.stack_widget.currentWidget()
+            if not isinstance(current_task_list_widget, TaskListWidget):
+                return
 
-        current_task_list = current_task_list_widget.task_list
-        current_task_list.stack = not current_task_list.stack
-        if current_task_list.stack:
-            current_task_list.queue = False
-        current_task_list_widget.load_tasks()
-        self.task_manager.update_task_list(current_task_list)
+            current_task_list = current_task_list_widget.task_list
+            current_task_list.stack = not current_task_list.stack
+            if current_task_list.stack:
+                current_task_list.queue = False
+            current_task_list_widget.load_tasks()
+            self.task_manager.update_task_list(current_task_list)
+        except Exception as e:
+            print(f"Error in set_stack: {e}")
 
     def task_list_collection_context_menu(self, position):
         try:
