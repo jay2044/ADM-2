@@ -2,6 +2,12 @@ import sqlite3
 import os
 from datetime import datetime
 import shutil
+import re
+
+
+def sanitize_name(name):
+    return re.sub(r'\W+', '_', name)
+
 
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None):
@@ -53,7 +59,7 @@ class TaskList:
         self.list_name = list_name
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
-        self.db_file = os.path.join(self.data_dir, f"{list_name}.db")
+        self.db_file = os.path.join(self.data_dir, f"{sanitize_name(list_name)}.db")
         self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_table()
@@ -142,7 +148,7 @@ class TaskList:
             task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
             task.is_important,
             ','.join(task.categories), task.recurring, task.recur_every, task.id)
-        )
+                       )
         self.conn.commit()
 
     def close(self):

@@ -251,6 +251,7 @@ class MainWindow(QMainWindow):
                 print(f"switching to {current.text()}")
                 if hash_key in self.hash_to_widget:
                     self.stack_widget.setCurrentWidget(self.hash_to_widget[hash_key])
+                    print(f"switched to {self.stack_widget.currentWidget().task_list_name}")
         except Exception as e:
             print(f"An error occurred while switching stack: {e}")
 
