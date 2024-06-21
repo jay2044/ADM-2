@@ -60,13 +60,64 @@ class AddTaskDialog(QDialog):
         }
 
 
-class TaskWidget(QListWidgetItem):
+class EditTaskDialog(QDialog):
+    def __init__(self, task, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Task")
+
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+
+        self.layout = QFormLayout(self)
+
+        self.title_edit = QLineEdit(self)
+        self.title_edit.setText(task.title)
+        self.layout.addRow("Title:", self.title_edit)
+
+        self.description_edit = QLineEdit(self)
+        self.description_edit.setText(task.description)
+        self.layout.addRow("Description:", self.description_edit)
+
+        self.due_date_edit = CustomDateEdit(self)
+        if task.due_date:
+            self.due_date_edit.setDate(QDate.fromString(task.due_date, "yyyy-MM-dd"))
+        else:
+            self.due_date_edit.setDate(QDate(2000, 1, 1))
+        self.layout.addRow("Due Date:", self.due_date_edit)
+
+        self.due_time_edit = QTimeEdit(self)
+        if task.due_time:
+            self.due_time_edit.setTime(QTime.fromString(task.due_time, "HH:mm"))
+        else:
+            self.due_time_edit.setTime(QTime(0, 0))
+        self.layout.addRow("Due Time:", self.due_time_edit)
+
+        self.important_checkbox = QCheckBox("Important", self)
+        self.important_checkbox.setChecked(task.is_important)
+        self.layout.addRow(self.important_checkbox)
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        self.layout.addRow(self.buttons)
+
+    def get_task_data(self):
+        return {
+            "title": self.title_edit.text(),
+            "description": self.description_edit.text(),
+            "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
+            "due_time": self.due_time_edit.time().toString("HH:mm"),
+            "is_important": self.important_checkbox.isChecked()
+        }
+
+
+
+
+class TaskWidget(QWidget):
     def __init__(self, task_list_widget, task):
         super().__init__()
         self.task_list_widget = task_list_widget
         self.task = task
 
-        self.widget = QWidget()
         self.layout = QHBoxLayout()
         self.checkbox = QCheckBox(task.title)
         self.checkbox.setChecked(self.task.completed)
@@ -80,8 +131,24 @@ class TaskWidget(QListWidgetItem):
         self.radio_button.toggled.connect(self.mark_important)
         self.layout.addWidget(self.radio_button)
 
-        self.widget.setLayout(self.layout)
-        self.setSizeHint(self.widget.sizeHint())
+        self.setLayout(self.layout)
+
+    def mousePressEvent(self, event):
+        print("mousePressEvent TaskWidget")
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                dialog = EditTaskDialog(self.task, self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    task_data = dialog.get_task_data()
+                    self.task.title = task_data["title"]
+                    self.task.description = task_data["description"]
+                    self.task.due_date = QDate.fromString(task_data["due_date"], "yyyy-MM-dd")
+                    self.task.due_time = QTime.fromString(task_data["due_time"], "HH:mm")
+                    self.task.is_important = task_data["is_important"]
+                    self.task_list_widget.task_list.update_task(self.task)
+                    self.task_list_widget.load_tasks()
+        except Exception as e:
+            print(e)
 
     def task_checked(self, state):
         self.task.completed = bool(state)
@@ -111,9 +178,11 @@ class TaskListWidget(QListWidget):
     def load_tasks(self):
         self.clear()
         for task in self.task_list.get_tasks():
+            item = QListWidgetItem(self)
             task_widget = TaskWidget(self, task)
-            self.addItem(task_widget)
-            self.setItemWidget(task_widget, task_widget.widget)
+            item.setSizeHint(task_widget.sizeHint())
+            self.addItem(item)
+            self.setItemWidget(item, task_widget)
 
     def delete_task(self, task):
         try:
@@ -336,6 +405,24 @@ class MainWindow(QMainWindow):
                 current_task_list_widget.load_tasks()
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
+
+    def edit_task(self, task):
+        try:
+            dialog = EditTaskDialog(task, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                task_data = dialog.get_task_data()
+                task.title = task_data["title"]
+                task.description = task_data["description"]
+                task.due_date = QDate.fromString(task_data["due_date"], "yyyy-MM-dd")
+                task.due_time = QTime.fromString(task_data["due_time"], "HH:mm")
+                task.priority = task_data["priority"]
+                task.is_important = task_data["is_important"]
+                # Update the task in the task list
+                self.task_manager.update_task(task)
+                # Reload tasks to reflect the changes
+                self.load_tasks()
+        except Exception as e:
+            print(f"An error occurred while editing a task: {e}")
 
     def set_queue(self):
         try:
