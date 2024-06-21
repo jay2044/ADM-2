@@ -144,6 +144,23 @@ class TaskWidget(QWidget):
         try:
             if event.button() == Qt.MouseButton.LeftButton:
                 dialog = EditTaskDialog(self.task, self)
+                dialog.adjustSize()
+
+                # Get the dimensions of the task list widget
+                task_list_widget_geometry = self.task_list_widget.geometry()
+                task_list_widget_width = task_list_widget_geometry.width()
+                task_list_widget_height = task_list_widget_geometry.height()
+
+                # Calculate the size and position for the dialog
+                dialog_width = int(task_list_widget_width * 0.6)
+                dialog_height = task_list_widget_height
+                dialog_x = self.task_list_widget.mapToGlobal(QPoint(task_list_widget_width - dialog_width, 0)).x()
+                dialog_y = self.task_list_widget.mapToGlobal(QPoint(0, 0)).y()
+
+                # Resize and move the dialog
+                dialog.resize(dialog_width, dialog_height)
+                dialog.move(dialog_x, dialog_y)
+
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     task_data = dialog.get_task_data()
                     self.task.title = task_data["title"]
