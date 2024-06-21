@@ -91,6 +91,12 @@ class EditTaskDialog(QDialog):
             self.due_time_edit.setTime(QTime(0, 0))
         self.layout.addRow("Due Time:", self.due_time_edit)
 
+        self.priority_spinbox = QSpinBox(self)
+        self.priority_spinbox.setMinimum(0)
+        self.priority_spinbox.setMaximum(10)
+        self.priority_spinbox.setValue(task.priority)
+        self.layout.addRow("Priority:", self.priority_spinbox)
+
         self.important_checkbox = QCheckBox("Important", self)
         self.important_checkbox.setChecked(task.is_important)
         self.layout.addRow(self.important_checkbox)
@@ -106,6 +112,7 @@ class EditTaskDialog(QDialog):
             "description": self.description_edit.text(),
             "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
             "due_time": self.due_time_edit.time().toString("HH:mm"),
+            "priority": self.priority_spinbox.value(),
             "is_important": self.important_checkbox.isChecked()
         }
 
@@ -142,13 +149,14 @@ class TaskWidget(QWidget):
                     task_data = dialog.get_task_data()
                     self.task.title = task_data["title"]
                     self.task.description = task_data["description"]
-                    self.task.due_date = QDate.fromString(task_data["due_date"], "yyyy-MM-dd")
-                    self.task.due_time = QTime.fromString(task_data["due_time"], "HH:mm")
+                    self.task.due_date = task_data["due_date"]
+                    self.task.due_time = task_data["due_time"]
                     self.task.is_important = task_data["is_important"]
+                    self.task.priority = task_data["priority"]
                     self.task_list_widget.task_list.update_task(self.task)
                     self.task_list_widget.load_tasks()
         except Exception as e:
-            print(e)
+            print(f"Error in mousePressEvent TaskWidget: {e}")
 
     def task_checked(self, state):
         self.task.completed = bool(state)
