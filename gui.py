@@ -11,6 +11,8 @@ class AddTaskDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Add New Task")
 
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+
         self.layout = QFormLayout(self)
 
         self.title_edit = QLineEdit(self)
@@ -301,6 +303,13 @@ class MainWindow(QMainWindow):
 
         try:
             dialog = AddTaskDialog(self)
+
+            button_pos = self.right_toolbar.mapToGlobal(self.right_toolbar.rect().bottomRight())
+            dialog.adjustSize()  # ensures the dialog's size is calculated correctly; like idk tf
+            dialog_x = button_pos.x() - dialog.width()
+            dialog_y = button_pos.y()
+            dialog.move(dialog_x, dialog_y)
+
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 task_data = dialog.get_task_data()
                 task = Task(
