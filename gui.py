@@ -6,6 +6,45 @@ from PyQt6.QtGui import *
 from task_manager import *
 
 
+class AddTaskDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add New Task")
+
+        self.layout = QFormLayout(self)
+
+        self.title_edit = QLineEdit(self)
+        self.layout.addRow("Title:", self.title_edit)
+
+        self.description_edit = QLineEdit(self)
+        self.layout.addRow("Description:", self.description_edit)
+
+        self.due_date_edit = QDateEdit(self)
+        self.due_date_edit.setCalendarPopup(True)
+        self.layout.addRow("Due Date:", self.due_date_edit)
+
+        self.due_time_edit = QTimeEdit(self)
+        self.layout.addRow("Due Time:", self.due_time_edit)
+
+        self.important_checkbox = QCheckBox("Important", self)
+        self.layout.addRow(self.important_checkbox)
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+                                        self)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        self.layout.addRow(self.buttons)
+
+    def get_task_data(self):
+        return {
+            "title": self.title_edit.text(),
+            "description": self.description_edit.text(),
+            "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
+            "due_time": self.due_time_edit.time().toString("HH:mm"),
+            "is_important": self.important_checkbox.isChecked()
+        }
+
+
 class TaskWidget(QListWidgetItem):
     def __init__(self, task_list_widget, task):
         super().__init__()
@@ -261,12 +300,18 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            task_name, ok = QInputDialog.getText(self, "New Task", "Enter task name:")
-            if not ok or not task_name.strip():
-                return
-            task = Task(task_name, "", "2024-01-01", "12:00")
-            current_task_list_widget.task_list.add_task(task)
-            current_task_list_widget.load_tasks()
+            dialog = AddTaskDialog(self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                task_data = dialog.get_task_data()
+                task = Task(
+                    title=task_data["title"],
+                    description=task_data["description"],
+                    due_date=task_data["due_date"],
+                    due_time=task_data["due_time"]
+                )
+                task.is_important = task_data["is_important"]
+                current_task_list_widget.task_list.add_task(task)
+                current_task_list_widget.load_tasks()
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
