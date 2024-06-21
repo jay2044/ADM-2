@@ -127,16 +127,19 @@ class TaskList:
         self.tasks.append(task)
 
     def remove_task(self, task):
-        cursor = self.conn.cursor()
-        unique_identifier = task.get_unique_identifier()
-        cursor.execute("""
-            DELETE FROM tasks
-            WHERE title IS ? AND
-                  (due_date IS ? OR due_date IS NULL) AND
-                  (due_time IS ? OR due_time IS NULL)
-        """, (task.title, task.due_date, task.due_time))
-        self.conn.commit()
-        self.tasks = [t for t in self.tasks if t.get_unique_identifier() != unique_identifier]
+        try:
+            cursor = self.conn.cursor()
+            unique_identifier = task.get_unique_identifier()
+            cursor.execute("""
+                DELETE FROM tasks
+                WHERE title IS ? AND
+                      (due_date IS ? OR due_date IS NULL) AND
+                      (due_time IS ? OR due_time IS NULL)
+            """, (task.title, task.due_date, task.due_time))
+            self.conn.commit()
+            self.tasks = [t for t in self.tasks if t.get_unique_identifier() != unique_identifier]
+        except Exception as e:
+            print(e)
 
     def update_task(self, task):
         cursor = self.conn.cursor()

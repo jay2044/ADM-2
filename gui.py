@@ -61,11 +61,14 @@ class AddTaskDialog(QDialog):
 
 
 class EditTaskDialog(QDialog):
-    def __init__(self, task, parent=None):
+    def __init__(self, task, task_list_widget, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Task")
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+
+        self.task = task
+        self.task_list_widget = task_list_widget
 
         self.layout = QFormLayout(self)
 
@@ -99,7 +102,17 @@ class EditTaskDialog(QDialog):
 
         self.important_checkbox = QCheckBox("Important", self)
         self.important_checkbox.setChecked(task.is_important)
-        self.layout.addRow(self.important_checkbox)
+
+        hbox_layout = QHBoxLayout()
+        hbox_layout.addWidget(self.important_checkbox)
+
+        # Delete button
+        self.delete_button = QPushButton("Delete", self)
+        self.delete_button.clicked.connect(self.delete_task_button_action)
+        hbox_layout.addStretch(1)
+        hbox_layout.addWidget(self.delete_button)
+
+        self.layout.addRow(hbox_layout)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
                                         self)
@@ -116,6 +129,10 @@ class EditTaskDialog(QDialog):
             "priority": self.priority_spinbox.value(),
             "is_important": self.important_checkbox.isChecked()
         }
+
+    def delete_task_button_action(self):
+        self.task_list_widget.delete_task(self.task)
+        self.accept()
 
 
 class TaskWidget(QWidget):
@@ -143,7 +160,7 @@ class TaskWidget(QWidget):
         print("mousePressEvent TaskWidget")
         try:
             if event.button() == Qt.MouseButton.LeftButton:
-                dialog = EditTaskDialog(self.task, self)
+                dialog = EditTaskDialog(self.task, self.task_list_widget, self)
                 dialog.adjustSize()
 
                 # Get the dimensions of the task list widget
@@ -152,7 +169,7 @@ class TaskWidget(QWidget):
                 task_list_widget_height = task_list_widget_geometry.height()
 
                 # Calculate the size and position for the dialog
-                dialog_width = int(task_list_widget_width * 0.6)
+                dialog_width = int(task_list_widget_width * 0.8)
                 dialog_height = task_list_widget_height
                 dialog_x = self.task_list_widget.mapToGlobal(QPoint(task_list_widget_width - dialog_width, 0)).x()
                 dialog_y = self.task_list_widget.mapToGlobal(QPoint(0, 0)).y()
