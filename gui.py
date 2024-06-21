@@ -6,6 +6,17 @@ from PyQt6.QtGui import *
 from task_manager import *
 
 
+class CustomDateEdit(QDateEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCalendarPopup(True)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        if self.date() == QDate(2000, 1, 1):
+            self.setDate(QDate.currentDate())
+
+
 class AddTaskDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,8 +32,7 @@ class AddTaskDialog(QDialog):
         self.description_edit = QLineEdit(self)
         self.layout.addRow("Description:", self.description_edit)
 
-        self.due_date_edit = QDateEdit(self)
-        self.due_date_edit.setCalendarPopup(True)
+        self.due_date_edit = CustomDateEdit(self)  # Use the subclassed QDateEdit
         self.layout.addRow("Due Date:", self.due_date_edit)
 
         self.due_time_edit = QTimeEdit(self)
@@ -36,6 +46,9 @@ class AddTaskDialog(QDialog):
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         self.layout.addRow(self.buttons)
+
+        # Set focus on the title edit when the dialog opens
+        self.title_edit.setFocus()
 
     def get_task_data(self):
         return {
