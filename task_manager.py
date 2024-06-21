@@ -204,7 +204,8 @@ class TaskList:
         return important_tasks + other_tasks
 
     def get_tasks_filter_priority(self):
-        return sorted(self.tasks, key=lambda task: task.priority, reverse=True)
+        filtered_tasks = [task for task in self.tasks if not task.completed]
+        return sorted(filtered_tasks, key=lambda task: task.priority, reverse=True)
 
     def __str__(self):
         return '\n'.join(str(task) for task in self.tasks if not task.completed)

@@ -182,8 +182,10 @@ class TaskWidget(QWidget):
     def mark_important(self):
         if self.radio_button.isChecked():
             self.task.mark_as_important()
+            self.task.priority = 7
         else:
             self.task.unmark_as_important()
+            self.task.priority = 0
         self.task_list_widget.task_list.update_task(self.task)
         self.task_list_widget.load_tasks()
 
@@ -199,9 +201,13 @@ class TaskListWidget(QListWidget):
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
 
-    def load_tasks(self):
+    def load_tasks(self, priority_filter=False):
         self.clear()
-        for task in self.task_list.get_tasks():
+        if priority_filter:
+            tasks = self.task_list.get_tasks_filter_priority()
+        else:
+            tasks = self.task_list.get_tasks()
+        for task in tasks:
             item = QListWidgetItem(self)
             task_widget = TaskWidget(self, task)
             item.setSizeHint(task_widget.sizeHint())
@@ -341,6 +347,11 @@ class MainWindow(QMainWindow):
         stack_action.triggered.connect(self.set_stack)
         self.right_toolbar.addAction(stack_action)
 
+        priority_action = QAction("P", self)
+        self.priority_filter = False
+        priority_action.triggered.connect(self.priority_sort)
+        self.right_toolbar.addAction(priority_action)
+
         self.right_toolbar.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         # Stack to switch between different task list tabs
@@ -439,7 +450,14 @@ class MainWindow(QMainWindow):
             current_task_list = current_task_list_widget.task_list
             current_task_list.queue = not current_task_list.queue
             if current_task_list.queue:
+                self.right_toolbar.actions()[1].setCheckable(True)
+                self.right_toolbar.actions()[1].setChecked(current_task_list.queue)
                 current_task_list.stack = False
+                self.right_toolbar.actions()[2].setCheckable(False)
+                self.right_toolbar.actions()[3].setCheckable(False)
+                self.priority_filter = False
+            else:
+                self.right_toolbar.actions()[1].setCheckable(False)
             current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
@@ -454,11 +472,45 @@ class MainWindow(QMainWindow):
             current_task_list = current_task_list_widget.task_list
             current_task_list.stack = not current_task_list.stack
             if current_task_list.stack:
+                self.right_toolbar.actions()[2].setCheckable(True)
+                self.right_toolbar.actions()[2].setChecked(current_task_list.stack)
+                self.right_toolbar.actions()[1].setCheckable(False)
+                self.right_toolbar.actions()[3].setCheckable(False)
+                self.priority_filter = False
                 current_task_list.queue = False
+
+            else:
+                self.right_toolbar.actions()[2].setCheckable(False)
             current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
             print(f"Error in set_stack: {e}")
+
+    def priority_sort(self):
+        try:
+            current_task_list_widget = self.stack_widget.currentWidget()
+            if not isinstance(current_task_list_widget, TaskListWidget):
+                return
+
+            current_task_list = current_task_list_widget.task_list
+
+            if self.priority_filter:
+                self.right_toolbar.actions()[3].setCheckable(False)
+                self.priority_filter = False
+                current_task_list_widget.load_tasks(False)
+                return
+            else:
+                self.right_toolbar.actions()[3].setCheckable(True)
+                self.right_toolbar.actions()[3].setChecked(True)
+                self.right_toolbar.actions()[2].setCheckable(False)
+                self.right_toolbar.actions()[1].setCheckable(False)
+                current_task_list.queue = False
+                current_task_list.stack = False
+                self.priority_filter = True
+            current_task_list_widget.load_tasks(True)
+            self.task_manager.update_task_list(current_task_list)
+        except Exception as e:
+            print(f"Error in priority_sort: {e}")
 
     def task_list_collection_context_menu(self, position):
         try:
