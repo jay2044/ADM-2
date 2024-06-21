@@ -413,24 +413,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
-    def edit_task(self, task):
-        try:
-            dialog = EditTaskDialog(task, self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                task_data = dialog.get_task_data()
-                task.title = task_data["title"]
-                task.description = task_data["description"]
-                task.due_date = QDate.fromString(task_data["due_date"], "yyyy-MM-dd")
-                task.due_time = QTime.fromString(task_data["due_time"], "HH:mm")
-                task.priority = task_data["priority"]
-                task.is_important = task_data["is_important"]
-                # Update the task in the task list
-                self.task_manager.update_task(task)
-                # Reload tasks to reflect the changes
-                self.load_tasks()
-        except Exception as e:
-            print(f"An error occurred while editing a task: {e}")
-
     def set_queue(self):
         try:
             current_task_list_widget = self.stack_widget.currentWidget()
