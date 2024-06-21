@@ -101,7 +101,8 @@ class EditTaskDialog(QDialog):
         self.important_checkbox.setChecked(task.is_important)
         self.layout.addRow(self.important_checkbox)
 
-        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
+        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+                                        self)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         self.layout.addRow(self.buttons)
@@ -115,8 +116,6 @@ class EditTaskDialog(QDialog):
             "priority": self.priority_spinbox.value(),
             "is_important": self.important_checkbox.isChecked()
         }
-
-
 
 
 class TaskWidget(QWidget):
