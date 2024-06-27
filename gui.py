@@ -442,6 +442,7 @@ class MainWindow(QMainWindow):
             self.splitter.setSizes([200, 500])
 
     def load_task_lists(self):
+        self.task_list_collection.clear()
         for task_list_info in self.task_manager.get_task_lists():
             self.add_task_list(
                 task_list_info["list_name"],
@@ -598,14 +599,17 @@ class MainWindow(QMainWindow):
             # Create the context menu
             menu = QMenu()
             edit_action = QAction('Edit', self)
+            pin_action = QAction('pin', self)
             delete_action = QAction('Delete', self)
 
             # Connect actions to methods
             edit_action.triggered.connect(lambda: self.edit_task_list(task_list))
+            pin_action.triggered.connect(lambda: self.pin_task_list(task_list))
             delete_action.triggered.connect(lambda: self.delete_task_list(task_list))
 
             # Add actions to the menu
             menu.addAction(edit_action)
+            menu.addAction(pin_action)
             menu.addAction(delete_action)
 
             # Show the context menu at the current mouse position
@@ -615,6 +619,10 @@ class MainWindow(QMainWindow):
 
     def edit_task_list(self, task_list):
         print(f"Editing item: {task_list.text()}")
+
+    def pin_task_list(self, task_list):
+        self.task_manager.pin_task_list(task_list.text())
+        self.load_task_lists()
 
     def delete_task_list(self, task_list):
         try:

@@ -304,11 +304,21 @@ class TaskListManager:
             UPDATE task_lists
             SET pin = ?, queue = ?, stack = ?
             WHERE list_name = ?
-        """, (task_list.pin, task_list.queue, task_list.stack, task_list.list_name))
+        """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
         self.conn.commit()
 
+    def pin_task_list(self, list_name):
+
+        for task_list in self.task_lists:
+            if task_list["list_name"] == list_name:
+                task_list["pin"] = not task_list["pin"]
+                self.update_task_list(task_list)
+                break
+
     def get_task_lists(self):
-        return self.task_lists
+        pinned_lists = [task_list for task_list in self.task_lists if task_list["pin"]]
+        other_lists = [task_list for task_list in self.task_lists if not task_list["pin"]]
+        return pinned_lists + other_lists
 
     def get_task_list_count(self):
         return len(self.task_lists)
