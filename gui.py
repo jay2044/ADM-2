@@ -225,8 +225,8 @@ class TaskListWidget(QListWidget):
         else:
             tasks = self.task_list.get_tasks()
         for task in tasks:
-            item = QListWidgetItem(self)
             task_widget = TaskWidget(self, task)
+            item = QListWidgetItem()
             item.setSizeHint(task_widget.sizeHint())
             self.addItem(item)
             self.setItemWidget(item, task_widget)
@@ -236,7 +236,7 @@ class TaskListWidget(QListWidget):
             self.task_list.remove_task(task)
             for index in range(self.count()):
                 item = self.item(index)
-                task_widget = item.data(Qt.ItemDataRole.UserRole)
+                task_widget = self.itemWidget(item)
                 if task_widget.task == task:
                     self.takeItem(index)
                     break
@@ -282,22 +282,6 @@ class TaskListWidget(QListWidget):
                 event.ignore()
         except Exception as e:
             print(f"Error in dragMoveEvent: {e}")
-
-    def dropEvent(self, event):
-        try:
-            print("dropEvent")
-            if event.source() == self:
-                event.setDropAction(Qt.DropAction.MoveAction)
-                event.accept()
-                super().dropEvent(event)
-                self.reorder_tasks()
-            else:
-                event.ignore()
-        except Exception as e:
-            print(f"Error in dropEvent: {e}")
-
-    def reorder_tasks(self):
-        pass
 
 
 class MainWindow(QMainWindow):
