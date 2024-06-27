@@ -307,7 +307,6 @@ class MainWindow(QMainWindow):
 
         font_id = QFontDatabase.addApplicationFont("fonts/entsans.ttf")
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
-        # font = QFont(font_family)
         font = QFont()
         font.setPointSize(12)
         app.setFont(font)
@@ -315,7 +314,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('ADM')
         screen_geometry = QApplication.primaryScreen().geometry()
         center_point = screen_geometry.center()
-        window_width, window_height = 800, 600
+        window_width, window_height = 700, 600
         self.resize(window_width, window_height)
         top_left_point = center_point - QPoint(window_width // 2, window_height // 2)
         self.move(top_left_point)
@@ -325,9 +324,15 @@ class MainWindow(QMainWindow):
         self.main_layout = QHBoxLayout()
         self.central_widget.setLayout(self.main_layout)
 
-        # left layout containing widgets related to handling tabs of task lists.
+        # Use QSplitter to divide left and right layouts
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_layout.addWidget(self.splitter)
+
+        # left layout containing widgets related to handling tabs of task lists
+        self.left_widget = QWidget()
         self.left_layout = QVBoxLayout()
-        self.main_layout.addLayout(self.left_layout, stretch=1)
+        self.left_widget.setLayout(self.left_layout)
+        self.splitter.addWidget(self.left_widget)
 
         # widget for collection of task lists
         self.task_list_collection = QListWidget()
@@ -335,18 +340,22 @@ class MainWindow(QMainWindow):
         self.task_list_collection.setAcceptDrops(True)
         self.task_list_collection.setDropIndicatorShown(True)
         self.task_list_collection.setDragDropMode(QListWidget.DragDropMode.InternalMove)
-
-        # Mapping of hash values to stack widget pages
         self.hash_to_widget = {}
         self.task_list_collection.currentItemChanged.connect(self.switch_stack_widget_by_hash)
-
         self.left_layout.addWidget(self.task_list_collection)
         self.task_list_collection.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.task_list_collection.customContextMenuRequested.connect(self.task_list_collection_context_menu)
 
+        # Button to create a new task list
+        add_task_list_button = QPushButton('Add Task List')
+        self.left_layout.addWidget(add_task_list_button, alignment=Qt.AlignmentFlag.AlignBottom)
+        add_task_list_button.clicked.connect(self.add_task_list)
+
         # right layout containing widgets related to handling tasks
+        self.right_widget = QWidget()
         self.right_layout = QVBoxLayout()
-        self.main_layout.addLayout(self.right_layout, stretch=4)
+        self.right_widget.setLayout(self.right_layout)
+        self.splitter.addWidget(self.right_widget)
 
         # right toolbar
         self.right_toolbar = QToolBar()
@@ -375,12 +384,26 @@ class MainWindow(QMainWindow):
         self.stack_widget = QStackedWidget()
         self.right_layout.addWidget(self.stack_widget)
 
-        # Button to create a new task list
-        add_task_list_button = QPushButton('Add Task List')
-        self.left_layout.addWidget(add_task_list_button, alignment=Qt.AlignmentFlag.AlignBottom)
-        add_task_list_button.clicked.connect(self.add_task_list)
-
         self.load_task_lists()
+
+        # Restore splitter state
+        self.restore_splitter_state()
+
+    def closeEvent(self, event):
+        self.save_splitter_state()
+        super().closeEvent(event)
+
+    def save_splitter_state(self):
+        settings = QSettings("current_user", "ADM")
+        settings.setValue("splitterSizes", self.splitter.sizes())
+
+    def restore_splitter_state(self):
+        settings = QSettings("current_user", "ADM")
+        sizes = settings.value("splitterSizes")
+        if sizes:
+            self.splitter.setSizes([int(size) for size in sizes])
+        else:
+            self.splitter.setSizes([200, 500])
 
     def load_task_lists(self):
         for task_list_info in self.task_manager.get_task_lists():
