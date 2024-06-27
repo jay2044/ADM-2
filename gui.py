@@ -643,7 +643,8 @@ class MainWindow(QMainWindow):
     def update_history(self):
         self.history_list.clear()
         for task_list_info in self.task_manager.get_task_lists():
-            task_list = TaskList(task_list_info["list_name"], task_list_info["pin"], task_list_info["queue"], task_list_info["stack"])
+            task_list = TaskList(task_list_info["list_name"], task_list_info["pin"], task_list_info["queue"],
+                                 task_list_info["stack"])
             for task in task_list.get_completed_tasks():
                 self.history_list.addItem(f"{task.title} (Completed on {task.due_date})")
 
@@ -658,4 +659,3 @@ class MainWindow(QMainWindow):
                 widget.show()
             # Clear the list of hidden widgets
             self.hidden_widgets.clear()
-
