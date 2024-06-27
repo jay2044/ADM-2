@@ -140,6 +140,9 @@ class TaskWidget(QWidget):
         super().__init__()
         self.task_list_widget = task_list_widget
         self.task = task
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.edit_task)
 
         self.layout = QHBoxLayout()
         self.checkbox = QCheckBox(task.title)
@@ -155,41 +158,57 @@ class TaskWidget(QWidget):
         self.layout.addWidget(self.radio_button)
 
         self.setLayout(self.layout)
+        self.is_dragging = False
 
     def mousePressEvent(self, event):
-        print("mousePressEvent TaskWidget")
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_dragging = False
+            self.timer.start(250)  # Adjust the timeout for click-and-hold
+            self.start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not self.is_dragging and (event.pos() - self.start_pos).manhattanLength() > QApplication.startDragDistance():
+            self.is_dragging = True
+            self.timer.stop()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.timer.isActive():
+                self.timer.stop()
+                self.edit_task()
+        super().mouseReleaseEvent(event)
+
+    def edit_task(self):
         try:
-            if event.button() == Qt.MouseButton.LeftButton:
-                dialog = EditTaskDialog(self.task, self.task_list_widget, self)
-                dialog.adjustSize()
+            dialog = EditTaskDialog(self.task, self.task_list_widget, self)
+            dialog.adjustSize()
 
-                # Get the dimensions of the task list widget
-                task_list_widget_geometry = self.task_list_widget.geometry()
-                task_list_widget_width = task_list_widget_geometry.width()
-                task_list_widget_height = task_list_widget_geometry.height()
+            task_list_widget_geometry = self.task_list_widget.geometry()
+            task_list_widget_width = task_list_widget_geometry.width()
+            task_list_widget_height = task_list_widget_geometry.height()
 
-                # Calculate the size and position for the dialog
-                dialog_width = int(task_list_widget_width * 0.8)
-                dialog_height = task_list_widget_height
-                dialog_x = self.task_list_widget.mapToGlobal(QPoint(task_list_widget_width - dialog_width, 0)).x()
-                dialog_y = self.task_list_widget.mapToGlobal(QPoint(0, 0)).y()
+            dialog_width = int(task_list_widget_width * 0.8)
+            dialog_height = task_list_widget_height
+            dialog_x = self.task_list_widget.mapToGlobal(QPoint(task_list_widget_width - dialog_width, 0)).x()
+            dialog_y = self.task_list_widget.mapToGlobal(QPoint(0, 0)).y()
 
-                # Resize and move the dialog
-                dialog.resize(dialog_width, dialog_height)
-                dialog.move(dialog_x, dialog_y)
+            dialog.resize(dialog_width, dialog_height)
+            dialog.move(dialog_x, dialog_y)
 
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    task_data = dialog.get_task_data()
-                    self.task.title = task_data["title"]
-                    self.task.description = task_data["description"]
-                    self.task.due_date = task_data["due_date"]
-                    self.task.due_time = task_data["due_time"]
-                    self.task.is_important = task_data["is_important"]
-                    self.task.priority = task_data["priority"]
-                    self.task_list_widget.task_list.update_task(self.task)
-                    self.task_list_widget.load_tasks()
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                task_data = dialog.get_task_data()
+                self.task.title = task_data["title"]
+                self.task.description = task_data["description"]
+                self.task.due_date = task_data["due_date"]
+                self.task.due_time = task_data["due_time"]
+                self.task.is_important = task_data["is_important"]
+                self.task.priority = task_data["priority"]
+                self.task_list_widget.task_list.update_task(self.task)
+                self.task_list_widget.load_tasks()
         except Exception as e:
-            print(f"Error in mousePressEvent TaskWidget: {e}")
+            print(f"Error in edit_task: {e}")
 
     def task_checked(self, state):
         self.task.completed = bool(state)
