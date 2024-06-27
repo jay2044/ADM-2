@@ -596,15 +596,18 @@ class MainWindow(QMainWindow):
             if not task_list:
                 return
 
+            hash_key = hash(task_list.text())
+            task_list_widget = self.hash_to_widget[hash_key]
+
             # Create the context menu
             menu = QMenu()
             edit_action = QAction('Edit', self)
-            pin_action = QAction('pin', self)
+            pin_action = QAction('Pin', self) if not task_list_widget.task_list.pin else QAction('Unpin', self)
             delete_action = QAction('Delete', self)
 
             # Connect actions to methods
             edit_action.triggered.connect(lambda: self.edit_task_list(task_list))
-            pin_action.triggered.connect(lambda: self.pin_task_list(task_list))
+            pin_action.triggered.connect(lambda: self.pin_task_list(task_list, pin_action))
             delete_action.triggered.connect(lambda: self.delete_task_list(task_list))
 
             # Add actions to the menu
@@ -620,7 +623,7 @@ class MainWindow(QMainWindow):
     def edit_task_list(self, task_list):
         print(f"Editing item: {task_list.text()}")
 
-    def pin_task_list(self, task_list):
+    def pin_task_list(self, task_list, pin_action):
         self.task_manager.pin_task_list(task_list.text())
         self.load_task_lists()
 
