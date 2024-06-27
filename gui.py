@@ -342,6 +342,14 @@ class MainWindow(QMainWindow):
         add_task_list_action.triggered.connect(self.add_task_list)
         self.left_top_toolbar.addAction(add_task_list_action)
 
+        history_action = QAction("H", self)
+        history_action.triggered.connect(self.show_history)
+        self.left_top_toolbar.addAction(history_action)
+
+        calender_action = QAction("C", self)
+        # calender_action.triggered.connect(self.)
+        self.left_top_toolbar.addAction(calender_action)
+
         # widget for collection of task lists
         self.task_list_collection = QListWidget()
         self.task_list_collection.setDragEnabled(True)
@@ -391,6 +399,27 @@ class MainWindow(QMainWindow):
 
         # Restore splitter state
         self.restore_splitter_state()
+
+        self.hidden_widgets = []  # To keep track of hidden widgets
+
+        # Initialize history widget
+        self.history_widget = QWidget()
+        self.history_layout = QVBoxLayout(self.history_widget)
+        self.right_layout.addWidget(self.history_widget)
+        self.history_widget.hide()
+
+        self.task_list_collection.currentItemChanged.connect(self.exit_history_mode)
+
+        # Add new widgets for history view
+        history_label = QLabel("History", self)
+        history_list = QListWidget(self)
+
+        # Populate the history list with competed task from all the task lists
+        # for i in range(10):
+        #     self.task_manager.get_task_lists()
+
+        self.history_layout.addWidget(history_label)
+        self.history_layout.addWidget(history_list)
 
     def closeEvent(self, event):
         self.save_splitter_state()
@@ -596,3 +625,27 @@ class MainWindow(QMainWindow):
             self.task_manager.remove_task_list(task_list.text())
         except Exception as e:
             print(f"An error occurred while deleting a task list: {e}")
+
+    def show_history(self):
+        self.history_widget.show()
+
+        # Hide the current widgets in the right_layout and save them to hidden_widgets
+        self.hidden_widgets.clear()
+        for i in range(self.right_layout.count()):
+            widget = self.right_layout.itemAt(i).widget()
+            if widget is not None and widget != self.history_widget:
+                self.hidden_widgets.append(widget)
+                widget.hide()
+
+    def exit_history_mode(self, current, previous):
+        if not previous:
+            return
+
+        self.history_widget.hide()
+
+        # Unhide the previously hidden widgets
+        for widget in self.hidden_widgets:
+            widget.show()
+
+        # Clear the list of hidden widgets
+        self.hidden_widgets.clear()
