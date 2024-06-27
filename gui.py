@@ -334,6 +334,14 @@ class MainWindow(QMainWindow):
         self.left_widget.setLayout(self.left_layout)
         self.splitter.addWidget(self.left_widget)
 
+        # left top toolbar
+        self.left_top_toolbar = QToolBar()
+        self.left_layout.addWidget(self.left_top_toolbar)
+
+        add_task_list_action = QAction("+", self)
+        add_task_list_action.triggered.connect(self.add_task_list)
+        self.left_top_toolbar.addAction(add_task_list_action)
+
         # widget for collection of task lists
         self.task_list_collection = QListWidget()
         self.task_list_collection.setDragEnabled(True)
@@ -345,11 +353,6 @@ class MainWindow(QMainWindow):
         self.left_layout.addWidget(self.task_list_collection)
         self.task_list_collection.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.task_list_collection.customContextMenuRequested.connect(self.task_list_collection_context_menu)
-
-        # Button to create a new task list
-        add_task_list_button = QPushButton('Add Task List')
-        self.left_layout.addWidget(add_task_list_button, alignment=Qt.AlignmentFlag.AlignBottom)
-        add_task_list_button.clicked.connect(self.add_task_list)
 
         # right layout containing widgets related to handling tasks
         self.right_widget = QWidget()
