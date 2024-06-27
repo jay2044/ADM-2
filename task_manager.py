@@ -310,5 +310,8 @@ class TaskListManager:
     def get_task_lists(self):
         return self.task_lists
 
+    def get_task_list_count(self):
+        return len(self.task_lists)
+
     def __del__(self):
         self.conn.close()

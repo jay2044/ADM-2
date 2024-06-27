@@ -365,6 +365,12 @@ class MainWindow(QMainWindow):
         self.task_list_collection.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.task_list_collection.customContextMenuRequested.connect(self.task_list_collection_context_menu)
 
+        self.task_list_count_label = QLabel()
+        self.task_list_count_label.setText(f"  {self.task_manager.get_task_list_count()}")
+        self.left_layout.addWidget(self.task_list_count_label)
+        self.task_list_count_label.setStyleSheet("font-size: 12px;")
+        self.task_list_count_label.setFixedHeight(9)
+
         # right layout containing widgets related to handling tasks
         self.right_widget = QWidget()
         self.right_layout = QVBoxLayout()
@@ -467,6 +473,7 @@ class MainWindow(QMainWindow):
             self.stack_widget.setCurrentWidget(task_list_widget)  # Ensure the new list is selected
             self.task_list_collection.setCurrentItem(
                 self.task_list_collection.findItems(task_list_name, Qt.MatchFlag.MatchExactly)[0])
+            self.task_list_count_label.setText(f"  {self.task_manager.get_task_list_count()}")
 
         except Exception as e:
             print(f"An error occurred while adding a task list: {e}")
@@ -621,6 +628,7 @@ class MainWindow(QMainWindow):
             self.task_list_collection.takeItem(row)
             # Remove from database
             self.task_manager.remove_task_list(task_list.text())
+            self.task_list_count_label.setText(f"  {self.task_manager.get_task_list_count()}")
         except Exception as e:
             print(f"An error occurred while deleting a task list: {e}")
 
