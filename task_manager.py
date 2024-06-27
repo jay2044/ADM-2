@@ -298,6 +298,20 @@ class TaskListManager:
             except PermissionError:
                 shutil.rmtree(task_list.db_file, ignore_errors=True)
 
+    def change_task_list_name(self, task_list, new_name):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+                    UPDATE task_lists
+                    SET list_name = ?
+                    WHERE list_name = ?
+                """, (new_name, task_list.list_name))
+        self.conn.commit()
+        # Update the in-memory task list
+        for list in self.task_lists:
+            if list["list_name"] == task_list.list_name:
+                list["list_name"] = new_name
+                break
+
     def update_task_list(self, task_list):
         cursor = self.conn.cursor()
         cursor.execute("""

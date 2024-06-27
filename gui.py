@@ -601,17 +601,17 @@ class MainWindow(QMainWindow):
 
             # Create the context menu
             menu = QMenu()
-            edit_action = QAction('Edit', self)
+            rename_action = QAction('Rename', self)
             pin_action = QAction('Pin', self) if not task_list_widget.task_list.pin else QAction('Unpin', self)
             delete_action = QAction('Delete', self)
 
             # Connect actions to methods
-            edit_action.triggered.connect(lambda: self.edit_task_list(task_list))
-            pin_action.triggered.connect(lambda: self.pin_task_list(task_list, pin_action))
+            rename_action.triggered.connect(lambda: self.rename_task_list(task_list_widget))
+            pin_action.triggered.connect(lambda: self.pin_task_list(task_list))
             delete_action.triggered.connect(lambda: self.delete_task_list(task_list))
 
             # Add actions to the menu
-            menu.addAction(edit_action)
+            menu.addAction(rename_action)
             menu.addAction(pin_action)
             menu.addAction(delete_action)
 
@@ -620,10 +620,22 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"An error occurred in task_list_collection_context_menu: {e}")
 
-    def edit_task_list(self, task_list):
-        print(f"Editing item: {task_list.text()}")
+    def rename_task_list(self, task_list_widget):
+        pass
+        # current_name = task_list_widget.task_list.list_name
+        # task_list_name, ok = QInputDialog.getText(self, "Rename Task List", "Enter name:", text=current_name)
+        # if not ok or not task_list_name.strip():
+        #     return
+        #
+        # task_list_name = str(task_list_name).strip()
+        #
+        # self.task_manager.change_task_list_name(task_list_widget.task_list, task_list_name)
+        #
+        # self.hash_to_widget[hash(task_list_name)] = task_list_widget
+        #
+        # self.load_task_lists()
 
-    def pin_task_list(self, task_list, pin_action):
+    def pin_task_list(self, task_list):
         self.task_manager.pin_task_list(task_list.text())
         self.load_task_lists()
 
