@@ -227,10 +227,10 @@ class TaskWidget(QWidget):
 
 
 class TaskListWidget(QListWidget):
-    def __init__(self, task_list_name, pin, queue, stack):
+    def __init__(self, task_list_name, manager, pin, queue, stack):
         super().__init__()
         self.task_list_name = task_list_name
-        self.task_list = TaskList(self.task_list_name, pin, queue, stack)
+        self.task_list = TaskList(self.task_list_name, manager, pin, queue, stack)
         self.load_tasks()
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -468,7 +468,7 @@ class MainWindow(QMainWindow):
 
             self.task_list_collection.addItem(task_list_name)
             self.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
-            task_list_widget = TaskListWidget(task_list_name, pin=pin, queue=queue, stack=stack)
+            task_list_widget = TaskListWidget(task_list_name, self.task_manager, pin=pin, queue=queue, stack=stack)
             self.stack_widget.addWidget(task_list_widget)
             self.hash_to_widget[hash(task_list_name)] = task_list_widget
             self.stack_widget.setCurrentWidget(task_list_widget)  # Ensure the new list is selected
@@ -621,19 +621,18 @@ class MainWindow(QMainWindow):
             print(f"An error occurred in task_list_collection_context_menu: {e}")
 
     def rename_task_list(self, task_list_widget):
-        pass
-        # current_name = task_list_widget.task_list.list_name
-        # task_list_name, ok = QInputDialog.getText(self, "Rename Task List", "Enter name:", text=current_name)
-        # if not ok or not task_list_name.strip():
-        #     return
-        #
-        # task_list_name = str(task_list_name).strip()
-        #
-        # self.task_manager.change_task_list_name(task_list_widget.task_list, task_list_name)
-        #
-        # self.hash_to_widget[hash(task_list_name)] = task_list_widget
-        #
-        # self.load_task_lists()
+        current_name = task_list_widget.task_list.list_name
+        task_list_name, ok = QInputDialog.getText(self, "Rename Task List", "Enter name:", text=current_name)
+        if not ok or not task_list_name.strip():
+            return
+
+        task_list_name = str(task_list_name).strip()
+
+        self.task_manager.change_task_list_name(task_list_widget.task_list, task_list_name)
+
+        self.hash_to_widget[hash(task_list_name)] = task_list_widget
+
+        self.load_task_lists()
 
     def pin_task_list(self, task_list):
         self.task_manager.pin_task_list(task_list.text())
@@ -677,7 +676,8 @@ class MainWindow(QMainWindow):
     def update_history(self):
         self.history_list.clear()
         for task_list_info in self.task_manager.get_task_lists():
-            task_list = TaskList(task_list_info["list_name"], task_list_info["pin"], task_list_info["queue"],
+            task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
+                                 task_list_info["queue"],
                                  task_list_info["stack"])
             for task in task_list.get_completed_tasks():
                 self.history_list.addItem(f"{task.title} (Completed on {task.due_date})")

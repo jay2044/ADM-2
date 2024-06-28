@@ -1,7 +1,6 @@
 import sqlite3
 import os
 from datetime import datetime
-import shutil
 import re
 
 
@@ -55,116 +54,27 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name, pin=False, queue=False, stack=False):
+    def __init__(self, list_name, manager, pin=False, queue=False, stack=False):
         self.list_name = list_name
-        self.data_dir = "data"
-        os.makedirs(self.data_dir, exist_ok=True)
-        self.db_file = os.path.join(self.data_dir, f"{sanitize_name(list_name)}.db")
-        self.conn = sqlite3.connect(self.db_file)
-        self.conn.row_factory = sqlite3.Row
-        self.create_table()
+        self.manager = manager
         self.tasks = self.load_tasks()
         self.pin = pin
         self.queue = queue
         self.stack = stack
 
-    def create_table(self):
-        create_tasks_table = """
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            description TEXT,
-            due_date TEXT,
-            due_time TEXT,
-            completed BOOLEAN NOT NULL CHECK (completed IN (0, 1)),
-            priority INTEGER,
-            is_important BOOLEAN NOT NULL CHECK (is_important IN (0, 1)),
-            added_date_time TEXT,
-            categories TEXT,
-            recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)),
-            recur_every INTEGER
-        );
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(create_tasks_table)
-        except sqlite3.Error as e:
-            print(f"Error creating table: {e}")
-
     def load_tasks(self):
-        tasks = []
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM tasks")
-        rows = cursor.fetchall()
-        for row in rows:
-            task = Task(
-                title=row['title'],
-                description=row['description'],
-                due_date=row['due_date'],
-                due_time=row['due_time'],
-                task_id=row['id']
-            )
-            task.completed = row['completed']
-            task.priority = row['priority']
-            task.is_important = row['is_important']
-            task.added_date_time = datetime.fromisoformat(row['added_date_time'])
-            task.categories = row['categories'].split(',') if row['categories'] else []
-            task.recurring = row['recurring']
-            task.recur_every = row['recur_every']
-            tasks.append(task)
-        return tasks
+        return self.manager.load_tasks(self.list_name)
 
     def add_task(self, task):
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "INSERT INTO tasks (title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
-             task.is_important,
-             task.added_date_time.isoformat(), ','.join(task.categories), task.recurring, task.recur_every)
-        )
-        self.conn.commit()
-        task.id = cursor.lastrowid
+        self.manager.add_task(task, self.list_name)
         self.tasks.append(task)
 
     def remove_task(self, task):
-        try:
-            cursor = self.conn.cursor()
-            unique_identifier = task.get_unique_identifier()
-            cursor.execute("""
-                DELETE FROM tasks
-                WHERE title IS ? AND
-                      (due_date IS ? OR due_date IS NULL) AND
-                      (due_time IS ? OR due_time IS NULL)
-            """, (task.title, task.due_date, task.due_time))
-            self.conn.commit()
-            self.tasks = [t for t in self.tasks if t.get_unique_identifier() != unique_identifier]
-        except Exception as e:
-            print(e)
+        self.manager.remove_task(task)
+        self.tasks = [t for t in self.tasks if t.id != task.id]
 
     def update_task(self, task):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE tasks
-            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?
-            WHERE id=?
-        """, (
-            task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
-            task.is_important,
-            ','.join(task.categories), task.recurring, task.recur_every, task.id)
-                       )
-        self.conn.commit()
-
-    def close(self):
-        if self.conn:
-            self.conn.close()
-            self.conn = None
-
-    def delete_database(self):
-        self.close()
-        try:
-            os.remove(self.db_file)
-        except PermissionError:
-            shutil.rmtree(self.db_file, ignore_errors=True)
+        self.manager.update_task(task)
 
     def get_tasks(self):
         important_tasks = [task for task in self.tasks if task.is_important and not task.completed]
@@ -221,43 +131,47 @@ class TaskListManager:
         self.db_file = os.path.join(self.data_dir, "task_lists.db")
         self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
-        self.create_table()
-        self.update_table_schema()
+        self.create_tables()
         self.task_lists = self.load_task_lists()
 
-    def create_table(self):
+    def create_tables(self):
         create_task_lists_table = """
         CREATE TABLE IF NOT EXISTS task_lists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            list_name TEXT NOT NULL UNIQUE
+            list_name TEXT NOT NULL UNIQUE,
+            pin BOOLEAN NOT NULL DEFAULT 0,
+            queue BOOLEAN NOT NULL DEFAULT 0,
+            stack BOOLEAN NOT NULL DEFAULT 0
+        );
+        """
+        create_tasks_table = """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            list_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            due_date TEXT,
+            due_time TEXT,
+            completed BOOLEAN NOT NULL CHECK (completed IN (0, 1)),
+            priority INTEGER,
+            is_important BOOLEAN NOT NULL CHECK (is_important IN (0, 1)),
+            added_date_time TEXT,
+            categories TEXT,
+            recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)),
+            recur_every INTEGER
         );
         """
         try:
             cursor = self.conn.cursor()
             cursor.execute(create_task_lists_table)
+            cursor.execute(create_tasks_table)
         except sqlite3.Error as e:
-            print(f"Error creating table: {e}")
-
-    def update_table_schema(self):
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute("ALTER TABLE task_lists ADD COLUMN pin BOOLEAN NOT NULL DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            cursor.execute("ALTER TABLE task_lists ADD COLUMN queue BOOLEAN NOT NULL DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            cursor.execute("ALTER TABLE task_lists ADD COLUMN stack BOOLEAN NOT NULL DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        self.conn.commit()
+            print(f"Error creating tables: {e}")
 
     def load_task_lists(self):
         task_lists = []
         cursor = self.conn.cursor()
-        cursor.execute("SELECT list_name, pin, queue, stack FROM task_lists")
+        cursor.execute("SELECT * FROM task_lists")
         rows = cursor.fetchall()
         for row in rows:
             task_lists.append({
@@ -267,6 +181,29 @@ class TaskListManager:
                 "stack": row["stack"]
             })
         return task_lists
+
+    def load_tasks(self, list_name):
+        tasks = []
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE list_name=?", (list_name,))
+        rows = cursor.fetchall()
+        for row in rows:
+            task = Task(
+                title=row['title'],
+                description=row['description'],
+                due_date=row['due_date'],
+                due_time=row['due_time'],
+                task_id=row['id']
+            )
+            task.completed = row['completed']
+            task.priority = row['priority']
+            task.is_important = row['is_important']
+            task.added_date_time = datetime.fromisoformat(row['added_date_time'])
+            task.categories = row['categories'].split(',') if row['categories'] else []
+            task.recurring = row['recurring']
+            task.recur_every = row['recur_every']
+            tasks.append(task)
+        return tasks
 
     def add_task_list(self, list_name, pin=False, queue=False, stack=False):
         if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
@@ -282,35 +219,59 @@ class TaskListManager:
                 "queue": queue,
                 "stack": stack
             })
-            TaskList(list_name, pin, queue, stack)
 
     def remove_task_list(self, list_name):
         if list_name in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM task_lists WHERE list_name=?", (list_name,))
+            cursor.execute("DELETE FROM tasks WHERE list_name=?", (list_name,))
             self.conn.commit()
             self.task_lists = [task_list for task_list in self.task_lists if task_list["list_name"] != list_name]
-            # Delete the TaskList database file
-            task_list = TaskList(list_name)
-            task_list.close()
-            try:
-                os.remove(task_list.db_file)
-            except PermissionError:
-                shutil.rmtree(task_list.db_file, ignore_errors=True)
 
     def change_task_list_name(self, task_list, new_name):
         cursor = self.conn.cursor()
         cursor.execute("""
-                    UPDATE task_lists
-                    SET list_name = ?
-                    WHERE list_name = ?
-                """, (new_name, task_list.list_name))
+            UPDATE task_lists
+            SET list_name = ?
+            WHERE list_name = ?
+        """, (new_name, task_list.list_name))
+        cursor.execute("""
+            UPDATE tasks
+            SET list_name = ?
+            WHERE list_name = ?
+        """, (new_name, task_list.list_name))
         self.conn.commit()
-        # Update the in-memory task list
-        for list in self.task_lists:
-            if list["list_name"] == task_list.list_name:
-                list["list_name"] = new_name
+        for tl in self.task_lists:
+            if tl["list_name"] == task_list.list_name:
+                tl["list_name"] = new_name
                 break
+
+    def add_task(self, task, list_name):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (list_name, task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
+             task.is_important, task.added_date_time.isoformat(), ','.join(task.categories), task.recurring, task.recur_every)
+        )
+        self.conn.commit()
+        task.id = cursor.lastrowid
+
+    def remove_task(self, task):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM tasks WHERE id=?", (task.id,))
+        self.conn.commit()
+
+    def update_task(self, task):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE tasks
+            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?
+            WHERE id=?
+        """, (
+            task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
+            task.is_important, ','.join(task.categories), task.recurring, task.recur_every, task.id)
+        )
+        self.conn.commit()
 
     def update_task_list(self, task_list):
         cursor = self.conn.cursor()
@@ -322,7 +283,6 @@ class TaskListManager:
         self.conn.commit()
 
     def pin_task_list(self, list_name):
-
         for task_list in self.task_lists:
             if task_list["list_name"] == list_name:
                 task_list["pin"] = not task_list["pin"]
