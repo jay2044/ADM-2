@@ -414,7 +414,7 @@ class MainWindow(QMainWindow):
         # Initialize history widget
         self.history_widget = QWidget()
         self.history_layout = QVBoxLayout(self.history_widget)
-        self.right_layout.addWidget(self.history_widget)
+        self.splitter.addWidget(self.history_widget)
         self.history_widget.hide()
 
         self.task_list_collection.currentItemChanged.connect(self.exit_history_mode)
@@ -700,19 +700,8 @@ class MainWindow(QMainWindow):
     def toggle_history(self):
         if self.history_widget.isVisible():
             self.history_widget.hide()
-            # Unhide the previously hidden widgets
-            for widget in self.hidden_widgets:
-                widget.show()
-            # Clear the list of hidden widgets
             self.hidden_widgets.clear()
         elif self.history_widget.isHidden():
-            # Hide the current widgets in the right_layout and save them to hidden_widgets
-            self.hidden_widgets.clear()
-            for i in range(self.right_layout.count()):
-                widget = self.right_layout.itemAt(i).widget()
-                if widget is not None and widget != self.history_widget:
-                    self.hidden_widgets.append(widget)
-                    widget.hide()
             self.history_widget.show()
             self.update_history()
 
@@ -731,8 +720,5 @@ class MainWindow(QMainWindow):
 
         if self.history_widget.isVisible():
             self.history_widget.hide()
-            # Unhide the previously hidden widgets
-            for widget in self.hidden_widgets:
-                widget.show()
             # Clear the list of hidden widgets
             self.hidden_widgets.clear()
