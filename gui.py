@@ -603,16 +603,19 @@ class MainWindow(QMainWindow):
             menu = QMenu()
             rename_action = QAction('Rename', self)
             pin_action = QAction('Pin', self) if not task_list_widget.task_list.pin else QAction('Unpin', self)
+            duplicate_action = QAction('Duplicate', self)
             delete_action = QAction('Delete', self)
 
             # Connect actions to methods
             rename_action.triggered.connect(lambda: self.rename_task_list(task_list_widget))
             pin_action.triggered.connect(lambda: self.pin_task_list(task_list))
+            duplicate_action.triggered.connect(lambda: self.duplicate_task_list(task_list_widget))
             delete_action.triggered.connect(lambda: self.delete_task_list(task_list))
 
             # Add actions to the menu
             menu.addAction(rename_action)
             menu.addAction(pin_action)
+            menu.addAction(duplicate_action)
             menu.addAction(delete_action)
 
             # Show the context menu at the current mouse position
@@ -637,6 +640,46 @@ class MainWindow(QMainWindow):
     def pin_task_list(self, task_list):
         self.task_manager.pin_task_list(task_list.text())
         self.load_task_lists()
+
+    def duplicate_task_list(self, task_list_widget):
+        try:
+            original_name = task_list_widget.task_list.list_name
+            new_name, ok = QInputDialog.getText(self, "Duplicate Task List", "Enter new name:")
+            if not ok or not new_name.strip():
+                return
+
+            new_name = str(new_name).strip()
+
+            # Check for duplicate task list names
+            if any(self.task_list_collection.item(i).text() == new_name for i in
+                   range(self.task_list_collection.count())):
+                QMessageBox.warning(self, "Duplicate Name", "A task list with this name already exists.")
+                return
+
+            self.task_manager.add_task_list(new_name, pin=task_list_widget.task_list.pin,
+                                            queue=task_list_widget.task_list.queue,
+                                            stack=task_list_widget.task_list.stack)
+
+            # Load tasks from the original task list and add them to the new one
+            for task in task_list_widget.task_list.tasks:
+                new_task = Task(
+                    title=task.title,
+                    description=task.description,
+                    due_date=task.due_date,
+                    due_time=task.due_time
+                )
+                new_task.is_important = task.is_important
+                new_task.priority = task.priority
+                new_task.completed = task.completed
+                new_task.categories = task.categories
+                new_task.recurring = task.recurring
+                new_task.recur_every = task.recur_every
+                self.task_manager.add_task(new_task, new_name)
+
+            self.add_task_list(new_name, pin=task_list_widget.task_list.pin, queue=task_list_widget.task_list.queue,
+                               stack=task_list_widget.task_list.stack)
+        except Exception as e:
+            print(f"An error occurred while duplicating the task list: {e}")
 
     def delete_task_list(self, task_list):
         try:
