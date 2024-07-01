@@ -9,19 +9,23 @@ def sanitize_name(name):
 
 
 class Task:
-    def __init__(self, title, description, due_date, due_time, task_id=None):
+    def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
+                 completed=False,
+                 categories=[],
+                 recurring=False,
+                 recur_every=0):
         self.id = task_id
         self.title = title
         self.description = description
         self.due_date = due_date
         self.due_time = due_time
-        self.completed = False
-        self.priority = 0
-        self.is_important = False
+        self.completed = completed
+        self.priority = priority
+        self.is_important = is_important
         self.added_date_time = datetime.now()
-        self.categories = []
-        self.recurring = False
-        self.recur_every = 0
+        self.categories = categories
+        self.recurring = recurring
+        self.recur_every = recur_every
 
     def mark_as_important(self):
         self.is_important = True

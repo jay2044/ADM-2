@@ -104,8 +104,11 @@ class TaskListWidget(QListWidget):
     def __init__(self, task_list_name, manager, pin, queue, stack):
         super().__init__()
         self.task_list_name = task_list_name
-        self.task_list = TaskList(self.task_list_name, manager, pin, queue, stack)
+        self.task_list = TaskList(task_list_name, manager, pin, queue, stack)
+        self.setup_ui()
         self.load_tasks()
+
+    def setup_ui(self):
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -113,10 +116,7 @@ class TaskListWidget(QListWidget):
 
     def load_tasks(self, priority_filter=False):
         self.clear()
-        if priority_filter:
-            tasks = self.task_list.get_tasks_filter_priority()
-        else:
-            tasks = self.task_list.get_tasks()
+        tasks = self.task_list.get_tasks_filter_priority() if priority_filter else self.task_list.get_tasks()
         for task in tasks:
             task_widget = TaskWidget(self, task)
             item = QListWidgetItem()
@@ -138,7 +138,6 @@ class TaskListWidget(QListWidget):
 
     def startDrag(self, supportedActions):
         try:
-            print("startDrag")
             item = self.currentItem()
             if item:
                 drag = QDrag(self)
@@ -156,7 +155,6 @@ class TaskListWidget(QListWidget):
 
     def dragEnterEvent(self, event):
         try:
-            print("dragEnterEvent")
             if event.source() == self:
                 event.setDropAction(Qt.DropAction.MoveAction)
                 event.accept()
@@ -167,7 +165,6 @@ class TaskListWidget(QListWidget):
 
     def dragMoveEvent(self, event):
         try:
-            print("dragMoveEvent")
             if event.source() == self:
                 event.setDropAction(Qt.DropAction.MoveAction)
                 event.accept()
@@ -194,6 +191,9 @@ class TaskListCollection(QListWidget):
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
+        self.setup_ui()
+
+    def setup_ui(self):
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -205,51 +205,40 @@ class TaskListCollection(QListWidget):
     def load_task_lists(self):
         self.clear()
         for task_list_info in self.parent.task_manager.get_task_lists():
-            self.parent.task_list_collection.add_task_list(
-                task_list_info["list_name"],
-                pin=task_list_info["pin"],
-                queue=task_list_info["queue"],
-                stack=task_list_info["stack"]
-            )
+            self.add_task_list(task_list_info["list_name"], pin=task_list_info["pin"],
+                               queue=task_list_info["queue"], stack=task_list_info["stack"])
 
     def add_task_list(self, task_list_name="", pin=False, queue=False, stack=False):
         try:
-            if not task_list_name:  # Check if task_list_name is empty or None
+            if not task_list_name:
                 task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter name:")
                 if not ok or not task_list_name.strip():
                     return
 
             task_list_name = str(task_list_name).strip()
 
-            # Check for duplicate task list names
-            if any(self.item(i).text() == task_list_name for i in
-                   range(self.count())):
+            if any(self.item(i).text() == task_list_name for i in range(self.count())):
                 QMessageBox.warning(self, "Duplicate Name", "A task list with this name already exists.")
                 return
 
             self.addItem(task_list_name)
             self.parent.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
-            task_list_widget = TaskListWidget(task_list_name, self.parent.task_manager, pin=pin, queue=queue,
-                                              stack=stack)
+            task_list_widget = TaskListWidget(task_list_name, self.parent.task_manager, pin, queue, stack)
             self.parent.right_dock.stack_widget.addWidget(task_list_widget)
             self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
-            self.parent.right_dock.stack_widget.setCurrentWidget(task_list_widget)  # Ensure the new list is selected
-            self.setCurrentItem(
-                self.findItems(task_list_name, Qt.MatchFlag.MatchExactly)[0])
+            self.parent.right_dock.stack_widget.setCurrentWidget(task_list_widget)
+            self.setCurrentItem(self.findItems(task_list_name, Qt.MatchFlag.MatchExactly)[0])
             self.parent.info_bar.update_task_list_count_label()
 
         except Exception as e:
             print(f"An error occurred while adding a task list: {e}")
 
-    # responsible for showing tasklist of the widget item selected from the left layout
     def switch_stack_widget_by_hash(self, current):
         try:
             if current:
                 hash_key = hash(current.text())
-                print(f"switching to {current.text()}")
                 if hash_key in self.parent.hash_to_widget:
                     self.parent.right_dock.stack_widget.setCurrentWidget(self.parent.hash_to_widget[hash_key])
-                    print(f"switched to {self.parent.right_dock.stack_widget.currentWidget().task_list_name}")
         except Exception as e:
             print(f"An error occurred while switching stack: {e}")
 
@@ -262,43 +251,39 @@ class TaskListCollection(QListWidget):
             hash_key = hash(task_list.text())
             task_list_widget = self.parent.hash_to_widget[hash_key]
 
-            # Create the context menu
             menu = QMenu()
             rename_action = QAction('Rename', self)
             pin_action = QAction('Pin', self) if not task_list_widget.task_list.pin else QAction('Unpin', self)
             duplicate_action = QAction('Duplicate', self)
             delete_action = QAction('Delete', self)
 
-            # Connect actions to methods
             rename_action.triggered.connect(lambda: self.rename_task_list(task_list_widget))
             pin_action.triggered.connect(lambda: self.pin_task_list(task_list))
             duplicate_action.triggered.connect(lambda: self.duplicate_task_list(task_list_widget))
             delete_action.triggered.connect(lambda: self.delete_task_list(task_list))
 
-            # Add actions to the menu
             menu.addAction(rename_action)
             menu.addAction(pin_action)
             menu.addAction(duplicate_action)
             menu.addAction(delete_action)
 
-            # Show the context menu at the current mouse position
             menu.exec(self.viewport().mapToGlobal(position))
         except Exception as e:
             print(f"An error occurred in task_list_collection_context_menu: {e}")
 
     def rename_task_list(self, task_list_widget):
-        current_name = task_list_widget.task_list.list_name
-        task_list_name, ok = QInputDialog.getText(self, "Rename Task List", "Enter name:", text=current_name)
-        if not ok or not task_list_name.strip():
-            return
+        try:
+            current_name = task_list_widget.task_list.list_name
+            task_list_name, ok = QInputDialog.getText(self, "Rename Task List", "Enter name:", text=current_name)
+            if not ok or not task_list_name.strip():
+                return
 
-        task_list_name = str(task_list_name).strip()
-
-        self.parent.task_manager.change_task_list_name(task_list_widget.task_list, task_list_name)
-
-        self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
-
-        self.parent.load_task_lists()
+            task_list_name = str(task_list_name).strip()
+            self.parent.task_manager.change_task_list_name(task_list_widget.task_list, task_list_name)
+            self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
+            self.load_task_lists()
+        except Exception as e:
+            print(f"An error occurred while renaming the task list: {e}")
 
     def pin_task_list(self, task_list):
         self.parent.task_manager.pin_task_list(task_list.text())
@@ -312,9 +297,7 @@ class TaskListCollection(QListWidget):
 
             new_name = str(new_name).strip()
 
-            # Check for duplicate task list names
-            if any(self.item(i).text() == new_name for i in
-                   range(self.count())):
+            if any(self.item(i).text() == new_name for i in range(self.count())):
                 QMessageBox.warning(self, "Duplicate Name", "A task list with this name already exists.")
                 return
 
@@ -322,20 +305,19 @@ class TaskListCollection(QListWidget):
                                                    queue=task_list_widget.task_list.queue,
                                                    stack=task_list_widget.task_list.stack)
 
-            # Load tasks from the original task list and add them to the new one
             for task in task_list_widget.task_list.tasks:
                 new_task = Task(
                     title=task.title,
                     description=task.description,
                     due_date=task.due_date,
-                    due_time=task.due_time
+                    due_time=task.due_time,
+                    is_important=task.is_important,
+                    priority=task.priority,
+                    completed=task.completed,
+                    categories=task.categories,
+                    recurring=task.recurring,
+                    recur_every=task.recur_every
                 )
-                new_task.is_important = task.is_important
-                new_task.priority = task.priority
-                new_task.completed = task.completed
-                new_task.categories = task.categories
-                new_task.recurring = task.recurring
-                new_task.recur_every = task.recur_every
                 self.parent.task_manager.add_task(new_task, new_name)
 
             self.add_task_list(new_name, pin=task_list_widget.task_list.pin,
@@ -348,13 +330,11 @@ class TaskListCollection(QListWidget):
         try:
             row = self.row(task_list)
             hash_key = hash(task_list.text())
-            # Remove the corresponding widget from the stack
             if hash_key in self.parent.hash_to_widget:
                 widget_to_remove = self.parent.hash_to_widget.pop(hash_key)
                 self.parent.right_dock.stack_widget.removeWidget(widget_to_remove)
                 widget_to_remove.deleteLater()
             self.takeItem(row)
-            # Remove from database
             self.parent.task_manager.remove_task_list(task_list.text())
             self.parent.info_bar.update_task_list_count_label()
         except Exception as e:
@@ -435,8 +415,9 @@ class TaskListDockStacked(QDockWidget):
 
     def add_task(self):
         current_task_list_widget = self.get_current_task_list_widget()
-        if not current_task_list_widget:
-            return
+        print(current_task_list_widget)
+        # if not current_task_list_widget:
+        #     return
         self.show_add_task_dialog(current_task_list_widget)
 
     def show_add_task_dialog(self, task_list_widget):
@@ -530,3 +511,7 @@ class TaskListDockStacked(QDockWidget):
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
             print(f"Error in priority_sort: {e}")
+
+    def get_current_task_list_widget(self):
+        current_widget = self.stack_widget.currentWidget()
+        return current_widget if isinstance(current_widget, TaskListWidget) else None
