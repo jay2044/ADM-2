@@ -10,12 +10,16 @@ class TaskWidget(QWidget):
         super().__init__()
         self.task_list_widget = task_list_widget
         self.task = task
-        self.timer = QTimer(self)
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.edit_task)
+        self.is_dragging = False
 
+        self.setup_ui()
+        self.setup_timer()
+
+    def setup_ui(self):
         self.layout = QHBoxLayout()
-        self.checkbox = QCheckBox(task.title)
+        self.setLayout(self.layout)
+
+        self.checkbox = QCheckBox(self.task.title)
         self.checkbox.setChecked(self.task.completed)
         self.checkbox.stateChanged.connect(self.task_checked)
         self.layout.addWidget(self.checkbox)
@@ -27,13 +31,15 @@ class TaskWidget(QWidget):
         self.radio_button.toggled.connect(self.mark_important)
         self.layout.addWidget(self.radio_button)
 
-        self.setLayout(self.layout)
-        self.is_dragging = False
+    def setup_timer(self):
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.edit_task)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_dragging = False
-            self.timer.start(250)  # Adjust the timeout for click-and-hold
+            self.timer.start(250)
             self.start_pos = event.pos()
         super().mousePressEvent(event)
 
@@ -56,12 +62,10 @@ class TaskWidget(QWidget):
             dialog.adjustSize()
 
             task_list_widget_geometry = self.task_list_widget.geometry()
-            task_list_widget_width = task_list_widget_geometry.width()
-            task_list_widget_height = task_list_widget_geometry.height()
-
-            dialog_width = int(task_list_widget_width * 0.8)
-            dialog_height = task_list_widget_height
-            dialog_x = self.task_list_widget.mapToGlobal(QPoint(task_list_widget_width - dialog_width, 0)).x()
+            dialog_width = int(task_list_widget_geometry.width() * 0.8)
+            dialog_height = task_list_widget_geometry.height()
+            dialog_x = self.task_list_widget.mapToGlobal(
+                QPoint(task_list_widget_geometry.width() - dialog_width, 0)).x()
             dialog_y = self.task_list_widget.mapToGlobal(QPoint(0, 0)).y()
 
             dialog.resize(dialog_width, dialog_height)
