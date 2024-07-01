@@ -251,7 +251,8 @@ class TaskListManager:
         cursor.execute(
             "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (list_name, task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
-             task.is_important, task.added_date_time.isoformat(), ','.join(task.categories), task.recurring, task.recur_every)
+             task.is_important, task.added_date_time.isoformat(), ','.join(task.categories), task.recurring,
+             task.recur_every)
         )
         self.conn.commit()
         task.id = cursor.lastrowid
@@ -270,17 +271,20 @@ class TaskListManager:
         """, (
             task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
             task.is_important, ','.join(task.categories), task.recurring, task.recur_every, task.id)
-        )
+                       )
         self.conn.commit()
 
     def update_task_list(self, task_list):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE task_lists
-            SET pin = ?, queue = ?, stack = ?
-            WHERE list_name = ?
-        """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                UPDATE task_lists
+                SET pin = ?, queue = ?, stack = ?
+                WHERE list_name = ?
+            """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error in update_task_list: {e}")
 
     def pin_task_list(self, list_name):
         for task_list in self.task_lists:
