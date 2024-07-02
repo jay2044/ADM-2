@@ -1,6 +1,7 @@
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
+from datetime import datetime
 from task_manager import *
 from control import *
 
@@ -25,6 +26,26 @@ class TaskWidget(QWidget):
         self.layout.addWidget(self.checkbox)
 
         self.layout.addStretch()
+
+        # Show due date and time label if they are not default.
+        if self.task.due_date != "2000-01-01" or self.task.due_time != "00:00":
+            due_label_text = ""
+            if self.task.due_date != "2000-01-01":
+                try:
+                    due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
+                    due_label_text = due_date_obj.strftime("%Y-%m-%d")
+                except ValueError:
+                    due_label_text = self.task.due_date  # If parsing fails, use the raw string
+
+            if self.task.due_time != "00:00":
+                try:
+                    due_time_obj = datetime.strptime(self.task.due_time, "%H:%M")
+                    due_label_text += f" {due_time_obj.strftime('%H:%M')}"
+                except ValueError:
+                    due_label_text += f" {self.task.due_time}"  # If parsing fails, use the raw string
+
+            self.due_label = QLabel(due_label_text)
+            self.layout.addWidget(self.due_label)
 
         self.radio_button = QRadioButton()
         self.radio_button.setChecked(self.task.is_important)
@@ -515,3 +536,34 @@ class TaskListDockStacked(QDockWidget):
     def get_current_task_list_widget(self):
         current_widget = self.stack_widget.currentWidget()
         return current_widget if isinstance(current_widget, TaskListWidget) else None
+
+
+class HistoryDock(QDockWidget):
+    def __init__(self, parent):
+        super().__init__("History", parent)
+        self.parent = parent
+
+        self.history_widget = QWidget()
+        self.history_layout = QVBoxLayout(self.history_widget)
+
+        self.history_list = QListWidget(self)
+
+        self.history_layout.addWidget(self.history_list)
+        self.setWidget(self.history_widget)
+
+        self.update_history()
+
+        self.hide()
+
+    def toggle_history(self):
+        self.setVisible(not self.isVisible())
+        if self.isVisible():
+            self.update_history()
+
+    def update_history(self):
+        self.history_list.clear()
+        for task_list_info in self.parent.task_manager.get_task_lists():
+            task_list = TaskList(task_list_info["list_name"], self.parent.task_manager, task_list_info["pin"],
+                                 task_list_info["queue"], task_list_info["stack"])
+            for task in task_list.get_completed_tasks():
+                self.history_list.addItem(f"{task.title} (Completed on {task.due_date})")

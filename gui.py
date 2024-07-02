@@ -32,6 +32,7 @@ class MainWindow(QMainWindow):
         self.setup_layouts()
         self.setup_left_widgets()
         self.setup_right_widgets()
+        self.setup_history_dock()
 
     def setup_main_window(self):
         self.setWindowTitle('ADM')
@@ -64,19 +65,12 @@ class MainWindow(QMainWindow):
     def setup_right_widgets(self):
         self.right_dock = TaskListDockStacked(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
-        self.history_widget = self.create_history_widget()
         self.calendar_widget = self.create_calendar_widget()
         self.task_list_collection.load_task_lists()
 
-    def create_history_widget(self):
-        history_widget = QWidget()
-        history_layout = QVBoxLayout(history_widget)
-        history_label = QLabel("History", self)
-        self.history_list = QListWidget(self)
-        history_layout.addWidget(history_label)
-        history_layout.addWidget(self.history_list)
-        history_widget.hide()
-        return history_widget
+    def setup_history_dock(self):
+        self.history_dock = HistoryDock(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
 
     def create_calendar_widget(self):
         calendar_widget = QWidget()
@@ -94,24 +88,19 @@ class MainWindow(QMainWindow):
         settings = QSettings("MyCompany", "ADM")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
+        settings.setValue("historyVisible", self.history_dock.isVisible())
 
     def load_settings(self):
         settings = QSettings("MyCompany", "ADM")
         self.restoreGeometry(settings.value("geometry", QByteArray()))
         self.restoreState(settings.value("windowState", QByteArray()))
+        if settings.value("historyVisible", False, type=bool):
+            self.history_dock.setVisible(True)
+        else:
+            self.history_dock.setVisible(False)
 
     def toggle_history(self):
-        self.history_widget.setVisible(not self.history_widget.isVisible())
-        if self.history_widget.isVisible():
-            self.update_history()
-
-    def update_history(self):
-        self.history_list.clear()
-        for task_list_info in self.task_manager.get_task_lists():
-            task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
-                                 task_list_info["queue"], task_list_info["stack"])
-            for task in task_list.get_completed_tasks():
-                self.history_list.addItem(f"{task.title} (Completed on {task.due_date})")
+        self.history_dock.toggle_history()
 
     def toggle_calendar(self):
         self.calendar_widget.setVisible(not self.calendar_widget.isVisible())
