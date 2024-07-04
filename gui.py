@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
     def __init__(self, app):
         super().__init__()
         self.task_manager = TaskListManager()
-        self.settings = QSettings("MyCompany", "ADM")
+        self.settings = QSettings("123", "ADM")
         self.setup_ui(app)
         self.options()
         self.load_settings()
@@ -99,32 +99,22 @@ class MainWindow(QMainWindow):
     def save_settings(self):
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
-        self.settings.setValue("historyVisible", self.history_dock.isVisible())
-        self.settings.setValue("calendarVisible", self.calendar_dock.isVisible())
-
         self.settings.setValue("rightDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.right_dock)))
         self.settings.setValue("historyDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.history_dock)))
+        self.settings.setValue("calendarDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.calendar_dock)))
 
     def load_settings(self):
         self.restoreGeometry(self.settings.value("geometry", QByteArray()))
 
         right_dock_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
         history_dock_geometry = json.loads(self.settings.value("historyDockGeometry", "{}"))
+        calendar_dock_geometry = json.loads(self.settings.value("calendarDockGeometry", "{}"))
 
         self.restoreDockWidgetGeometry(self.right_dock, right_dock_geometry)
         self.restoreDockWidgetGeometry(self.history_dock, history_dock_geometry)
+        self.restoreDockWidgetGeometry(self.calendar_dock, calendar_dock_geometry)
 
-        # Restore window state after restoring dock widgets
         self.restoreState(self.settings.value("windowState", QByteArray()))
-
-        if self.settings.value("historyVisible", False, type=bool):
-            self.history_dock.setVisible(True)
-        else:
-            self.history_dock.setVisible(False)
-        if self.settings.value("calendarVisible", False, type=bool):
-            self.calendar_dock.setVisible(True)
-        else:
-            self.calendar_dock.setVisible(False)
 
     def restoreDockWidgetGeometry(self, dock_widget, geometry):
         if not geometry or not isinstance(geometry, dict):
@@ -142,12 +132,15 @@ class MainWindow(QMainWindow):
         area = area_map.get(geometry.get("area"), Qt.DockWidgetArea.RightDockWidgetArea)
         self.addDockWidget(area, dock_widget)
 
+        dock_widget.setVisible(geometry.get("visible") == "True")
+
     def saveDockWidgetGeometry(self, dock_widget):
         return {
             "pos": f"{dock_widget.pos().x()},{dock_widget.pos().y()}",
             "size": f"{dock_widget.size().width()},{dock_widget.size().height()}",
             "floating": str(dock_widget.isFloating()),
-            "area": str(self.dockWidgetArea(dock_widget))
+            "area": str(self.dockWidgetArea(dock_widget)),
+            "visible": str(dock_widget.isVisible())
         }
 
     def toggle_history(self):
@@ -155,3 +148,8 @@ class MainWindow(QMainWindow):
 
     def toggle_calendar(self):
         self.calendar_dock.setVisible(not self.calendar_dock.isVisible())
+
+    def clear_settings(self):
+        self.settings.clear()
+        QMessageBox.information(self, "Settings Cleared",
+                                "All settings have been cleared. Please restart the application.")
