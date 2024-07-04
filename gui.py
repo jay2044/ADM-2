@@ -79,8 +79,8 @@ class MainWindow(QMainWindow):
         self.left_layout.addWidget(self.info_bar)
 
     def setup_right_widgets(self):
-        self.right_dock = TaskListDockStacked(self)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
+        self.stacked_task_list = TaskListDockStacked(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
 
         self.task_list_collection.load_task_lists()
 
@@ -99,18 +99,18 @@ class MainWindow(QMainWindow):
     def save_settings(self):
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())
-        self.settings.setValue("rightDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.right_dock)))
+        self.settings.setValue("rightDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.stacked_task_list)))
         self.settings.setValue("historyDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.history_dock)))
         self.settings.setValue("calendarDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.calendar_dock)))
 
     def load_settings(self):
         self.restoreGeometry(self.settings.value("geometry", QByteArray()))
 
-        right_dock_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
+        stacked_task_list_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
         history_dock_geometry = json.loads(self.settings.value("historyDockGeometry", "{}"))
         calendar_dock_geometry = json.loads(self.settings.value("calendarDockGeometry", "{}"))
 
-        self.restoreDockWidgetGeometry(self.right_dock, right_dock_geometry)
+        self.restoreDockWidgetGeometry(self.stacked_task_list, stacked_task_list_geometry)
         self.restoreDockWidgetGeometry(self.history_dock, history_dock_geometry)
         self.restoreDockWidgetGeometry(self.calendar_dock, calendar_dock_geometry)
 
@@ -142,6 +142,9 @@ class MainWindow(QMainWindow):
             "area": str(self.dockWidgetArea(dock_widget)),
             "visible": str(dock_widget.isVisible())
         }
+
+    def toggle_stacked_task_list(self):
+        self.stacked_task_list.setVisible(not self.stacked_task_list.isVisible())
 
     def toggle_history(self):
         self.history_dock.toggle_history()

@@ -199,6 +199,7 @@ class TaskListManagerToolbar(QToolBar):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add_action("+", parent, parent.task_list_collection.add_task_list)
+        self.add_action("T", parent, parent.toggle_stacked_task_list)
         self.add_action("H", parent, parent.toggle_history)
         self.add_action("C", parent, parent.toggle_calendar)
 
@@ -245,9 +246,9 @@ class TaskListCollection(QListWidget):
             self.addItem(task_list_name)
             self.parent.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
             task_list_widget = TaskListWidget(task_list_name, self.parent.task_manager, pin, queue, stack)
-            self.parent.right_dock.stack_widget.addWidget(task_list_widget)
+            self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
             self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
-            self.parent.right_dock.stack_widget.setCurrentWidget(task_list_widget)
+            self.parent.stacked_task_list.stack_widget.setCurrentWidget(task_list_widget)
             self.setCurrentItem(self.findItems(task_list_name, Qt.MatchFlag.MatchExactly)[0])
             self.parent.info_bar.update_task_list_count_label()
 
@@ -259,7 +260,7 @@ class TaskListCollection(QListWidget):
             if current:
                 hash_key = hash(current.text())
                 if hash_key in self.parent.hash_to_widget:
-                    self.parent.right_dock.stack_widget.setCurrentWidget(self.parent.hash_to_widget[hash_key])
+                    self.parent.stacked_task_list.stack_widget.setCurrentWidget(self.parent.hash_to_widget[hash_key])
         except Exception as e:
             print(f"An error occurred while switching stack: {e}")
 
@@ -353,7 +354,7 @@ class TaskListCollection(QListWidget):
             hash_key = hash(task_list.text())
             if hash_key in self.parent.hash_to_widget:
                 widget_to_remove = self.parent.hash_to_widget.pop(hash_key)
-                self.parent.right_dock.stack_widget.removeWidget(widget_to_remove)
+                self.parent.stacked_task_list.stack_widget.removeWidget(widget_to_remove)
                 widget_to_remove.deleteLater()
             self.takeItem(row)
             self.parent.task_manager.remove_task_list(task_list.text())
