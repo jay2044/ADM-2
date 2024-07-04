@@ -406,7 +406,7 @@ class TaskListDockStacked(QDockWidget):
         self.setup_ui()
 
     def set_allowed_areas(self):
-        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
                          QDockWidget.DockWidgetFeature.DockWidgetFloatable |
                          QDockWidget.DockWidgetFeature.DockWidgetClosable)
@@ -543,6 +543,8 @@ class HistoryDock(QDockWidget):
         super().__init__("History", parent)
         self.parent = parent
 
+        self.set_allowed_areas()
+
         self.history_widget = QWidget()
         self.history_layout = QVBoxLayout(self.history_widget)
 
@@ -553,7 +555,11 @@ class HistoryDock(QDockWidget):
 
         self.update_history()
 
-        self.hide()
+    def set_allowed_areas(self):
+        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
+                         QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+                         QDockWidget.DockWidgetFeature.DockWidgetClosable)
 
     def toggle_history(self):
         self.setVisible(not self.isVisible())
