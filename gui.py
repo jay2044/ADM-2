@@ -80,21 +80,13 @@ class MainWindow(QMainWindow):
 
     def setup_right_widgets(self):
         self.right_dock = TaskListDockStacked(self)
-
-        right_dock_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
-        dock_area = area_map.get(right_dock_geometry["area"])
-        self.addDockWidget(dock_area, self.right_dock)
-
-        # size = [int(x) for x in right_dock_geometry.get("size").split(",")]
-        # self.right_dock.resize()
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
 
         self.task_list_collection.load_task_lists()
 
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)
-        history_dock_geometry = json.loads(self.settings.value("historyDockGeometry", "{}"))
-        dock_area = area_map.get(history_dock_geometry["area"])
-        self.addDockWidget(dock_area, self.history_dock)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
 
     def setup_calendar_dock(self):
         self.calendar_dock = QDockWidget("Calendar")
@@ -115,7 +107,16 @@ class MainWindow(QMainWindow):
 
     def load_settings(self):
         self.restoreGeometry(self.settings.value("geometry", QByteArray()))
+
+        right_dock_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
+        history_dock_geometry = json.loads(self.settings.value("historyDockGeometry", "{}"))
+
+        self.restoreDockWidgetGeometry(self.right_dock, right_dock_geometry)
+        self.restoreDockWidgetGeometry(self.history_dock, history_dock_geometry)
+
+        # Restore window state after restoring dock widgets
         self.restoreState(self.settings.value("windowState", QByteArray()))
+
         if self.settings.value("historyVisible", False, type=bool):
             self.history_dock.setVisible(True)
         else:
@@ -125,23 +126,21 @@ class MainWindow(QMainWindow):
         else:
             self.calendar_dock.setVisible(False)
 
-        right_dock_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
-        history_dock_geometry = json.loads(self.settings.value("historyDockGeometry", "{}"))
-
-        self.restoreDockWidgetGeometry(self.right_dock, right_dock_geometry)
-        self.restoreDockWidgetGeometry(self.history_dock, history_dock_geometry)
-
     def restoreDockWidgetGeometry(self, dock_widget, geometry):
         if not geometry or not isinstance(geometry, dict):
             return
 
-        pos = [int(x) for x in geometry.get("pos", "0,0").split(",")]
-        size = [int(x) for x in geometry.get("size", "100,100").split(",")]
         floating = geometry.get("floating", "false").lower() == "true"
-
-        dock_widget.resize(QSize(size[0], size[1]))
-        dock_widget.move(QPoint(pos[0], pos[1]))
         dock_widget.setFloating(floating)
+
+        if floating:
+            pos = [int(x) for x in geometry.get("pos", "0,0").split(",")]
+            size = [int(x) for x in geometry.get("size", "100,100").split(",")]
+            dock_widget.resize(QSize(size[0], size[1]))
+            dock_widget.move(QPoint(pos[0], pos[1]))
+
+        area = area_map.get(geometry.get("area"), Qt.DockWidgetArea.RightDockWidgetArea)
+        self.addDockWidget(area, dock_widget)
 
     def saveDockWidgetGeometry(self, dock_widget):
         return {
