@@ -70,7 +70,7 @@ class MainWindow(QMainWindow):
         self.main_layout.addWidget(self.left_widget)
 
     def setup_left_widgets(self):
-        self.hash_to_widget = {}
+        self.hash_to_widget = {}  # List of task list widgets.
         self.task_list_collection = TaskListCollection(self)
         self.left_top_toolbar = TaskListManagerToolbar(self)
         self.left_layout.addWidget(self.left_top_toolbar)
@@ -83,6 +83,9 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
 
         self.task_list_collection.load_task_lists()
+
+        test = TaskListDock("list 4", self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, test)
 
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)

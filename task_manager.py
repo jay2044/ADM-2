@@ -302,6 +302,11 @@ class TaskListManager:
         other_lists = [task_list for task_list in self.task_lists if not task_list["pin"]]
         return pinned_lists + other_lists
 
+    def get_task_list(self, task_list_name):
+        for task_list in self.task_lists:
+            if task_list["list_name"] == task_list_name:
+                return task_list
+
     def get_task_list_count(self):
         return len(self.task_lists)
 

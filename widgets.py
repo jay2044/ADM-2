@@ -413,20 +413,20 @@ class TaskListDockStacked(QDockWidget):
                          QDockWidget.DockWidgetFeature.DockWidgetClosable)
 
     def setup_ui(self):
-        self.right_widget = QWidget()
-        self.setWidget(self.right_widget)
-        self.right_layout = QVBoxLayout()
-        self.right_widget.setLayout(self.right_layout)
+        self.widget = QWidget()
+        self.setWidget(self.widget)
+        self.layout = QVBoxLayout()
+        self.widget.setLayout(self.layout)
         self.setup_toolbar()
         self.setup_stack_widget()
 
     def setup_toolbar(self):
-        self.right_toolbar = TaskListToolbar(self)
-        self.right_layout.addWidget(self.right_toolbar)
+        self.toolbar = TaskListToolbar(self)
+        self.layout.addWidget(self.toolbar)
 
     def setup_stack_widget(self):
         self.stack_widget = QStackedWidget()
-        self.right_layout.addWidget(self.stack_widget)
+        self.layout.addWidget(self.stack_widget)
         QApplication.instance().focusChanged.connect(self.on_focus_changed)
 
     def on_focus_changed(self, old, new):
@@ -445,7 +445,7 @@ class TaskListDockStacked(QDockWidget):
     def show_add_task_dialog(self, task_list_widget):
         try:
             dialog = AddTaskDialog(self)
-            button_pos = self.right_toolbar.mapToGlobal(self.right_toolbar.rect().bottomRight())
+            button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
             dialog.adjustSize()
             dialog.move(button_pos.x() - dialog.width(), button_pos.y())
 
@@ -472,14 +472,14 @@ class TaskListDockStacked(QDockWidget):
             current_task_list = current_task_list_widget.task_list
             current_task_list.queue = not current_task_list.queue
             if current_task_list.queue:
-                self.right_toolbar.actions()[1].setCheckable(True)
-                self.right_toolbar.actions()[1].setChecked(current_task_list.queue)
+                self.toolbar.actions()[1].setCheckable(True)
+                self.toolbar.actions()[1].setChecked(current_task_list.queue)
                 current_task_list.stack = False
-                self.right_toolbar.actions()[2].setCheckable(False)
-                self.right_toolbar.actions()[3].setCheckable(False)
+                self.toolbar.actions()[2].setCheckable(False)
+                self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
             else:
-                self.right_toolbar.actions()[1].setCheckable(False)
+                self.toolbar.actions()[1].setCheckable(False)
             current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
@@ -494,15 +494,15 @@ class TaskListDockStacked(QDockWidget):
             current_task_list = current_task_list_widget.task_list
             current_task_list.stack = not current_task_list.stack
             if current_task_list.stack:
-                self.right_toolbar.actions()[2].setCheckable(True)
-                self.right_toolbar.actions()[2].setChecked(current_task_list.stack)
-                self.right_toolbar.actions()[1].setCheckable(False)
-                self.right_toolbar.actions()[3].setCheckable(False)
+                self.toolbar.actions()[2].setCheckable(True)
+                self.toolbar.actions()[2].setChecked(current_task_list.stack)
+                self.toolbar.actions()[1].setCheckable(False)
+                self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
                 current_task_list.queue = False
 
             else:
-                self.right_toolbar.actions()[2].setCheckable(False)
+                self.toolbar.actions()[2].setCheckable(False)
             current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
@@ -517,15 +517,15 @@ class TaskListDockStacked(QDockWidget):
             current_task_list = current_task_list_widget.task_list
 
             if self.priority_filter:
-                self.right_toolbar.actions()[3].setCheckable(False)
+                self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
                 current_task_list_widget.load_tasks(False)
                 return
             else:
-                self.right_toolbar.actions()[3].setCheckable(True)
-                self.right_toolbar.actions()[3].setChecked(True)
-                self.right_toolbar.actions()[2].setCheckable(False)
-                self.right_toolbar.actions()[1].setCheckable(False)
+                self.toolbar.actions()[3].setCheckable(True)
+                self.toolbar.actions()[3].setChecked(True)
+                self.toolbar.actions()[2].setCheckable(False)
+                self.toolbar.actions()[1].setCheckable(False)
                 current_task_list.queue = False
                 current_task_list.stack = False
                 self.priority_filter = True
@@ -537,6 +537,117 @@ class TaskListDockStacked(QDockWidget):
     def get_current_task_list_widget(self):
         current_widget = self.stack_widget.currentWidget()
         return current_widget if isinstance(current_widget, TaskListWidget) else None
+
+
+class TaskListDock(QDockWidget):
+    def __init__(self, task_list_name, parent=None):
+        super().__init__(task_list_name, parent)
+        self.task_list_widget = TaskListWidget(task_list_name, parent.task_manager, False, False, False)
+        self.priority_filter = False
+        self.task_manager = parent.task_manager
+        self.set_allowed_areas()
+        self.setup_ui()
+
+    def set_allowed_areas(self):
+        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
+                         QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+                         QDockWidget.DockWidgetFeature.DockWidgetClosable)
+
+    def setup_ui(self):
+        self.widget = QWidget()
+        self.setWidget(self.widget)
+        self.layout = QVBoxLayout()
+        self.widget.setLayout(self.layout)
+        self.setup_toolbar()
+        self.layout.addWidget(self.task_list_widget)
+
+    def setup_toolbar(self):
+        self.toolbar = TaskListToolbar(self)
+        self.layout.addWidget(self.toolbar)
+
+    def add_task(self):
+        self.show_add_task_dialog(self.task_list_widget)
+
+    def show_add_task_dialog(self, task_list_widget):
+        try:
+            dialog = AddTaskDialog(self)
+            button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
+            dialog.adjustSize()
+            dialog.move(button_pos.x() - dialog.width(), button_pos.y())
+
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                task_data = dialog.get_task_data()
+                task = Task(
+                    title=task_data["title"],
+                    description=task_data["description"],
+                    due_date=task_data["due_date"],
+                    due_time=task_data["due_time"],
+                    is_important=task_data["is_important"]
+                )
+                task_list_widget.task_list.add_task(task)
+                task_list_widget.load_tasks()
+        except Exception as e:
+            print(f"An error occurred while adding a task: {e}")
+
+    def set_queue(self):
+        try:
+            task_list = self.task_list_widget.task_list
+            task_list.queue = not task_list.queue
+            if task_list.queue:
+                self.toolbar.actions()[1].setCheckable(True)
+                self.toolbar.actions()[1].setChecked(task_list.queue)
+                task_list.stack = False
+                self.toolbar.actions()[2].setCheckable(False)
+                self.toolbar.actions()[3].setCheckable(False)
+                self.priority_filter = False
+            else:
+                self.toolbar.actions()[1].setCheckable(False)
+            self.task_list_widget.load_tasks()
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in set_queue: {e}")
+
+    def set_stack(self):
+        try:
+            task_list = self.task_list_widget.task_list
+            task_list.stack = not task_list.stack
+            if task_list.stack:
+                self.toolbar.actions()[2].setCheckable(True)
+                self.toolbar.actions()[2].setChecked(task_list.stack)
+                self.toolbar.actions()[1].setCheckable(False)
+                self.toolbar.actions()[3].setCheckable(False)
+                self.priority_filter = False
+                task_list.queue = False
+
+            else:
+                self.toolbar.actions()[2].setCheckable(False)
+            self.task_list_widget.load_tasks()
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in set_stack: {e}")
+
+    def priority_sort(self):
+        try:
+            task_list = self.task_list_widget.task_list
+
+            if self.priority_filter:
+                self.toolbar.actions()[3].setCheckable(False)
+                self.priority_filter = False
+                self.task_list_widget.load_tasks(False)
+                return
+            else:
+                self.toolbar.actions()[3].setCheckable(True)
+                self.toolbar.actions()[3].setChecked(True)
+                self.toolbar.actions()[2].setCheckable(False)
+                self.toolbar.actions()[1].setCheckable(False)
+                task_list.queue = False
+                task_list.stack = False
+                self.priority_filter = True
+            self.task_list_widget.load_tasks(True)
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in priority_sort: {e}")
 
 
 class HistoryDock(QDockWidget):
