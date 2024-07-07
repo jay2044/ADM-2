@@ -84,9 +84,6 @@ class MainWindow(QMainWindow):
 
         self.task_list_collection.load_task_lists()
 
-        test = TaskListDock("list 4", self)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, test)
-
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)

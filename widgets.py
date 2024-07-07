@@ -215,11 +215,17 @@ class TaskListCollection(QListWidget):
         self.parent = parent
         self.setup_ui()
 
-    def setup_ui(self):
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+
+        QApplication.instance().installEventFilter(self)
+
+        self.dragging = False
+        self.drag_item = None
+
+    def setup_ui(self):
         self.currentItemChanged.connect(self.switch_stack_widget_by_hash)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.task_list_collection_context_menu)
@@ -361,6 +367,40 @@ class TaskListCollection(QListWidget):
             self.parent.info_bar.update_task_list_count_label()
         except Exception as e:
             print(f"An error occurred while deleting a task list: {e}")
+
+    def add_task_list_dock(self, list_name):
+        self.parent.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, TaskListDock(list_name, self.parent))
+
+    def startDrag(self, supportedActions):
+        self.dragging = True
+        self.drag_item = self.currentItem()
+        super().startDrag(supportedActions)
+
+    def dragMoveEvent(self, event):
+        if self.rect().contains(event.position().toPoint()):
+            super().dragMoveEvent(event)
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if self.rect().contains(event.position().toPoint()):
+            super().dropEvent(event)
+        else:
+            event.ignore()
+        self.dragging = False
+        self.drag_item = None
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseButtonRelease and self.dragging:
+            global_pos = event.globalPosition().toPoint()
+            local_pos = self.mapFromGlobal(global_pos)
+            if not self.rect().contains(local_pos) and self.drag_item:
+                print(f"Item '{self.drag_item.text()}' dropped outside the QListWidget")
+                task_list_name = self.drag_item.text()
+                self.add_task_list_dock(task_list_name)
+            self.dragging = False
+            self.drag_item = None
+        return super().eventFilter(obj, event)
 
 
 class InfoBar(QWidget):
