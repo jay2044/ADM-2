@@ -368,22 +368,22 @@ class TaskListCollection(QListWidget):
         except Exception as e:
             print(f"An error occurred while deleting a task list: {e}")
 
-    def add_task_list_dock(self, list_name):
-        self.parent.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, TaskListDock(list_name, self.parent))
-
     def startDrag(self, supportedActions):
+        print("Dragging list item")
         self.dragging = True
         self.drag_item = self.currentItem()
         super().startDrag(supportedActions)
 
     def dragMoveEvent(self, event):
         if self.rect().contains(event.position().toPoint()):
+            print("inside rect")
             super().dragMoveEvent(event)
         else:
             event.ignore()
 
     def dropEvent(self, event):
         if self.rect().contains(event.position().toPoint()):
+            print("dropped inside rect")
             super().dropEvent(event)
         else:
             event.ignore()
@@ -397,7 +397,11 @@ class TaskListCollection(QListWidget):
             if not self.rect().contains(local_pos) and self.drag_item:
                 print(f"Item '{self.drag_item.text()}' dropped outside the QListWidget")
                 task_list_name = self.drag_item.text()
-                self.add_task_list_dock(task_list_name)
+                dock = TaskListDock(task_list_name, self.parent)
+                dock.setFloating(True)
+                dock.move(global_pos)
+                self.parent.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
             self.dragging = False
             self.drag_item = None
         return super().eventFilter(obj, event)
