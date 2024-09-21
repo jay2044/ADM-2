@@ -9,19 +9,23 @@ def sanitize_name(name):
 
 
 class Task:
-    def __init__(self, title, description, due_date, due_time, task_id=None):
+    def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
+                 completed=False,
+                 categories=[],
+                 recurring=False,
+                 recur_every=0):
         self.id = task_id
         self.title = title
         self.description = description
         self.due_date = due_date
         self.due_time = due_time
-        self.completed = False
-        self.priority = 0
-        self.is_important = False
+        self.completed = completed
+        self.priority = priority
+        self.is_important = is_important
         self.added_date_time = datetime.now()
-        self.categories = []
-        self.recurring = False
-        self.recur_every = 0
+        self.categories = categories
+        self.recurring = recurring
+        self.recur_every = recur_every
 
     def mark_as_important(self):
         self.is_important = True
@@ -251,7 +255,8 @@ class TaskListManager:
         cursor.execute(
             "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (list_name, task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
-             task.is_important, task.added_date_time.isoformat(), ','.join(task.categories), task.recurring, task.recur_every)
+             task.is_important, task.added_date_time.isoformat(), ','.join(task.categories), task.recurring,
+             task.recur_every)
         )
         self.conn.commit()
         task.id = cursor.lastrowid
@@ -270,17 +275,20 @@ class TaskListManager:
         """, (
             task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
             task.is_important, ','.join(task.categories), task.recurring, task.recur_every, task.id)
-        )
+                       )
         self.conn.commit()
 
     def update_task_list(self, task_list):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE task_lists
-            SET pin = ?, queue = ?, stack = ?
-            WHERE list_name = ?
-        """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                UPDATE task_lists
+                SET pin = ?, queue = ?, stack = ?
+                WHERE list_name = ?
+            """, (task_list["pin"], task_list["queue"], task_list["stack"], task_list["list_name"]))
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error in update_task_list: {e}")
 
     def pin_task_list(self, list_name):
         for task_list in self.task_lists:
@@ -293,6 +301,11 @@ class TaskListManager:
         pinned_lists = [task_list for task_list in self.task_lists if task_list["pin"]]
         other_lists = [task_list for task_list in self.task_lists if not task_list["pin"]]
         return pinned_lists + other_lists
+
+    def get_task_list(self, task_list_name):
+        for task_list in self.task_lists:
+            if task_list["list_name"] == task_list_name:
+                return task_list
 
     def get_task_list_count(self):
         return len(self.task_lists)
