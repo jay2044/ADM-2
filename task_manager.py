@@ -145,11 +145,13 @@ class TaskListManager:
 
     def create_tables(self):
         create_categories_table = """
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE
-        );
-        """
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                pin BOOLEAN NOT NULL DEFAULT 0
+            );
+            """
+
         create_task_lists_table = """
         CREATE TABLE IF NOT EXISTS task_lists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,8 +188,22 @@ class TaskListManager:
             cursor.execute(create_task_lists_table)
             cursor.execute(create_tasks_table)
             self.conn.commit()
+
+            # Check if 'pin' column exists and add if necessary
+            cursor.execute("PRAGMA table_info(categories)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'pin' not in columns:
+                cursor.execute("ALTER TABLE categories ADD COLUMN pin BOOLEAN NOT NULL DEFAULT 0")
+                self.conn.commit()
         except sqlite3.Error as e:
             print(f"Error creating tables: {e}")
+
+    def pin_category(self, category_name):
+        cursor = self.conn.cursor()
+        cursor.execute("UPDATE categories SET pin = NOT pin WHERE name = ?", (category_name,))
+        self.conn.commit()
+        # Update in-memory data
+        self.categories = self.load_categories()
 
     def load_categories(self):
         categories = {}
@@ -197,11 +213,15 @@ class TaskListManager:
         for category_row in category_rows:
             category_id = category_row["id"]
             category_name = category_row["name"]
-            categories[category_name] = []
+            category_pin = bool(category_row["pin"]) if "pin" in category_row.keys() else False  # Get the 'pin' value
+            categories[category_name] = {
+                "pin": category_pin,
+                "task_lists": []
+            }
             cursor.execute("SELECT * FROM task_lists WHERE category_id=?", (category_id,))
             task_list_rows = cursor.fetchall()
             for task_list_row in task_list_rows:
-                categories[category_name].append({
+                categories[category_name]["task_lists"].append({
                     "list_name": task_list_row["list_name"],
                     "pin": bool(task_list_row["pin"]),
                     "queue": bool(task_list_row["queue"]),
@@ -209,19 +229,23 @@ class TaskListManager:
                     "category": category_name
                 })
 
+        # Always include "Uncategorized" category
+        categories["Uncategorized"] = {
+            "pin": False,
+            "task_lists": []
+        }
+
         # Handle uncategorized task lists
         cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL")
         uncategorized_task_lists = cursor.fetchall()
-        if uncategorized_task_lists:
-            categories["Uncategorized"] = []
-            for task_list_row in uncategorized_task_lists:
-                categories["Uncategorized"].append({
-                    "list_name": task_list_row["list_name"],
-                    "pin": bool(task_list_row["pin"]),
-                    "queue": bool(task_list_row["queue"]),
-                    "stack": bool(task_list_row["stack"]),
-                    "category": None
-                })
+        for task_list_row in uncategorized_task_lists:
+            categories["Uncategorized"]["task_lists"].append({
+                "list_name": task_list_row["list_name"],
+                "pin": bool(task_list_row["pin"]),
+                "queue": bool(task_list_row["queue"]),
+                "stack": bool(task_list_row["stack"]),
+                "category": None
+            })
 
         return categories
 
