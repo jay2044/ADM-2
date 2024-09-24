@@ -215,6 +215,7 @@ class TaskListManagerToolbar(QToolBar):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add_action("+", parent, parent.task_list_collection.add_task_list)
+        self.add_action("+C", parent, parent.task_list_collection.add_category)
         self.add_action("T", parent, parent.toggle_stacked_task_list)
         self.add_action("H", parent, parent.toggle_history)
         self.add_action("C", parent, parent.toggle_calendar)
@@ -254,15 +255,15 @@ class TaskListCollection(QWidget):
         self.layout.addWidget(self.tree_widget)
 
         # Add buttons for adding categories and task lists
-        self.button_layout = QHBoxLayout()
-        self.add_category_button = QPushButton("Add Category")
-        self.add_category_button.clicked.connect(self.add_category)
-        self.add_task_list_button = QPushButton("Add Task List")
-        self.add_task_list_button.clicked.connect(self.add_task_list)
-
-        self.button_layout.addWidget(self.add_category_button)
-        self.button_layout.addWidget(self.add_task_list_button)
-        self.layout.addLayout(self.button_layout)
+        # self.button_layout = QHBoxLayout()
+        # self.add_category_button = QPushButton("Add Category")
+        # self.add_category_button.clicked.connect(self.add_category)
+        # self.add_task_list_button = QPushButton("Add Task List")
+        # self.add_task_list_button.clicked.connect(self.add_task_list)
+        #
+        # self.button_layout.addWidget(self.add_category_button)
+        # self.button_layout.addWidget(self.add_task_list_button)
+        # self.layout.addLayout(self.button_layout)
 
     def load_task_lists(self):
         try:
