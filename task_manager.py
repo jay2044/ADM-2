@@ -208,6 +208,21 @@ class TaskListManager:
                     "stack": bool(task_list_row["stack"]),
                     "category": category_name
                 })
+
+        # Handle uncategorized task lists
+        cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL")
+        uncategorized_task_lists = cursor.fetchall()
+        if uncategorized_task_lists:
+            categories["Uncategorized"] = []
+            for task_list_row in uncategorized_task_lists:
+                categories["Uncategorized"].append({
+                    "list_name": task_list_row["list_name"],
+                    "pin": bool(task_list_row["pin"]),
+                    "queue": bool(task_list_row["queue"]),
+                    "stack": bool(task_list_row["stack"]),
+                    "category": None
+                })
+
         return categories
 
     def load_task_lists(self):
@@ -264,9 +279,11 @@ class TaskListManager:
         cursor = self.conn.cursor()
         cursor.execute("UPDATE categories SET name=? WHERE name=?", (new_name, old_name))
         self.conn.commit()
-        self.categories[new_name] = self.categories.pop(old_name)
+        # Reload categories
+        self.categories = self.load_categories()
 
     def get_categories(self):
+        self.categories = self.load_categories()
         return self.categories
 
     def add_task_list(self, list_name, pin=False, queue=False, stack=False, category=None):
@@ -283,21 +300,9 @@ class TaskListManager:
                 (list_name, category_id, int(pin), int(queue), int(stack))
             )
             self.conn.commit()
-            self.task_lists.append({
-                "list_name": list_name,
-                "pin": pin,
-                "queue": queue,
-                "stack": stack,
-                "category": category
-            })
-            if category:
-                self.categories[category].append({
-                    "list_name": list_name,
-                    "pin": pin,
-                    "queue": queue,
-                    "stack": stack,
-                    "category": category
-                })
+            # Reload task lists and categories
+            self.task_lists = self.load_task_lists()
+            self.categories = self.load_categories()
 
     def remove_task_list(self, list_name):
         if list_name in [task_list["list_name"] for task_list in self.task_lists]:
