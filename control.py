@@ -151,13 +151,15 @@ class AddTaskDialog(QDialog):
             "priority": self.priority_spinbox.value(),
             "is_important": self.important_checkbox.isChecked(),
             "recurring": self.recurring_checkbox.isChecked(),
-            "recur_every": None  # Will be calculated below
+            "recur_every": []  # Will be calculated below
         }
 
         if self.recurring_checkbox.isChecked():
             if self.every_n_days_radio.isChecked():
-                task_data["recur_every"] = self.every_n_days_spinbox.value()
+                # Store as a list with a single integer representing "Every N days"
+                task_data["recur_every"] = [self.every_n_days_spinbox.value()]
             elif self.specific_weekdays_radio.isChecked():
+                # Store selected weekdays as a list of integers representing days of the week
                 selected_weekdays = []
                 weekdays_dict = {
                     "Mon": 1,
@@ -171,20 +173,11 @@ class AddTaskDialog(QDialog):
                 for checkbox in self.weekday_checkboxes:
                     if checkbox.isChecked():
                         selected_weekdays.append(weekdays_dict[checkbox.text()])
-                # Calculate days until next occurrence based on selected weekdays and current date
-                if selected_weekdays:
-                    today = QDate.currentDate()
-                    today_weekday = today.dayOfWeek()  # PyQt6 dayOfWeek() returns 1 (Monday) to 7 (Sunday)
-                    days_ahead_list = [((weekday - today_weekday) % 7 or 7) for weekday in selected_weekdays]
-                    task_data["recur_every"] = min(days_ahead_list)
-                else:
-                    task_data["recur_every"] = 7  # Default to 7 days if no weekdays selected
+                task_data["recur_every"] = selected_weekdays
         else:
             task_data["recur_every"] = None
 
         return task_data
-
-
 
 
 class EditTaskDialog(QDialog):
@@ -242,12 +235,6 @@ class EditTaskDialog(QDialog):
         self.recurrence_options_widget.setLayout(self.recurrence_layout)
         self.layout.addRow(self.recurrence_options_widget)
 
-        # Initially hide or show the recurrence options
-        if self.recurring_checkbox.isChecked():
-            self.recurrence_options_widget.show()
-        else:
-            self.recurrence_options_widget.hide()
-
         # Radio buttons to choose recurrence type
         self.recur_type_group = QButtonGroup(self)
 
@@ -270,7 +257,6 @@ class EditTaskDialog(QDialog):
         self.every_n_days_spinbox = QSpinBox()
         self.every_n_days_spinbox.setMinimum(1)
         self.every_n_days_spinbox.setMaximum(365)
-        self.every_n_days_spinbox.setValue(task.recur_every if task.recur_every else 1)
         self.every_n_days_unit_label = QLabel("day(s)")
 
         self.every_n_days_layout.addWidget(self.every_n_days_label)
@@ -314,11 +300,23 @@ class EditTaskDialog(QDialog):
 
         # Set the initial recurrence type based on the task data
         if task.recurring:
-            # Assuming you have stored the recurrence pattern somewhere in the task
-            # For simplicity, we'll default to "Every N days"
-            self.every_n_days_radio.setChecked(True)
-            self.update_recurrence_detail_widgets()
+            self.recurring_checkbox.setChecked(True)
+            self.recurrence_options_widget.show()
+            if task.recur_every and len(task.recur_every) == 1:
+                # "Every N days" recurrence
+                self.every_n_days_radio.setChecked(True)
+                self.update_recurrence_detail_widgets()
+                self.every_n_days_spinbox.setValue(task.recur_every[0])
+            elif task.recur_every and len(task.recur_every) > 1:
+                # "Specific weekdays" recurrence
+                self.specific_weekdays_radio.setChecked(True)
+                self.update_recurrence_detail_widgets()
+                for checkbox in self.weekday_checkboxes:
+                    day_num = weekdays_dict[checkbox.text()]
+                    if day_num in task.recur_every:
+                        checkbox.setChecked(True)
         else:
+            self.recurring_checkbox.setChecked(False)
             self.recurrence_options_widget.hide()
 
         # Delete button
@@ -338,9 +336,10 @@ class EditTaskDialog(QDialog):
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
             self.recurrence_options_widget.show()
-            # Set default selection
-            self.every_n_days_radio.setChecked(True)
-            self.update_recurrence_detail_widgets()
+            # Set default selection if none selected
+            if not self.every_n_days_radio.isChecked() and not self.specific_weekdays_radio.isChecked():
+                self.every_n_days_radio.setChecked(True)
+                self.update_recurrence_detail_widgets()
         else:
             self.recurrence_options_widget.hide()
 
@@ -369,20 +368,22 @@ class EditTaskDialog(QDialog):
 
         if self.recurring_checkbox.isChecked():
             if self.every_n_days_radio.isChecked():
-                task_data["recur_every"] = self.every_n_days_spinbox.value()
+                task_data["recur_every"] = [self.every_n_days_spinbox.value()]  # Store as a list with a single integer
             elif self.specific_weekdays_radio.isChecked():
                 selected_weekdays = []
+                weekdays_dict = {
+                    "Mon": 1,
+                    "Tue": 2,
+                    "Wed": 3,
+                    "Thu": 4,
+                    "Fri": 5,
+                    "Sat": 6,
+                    "Sun": 7
+                }
                 for checkbox in self.weekday_checkboxes:
                     if checkbox.isChecked():
                         selected_weekdays.append(weekdays_dict[checkbox.text()])
-                # Calculate days until next occurrence based on selected weekdays and current date
-                if selected_weekdays:
-                    today = QDate.currentDate()
-                    today_weekday = today.dayOfWeek()  # PyQt6 dayOfWeek() returns 1 (Monday) to 7 (Sunday)
-                    days_ahead_list = [((weekday - today_weekday) % 7 or 7) for weekday in selected_weekdays]
-                    task_data["recur_every"] = min(days_ahead_list)
-                else:
-                    task_data["recur_every"] = 7  # Default to 7 days if no weekdays selected
+                task_data["recur_every"] = selected_weekdays if selected_weekdays else [0]
         else:
             task_data["recur_every"] = None
 

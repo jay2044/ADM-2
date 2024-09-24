@@ -2,6 +2,7 @@ import sqlite3
 import os
 from datetime import datetime, timedelta
 import re
+import json
 
 
 def sanitize_name(name):
@@ -25,7 +26,7 @@ class Task:
         self.added_date_time = datetime.now()
         self.categories = categories
         self.recurring = recurring
-        self.recur_every = recur_every  # In days
+        self.recur_every = recur_every if isinstance(recur_every, list) else []  # In days or a list of week days
         self.last_completed_date = last_completed_date  # Datetime object
 
     def mark_as_important(self):
@@ -50,7 +51,7 @@ class Task:
 
     def set_recurring(self, every):
         self.recurring = True
-        self.recur_every = every
+        self.recur_every = every if isinstance(every, list) else [every]
 
     def get_unique_identifier(self):
         return f"{self.title}_{self.due_date}_{self.due_time}"
@@ -165,7 +166,7 @@ class TaskListManager:
             added_date_time TEXT,
             categories TEXT,
             recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)),
-            recur_every INTEGER,
+            recur_every TEXT,
             last_completed_date TEXT
         );
         """
@@ -207,7 +208,7 @@ class TaskListManager:
                 completed=bool(row['completed']),
                 categories=row['categories'].split(',') if row['categories'] else [],
                 recurring=bool(row['recurring']),
-                recur_every=row['recur_every'],
+                recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
                 last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
                     'last_completed_date'] else None
             )
@@ -262,7 +263,8 @@ class TaskListManager:
             "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every, last_completed_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
              int(task.is_important), task.added_date_time.isoformat(), ','.join(task.categories), int(task.recurring),
-             task.recur_every, task.last_completed_date.isoformat() if task.last_completed_date else None)
+             json.dumps(task.recur_every),  # Store recur_every as JSON string
+             task.last_completed_date.isoformat() if task.last_completed_date else None)
         )
         self.conn.commit()
         task.id = cursor.lastrowid
@@ -275,7 +277,8 @@ class TaskListManager:
             WHERE id=?
         """, (
             task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
-            int(task.is_important), ','.join(task.categories), int(task.recurring), task.recur_every,
+            int(task.is_important), ','.join(task.categories), int(task.recurring),
+            json.dumps(task.recur_every),  # Store recur_every as JSON string
             task.last_completed_date.isoformat() if task.last_completed_date else None, task.id)
                        )
         self.conn.commit()
@@ -334,18 +337,32 @@ class TaskListManager:
                 completed=bool(row['completed']),
                 categories=row['categories'].split(',') if row['categories'] else [],
                 recurring=bool(row['recurring']),
-                recur_every=row['recur_every'],
+                recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
                 last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
                     'last_completed_date'] else None
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
 
-            if task.completed and task.recurring:
-                # Calculate the new due date
-                new_due_date = datetime.strptime(task.due_date, '%Y-%m-%d') + timedelta(days=task.recur_every)
-                task.due_date = new_due_date.strftime('%Y-%m-%d')
-                task.completed = False  # Reset completion status
-                self.update_task(task)
+            if task.completed:
+                if task.recur_every:
+                    if len(task.recur_every) == 1:
+                        # "Every N days" recurrence
+                        days_to_add = task.recur_every[0]
+                        new_due_date = datetime.strptime(task.due_date, '%Y-%m-%d') + timedelta(days=days_to_add)
+                    else:
+                        # "Specific weekdays" recurrence
+                        today = datetime.now()
+                        today_weekday = today.isoweekday()  # 1 (Monday) - 7 (Sunday)
+                        days_ahead_list = [((weekday - today_weekday) % 7 or 7) for weekday in task.recur_every]
+                        days_until_next = min(days_ahead_list)
+                        new_due_date = today + timedelta(days=days_until_next)
+                    # Update task with new due date and reset completion status
+                    task.due_date = new_due_date.strftime('%Y-%m-%d')
+                    task.completed = False
+                    self.update_task(task)
+                else:
+                    # Handle the case where recur_every is empty
+                    pass
 
     def __del__(self):
         self.conn.close()
