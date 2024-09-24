@@ -40,8 +40,8 @@ class MainWindow(QMainWindow):
         setup_font(app)
         self.setup_main_window()
         self.setup_layouts()
-        self.setup_left_widgets()
-        self.setup_right_widgets()
+        self.setup_right_widgets()  # Initialize stacked_task_list first
+        self.setup_left_widgets()  # Initialize task_list_collection after stacked_task_list
         self.setup_history_dock()
         self.setup_calendar_dock()
 
@@ -82,14 +82,14 @@ class MainWindow(QMainWindow):
         self.stacked_task_list = TaskListDockStacked(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
 
-        self.task_list_collection.load_task_lists()
+        # self.task_list_collection.load_task_lists()
 
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
 
     def setup_calendar_dock(self):
-        self.calendar_dock = QDockWidget("Calendar")
+        self.calendar_dock = CalendarDock (self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.calendar_dock)
 
     def closeEvent(self, event):
