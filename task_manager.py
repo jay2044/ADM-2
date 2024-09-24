@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 
@@ -13,19 +13,20 @@ class Task:
                  completed=False,
                  categories=[],
                  recurring=False,
-                 recur_every=0):
+                 recur_every=0,last_completed_date=None):
         self.id = task_id
         self.title = title
         self.description = description
-        self.due_date = due_date
-        self.due_time = due_time
+        self.due_date = due_date  # Expected format: 'YYYY-MM-DD'
+        self.due_time = due_time  # Expected format: 'HH:MM'
         self.completed = completed
         self.priority = priority
         self.is_important = is_important
         self.added_date_time = datetime.now()
         self.categories = categories
         self.recurring = recurring
-        self.recur_every = recur_every
+        self.recur_every = recur_every  # In days
+        self.last_completed_date = last_completed_date  # Datetime object
 
     def mark_as_important(self):
         self.is_important = True
@@ -38,6 +39,7 @@ class Task:
 
     def set_completed(self):
         self.completed = True
+        self.last_completed_date = datetime.now()
 
     def add_category(self, category):
         if category not in self.categories:
@@ -137,6 +139,7 @@ class TaskListManager:
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
         self.task_lists = self.load_task_lists()
+        self.manage_recurring_tasks()
 
     def create_tables(self):
         create_task_lists_table = """
@@ -162,7 +165,8 @@ class TaskListManager:
             added_date_time TEXT,
             categories TEXT,
             recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)),
-            recur_every INTEGER
+            recur_every INTEGER,
+            last_completed_date TEXT
         );
         """
         try:
@@ -197,15 +201,17 @@ class TaskListManager:
                 description=row['description'],
                 due_date=row['due_date'],
                 due_time=row['due_time'],
-                task_id=row['id']
+                task_id=row['id'],
+                is_important=bool(row['is_important']),
+                priority=row['priority'],
+                completed=bool(row['completed']),
+                categories=row['categories'].split(',') if row['categories'] else [],
+                recurring=bool(row['recurring']),
+                recur_every=row['recur_every'],
+                last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
+                    'last_completed_date'] else None
             )
-            task.completed = row['completed']
-            task.priority = row['priority']
-            task.is_important = row['is_important']
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
-            task.categories = row['categories'].split(',') if row['categories'] else []
-            task.recurring = row['recurring']
-            task.recur_every = row['recur_every']
             tasks.append(task)
         return tasks
 
@@ -253,29 +259,30 @@ class TaskListManager:
     def add_task(self, task, list_name):
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (list_name, task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
-             task.is_important, task.added_date_time.isoformat(), ','.join(task.categories), task.recurring,
-             task.recur_every)
+            "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every, last_completed_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
+             int(task.is_important), task.added_date_time.isoformat(), ','.join(task.categories), int(task.recurring),
+             task.recur_every, task.last_completed_date.isoformat() if task.last_completed_date else None)
         )
         self.conn.commit()
         task.id = cursor.lastrowid
-
-    def remove_task(self, task):
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM tasks WHERE id=?", (task.id,))
-        self.conn.commit()
 
     def update_task(self, task):
         cursor = self.conn.cursor()
         cursor.execute("""
             UPDATE tasks
-            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?
+            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?
             WHERE id=?
         """, (
-            task.title, task.description, task.due_date, task.due_time, task.completed, task.priority,
-            task.is_important, ','.join(task.categories), task.recurring, task.recur_every, task.id)
+            task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
+            int(task.is_important), ','.join(task.categories), int(task.recurring), task.recur_every,
+            task.last_completed_date.isoformat() if task.last_completed_date else None, task.id)
                        )
+        self.conn.commit()
+
+    def remove_task(self, task):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM tasks WHERE id=?", (task.id,))
         self.conn.commit()
 
     def update_task_list(self, task_list):
@@ -309,6 +316,36 @@ class TaskListManager:
 
     def get_task_list_count(self):
         return len(self.task_lists)
+
+    def manage_recurring_tasks(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE recurring=1")
+        rows = cursor.fetchall()
+
+        for row in rows:
+            task = Task(
+                title=row['title'],
+                description=row['description'],
+                due_date=row['due_date'],
+                due_time=row['due_time'],
+                task_id=row['id'],
+                is_important=bool(row['is_important']),
+                priority=row['priority'],
+                completed=bool(row['completed']),
+                categories=row['categories'].split(',') if row['categories'] else [],
+                recurring=bool(row['recurring']),
+                recur_every=row['recur_every'],
+                last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
+                    'last_completed_date'] else None
+            )
+            task.added_date_time = datetime.fromisoformat(row['added_date_time'])
+
+            if task.completed and task.recurring:
+                # Calculate the new due date
+                new_due_date = datetime.strptime(task.due_date, '%Y-%m-%d') + timedelta(days=task.recur_every)
+                task.due_date = new_due_date.strftime('%Y-%m-%d')
+                task.completed = False  # Reset completion status
+                self.update_task(task)
 
     def __del__(self):
         self.conn.close()

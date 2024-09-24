@@ -100,6 +100,8 @@ class TaskWidget(QWidget):
                 self.task.due_time = task_data["due_time"]
                 self.task.is_important = task_data["is_important"]
                 self.task.priority = task_data["priority"]
+                self.task.recurring = task_data["recurring"]
+                self.task.recur_every = task_data["recur_every"]
                 self.task_list_widget.task_list.update_task(self.task)
                 self.task_list_widget.load_tasks()
         except Exception as e:
@@ -109,6 +111,9 @@ class TaskWidget(QWidget):
         self.task.completed = bool(state)
         self.task_list_widget.task_list.update_task(self.task)
         self.task_list_widget.load_tasks()
+
+        # Update the history dock in the parent window
+        self.task_list_widget.parent.history_dock.update_history()
 
     def mark_important(self):
         if self.radio_button.isChecked():
@@ -122,10 +127,12 @@ class TaskWidget(QWidget):
 
 
 class TaskListWidget(QListWidget):
-    def __init__(self, task_list_name, manager, pin, queue, stack):
+    def __init__(self, task_list_name, parent, pin, queue, stack):
         super().__init__()
         self.task_list_name = task_list_name
-        self.task_list = TaskList(task_list_name, manager, pin, queue, stack)
+        self.parent = parent
+        self.manager = self.parent.task_manager
+        self.task_list = TaskList(task_list_name, self.manager, pin, queue, stack)
         self.setup_ui()
         self.load_tasks()
 
@@ -251,7 +258,7 @@ class TaskListCollection(QListWidget):
 
             self.addItem(task_list_name)
             self.parent.task_manager.add_task_list(task_list_name, pin=pin, queue=queue, stack=stack)
-            task_list_widget = TaskListWidget(task_list_name, self.parent.task_manager, pin, queue, stack)
+            task_list_widget = TaskListWidget(task_list_name, self.parent, pin, queue, stack)
             self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
             self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
             self.parent.stacked_task_list.stack_widget.setCurrentWidget(task_list_widget)
@@ -446,7 +453,8 @@ class TaskListDockStacked(QDockWidget):
     def __init__(self, parent=None):
         super().__init__("Tasks", parent)
         self.priority_filter = False
-        self.task_manager = parent.task_manager
+        self.parent = parent
+        self.task_manager = self.parent.task_manager
         self.set_allowed_areas()
         self.setup_ui()
 
@@ -471,17 +479,17 @@ class TaskListDockStacked(QDockWidget):
     def setup_stack_widget(self):
         self.stack_widget = QStackedWidget()
         self.layout.addWidget(self.stack_widget)
-        QApplication.instance().focusChanged.connect(self.on_focus_changed)
+        # QApplication.instance().focusChanged.connect(self.on_focus_changed)
 
-    def on_focus_changed(self, old, new):
-        if self.isAncestorOf(new):
-            print("Dock widget is in focus")
-        else:
-            print("Dock widget is not in focus")
+    # def on_focus_changed(self, old, new):
+    #     if self.isAncestorOf(new):
+    #         print("Dock widget is in focus")
+    #     else:
+    #         print("Dock widget is not in focus")
 
     def add_task(self):
         current_task_list_widget = self.get_current_task_list_widget()
-        print(current_task_list_widget)
+        # print(current_task_list_widget)
         # if not current_task_list_widget:
         #     return
         self.show_add_task_dialog(current_task_list_widget)
@@ -495,12 +503,16 @@ class TaskListDockStacked(QDockWidget):
 
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 task_data = dialog.get_task_data()
+                print(task_data["recur_every"])
                 task = Task(
                     title=task_data["title"],
                     description=task_data["description"],
                     due_date=task_data["due_date"],
                     due_time=task_data["due_time"],
-                    is_important=task_data["is_important"]
+                    is_important=task_data["is_important"],
+                    priority=task_data["priority"],
+                    recurring=task_data["recurring"],
+                    recur_every=task_data["recur_every"]
                 )
                 task_list_widget.task_list.add_task(task)
                 task_list_widget.load_tasks()
@@ -586,9 +598,10 @@ class TaskListDockStacked(QDockWidget):
 class TaskListDock(QDockWidget):
     def __init__(self, task_list_name, parent=None):
         super().__init__(task_list_name, parent)
-        self.task_list_widget = TaskListWidget(task_list_name, parent.task_manager, False, False, False)
+        self.task_list_widget = TaskListWidget(task_list_name, parent, False, False, False)
         self.priority_filter = False
-        self.task_manager = parent.task_manager
+        self.parent = parent
+        self.task_manager = self.parent.task_manager
         self.set_allowed_areas()
         self.setup_ui()
 
@@ -723,6 +736,7 @@ class HistoryDock(QDockWidget):
             self.update_history()
 
     def update_history(self):
+        print("update history")
         self.history_list.clear()
         for task_list_info in self.parent.task_manager.get_task_lists():
             task_list = TaskList(task_list_info["list_name"], self.parent.task_manager, task_list_info["pin"],
