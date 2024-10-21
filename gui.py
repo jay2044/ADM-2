@@ -193,20 +193,27 @@ class MainWindow(QMainWindow):
     def dropEvent(self, event):
         try:
             if event.source() == self.task_list_collection.tree_widget:
-                print("yes")
-                # Map the global position of the drop event to the tree_widget's coordinates
-                # local_pos = self.task_list_collection.tree_widget.mapFromGlobal(event.position().toPoint())
-                # print(local_pos)
-                # task_list_item = self.task_list_collection.tree_widget.itemAt(local_pos)
                 task_list_item = self.task_list_collection.tree_widget.currentItem()
-                print(task_list_item)
                 if task_list_item and task_list_item.parent():
                     task_list_name = task_list_item.text(0)
                     dock = TaskListDock(task_list_name, self)
-                    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-                    dock.move(self.mapToGlobal(event.position().toPoint()))
+                    drop_pos = event.position().toPoint()
+
+                    # Determine the dock area based on the drop position
+                    if drop_pos.x() < self.width() // 3:
+                        area = Qt.DockWidgetArea.LeftDockWidgetArea
+                    elif drop_pos.x() > (2 * self.width()) // 3:
+                        area = Qt.DockWidgetArea.RightDockWidgetArea
+                    elif drop_pos.y() < self.height() // 3:
+                        area = Qt.DockWidgetArea.TopDockWidgetArea
+                    else:
+                        area = Qt.DockWidgetArea.BottomDockWidgetArea
+
+                    self.addDockWidget(area, dock)
                     dock.show()
-                event.accept()
+                    event.accept()
+                else:
+                    event.ignore()
             else:
                 event.ignore()
         except Exception as e:
