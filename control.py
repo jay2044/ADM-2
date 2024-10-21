@@ -392,4 +392,3 @@ class EditTaskDialog(QDialog):
     def delete_task_button_action(self):
         self.task_list_widget.delete_task(self.task)
         self.accept()
-

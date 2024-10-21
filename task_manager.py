@@ -286,7 +286,8 @@ class TaskListManager:
                 categories=row['categories'].split(',') if row['categories'] else [],
                 recurring=bool(row['recurring']),
                 recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
-                last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row['last_completed_date'] else None,
+                last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
+                    'last_completed_date'] else None,
                 list_name=row['list_name']
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
@@ -468,7 +469,8 @@ class TaskListManager:
                 categories=row['categories'].split(',') if row['categories'] else [],
                 recurring=bool(row['recurring']),
                 recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
-                last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row['last_completed_date'] else None,
+                last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
+                    'last_completed_date'] else None,
                 list_name=row['list_name']
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])

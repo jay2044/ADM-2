@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from task_manager import *
 
+
 class GlobalSignals(QObject):
     task_list_updated = pyqtSignal()  # Define a global signal
 
@@ -22,8 +23,6 @@ area_map = {
     "DockWidgetArea.TopDockWidgetArea": Qt.DockWidgetArea.TopDockWidgetArea,
     "DockWidgetArea.BottomDockWidgetArea": Qt.DockWidgetArea.BottomDockWidgetArea,
 }
-
-
 
 
 def setup_font(app):
@@ -103,7 +102,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
 
     def setup_calendar_dock(self):
-        self.calendar_dock = CalendarDock (self)
+        self.calendar_dock = CalendarDock(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.calendar_dock)
 
     def closeEvent(self, event):
@@ -119,7 +118,8 @@ class MainWindow(QMainWindow):
 
         for dock_widget in self.findChildren(TaskListDock):
             task_list_name = dock_widget.windowTitle()
-            self.settings.setValue(f"TaskListDock_{task_list_name}_geometry", json.dumps(self.saveDockWidgetGeometry(dock_widget)))
+            self.settings.setValue(f"TaskListDock_{task_list_name}_geometry",
+                                   json.dumps(self.saveDockWidgetGeometry(dock_widget)))
 
     def load_settings(self):
         self.restoreGeometry(self.settings.value("geometry", QByteArray()))
@@ -227,4 +227,3 @@ class MainWindow(QMainWindow):
         self.calendar_dock.update_calendar()
 
         print("Task list has been updated globally")
-
