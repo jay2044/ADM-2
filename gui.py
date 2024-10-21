@@ -7,6 +7,12 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from task_manager import *
 
+class GlobalSignals(QObject):
+    task_list_updated = pyqtSignal()  # Define a global signal
+
+
+global_signals = GlobalSignals()
+
 from control import *
 from widgets import *
 
@@ -16,6 +22,8 @@ area_map = {
     "DockWidgetArea.TopDockWidgetArea": Qt.DockWidgetArea.TopDockWidgetArea,
     "DockWidgetArea.BottomDockWidgetArea": Qt.DockWidgetArea.BottomDockWidgetArea,
 }
+
+
 
 
 def setup_font(app):
@@ -35,6 +43,11 @@ class MainWindow(QMainWindow):
         self.setup_ui(app)
         self.options()
         self.load_settings()
+        self.setAcceptDrops(True)
+        self.setup_signals()
+
+    def setup_signals(self):
+        global_signals.task_list_updated.connect(self.handle_task_list_update)
 
     def setup_ui(self, app):
         setup_font(app)
@@ -156,3 +169,38 @@ class MainWindow(QMainWindow):
         self.settings.clear()
         QMessageBox.information(self, "Settings Cleared",
                                 "All settings have been cleared. Please restart the application.")
+
+    def dragEnterEvent(self, event):
+        event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        try:
+            if event.source() == self.task_list_collection.tree_widget:
+                print("yes")
+                # Map the global position of the drop event to the tree_widget's coordinates
+                # local_pos = self.task_list_collection.tree_widget.mapFromGlobal(event.position().toPoint())
+                # print(local_pos)
+                # task_list_item = self.task_list_collection.tree_widget.itemAt(local_pos)
+                task_list_item = self.task_list_collection.tree_widget.currentItem()
+                print(task_list_item)
+                if task_list_item and task_list_item.parent():
+                    task_list_name = task_list_item.text(0)
+                    dock = TaskListDock(task_list_name, self)
+                    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+                    dock.move(self.mapToGlobal(event.position().toPoint()))
+                    dock.show()
+                event.accept()
+            else:
+                event.ignore()
+        except Exception as e:
+            print(f"Error in dropEvent: {e}")
+
+    def handle_task_list_update(self):
+        self.stacked_task_list.get_current_task_list_widget().load_tasks()
+        for dock_widget in self.findChildren(TaskListDock):
+            dock_widget.task_list_widget.load_tasks()
+        print("Task list has been updated globally")
+

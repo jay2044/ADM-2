@@ -4,6 +4,7 @@ from PyQt6.QtGui import *
 from datetime import datetime
 from task_manager import *
 from control import *
+from gui import global_signals
 
 
 class TaskWidget(QWidget):
@@ -103,7 +104,7 @@ class TaskWidget(QWidget):
                 self.task.recurring = task_data["recurring"]
                 self.task.recur_every = task_data["recur_every"]
                 self.task_list_widget.task_list.update_task(self.task)
-                self.task_list_widget.load_tasks()
+                global_signals.task_list_updated.emit()
         except Exception as e:
             print(f"Error in edit_task: {e}")
 
@@ -111,7 +112,7 @@ class TaskWidget(QWidget):
         try:
             self.task.completed = bool(state)
             self.task_list_widget.task_list.update_task(self.task)
-            self.task_list_widget.load_tasks()
+            global_signals.task_list_updated.emit()
 
             # Update the history dock in the parent window
             self.task_list_widget.parent.history_dock.update_history()
@@ -127,12 +128,13 @@ class TaskWidget(QWidget):
                 self.task.unmark_as_important()
                 self.task.priority = 0
             self.task_list_widget.task_list.update_task(self.task)
-            self.task_list_widget.load_tasks()
+            global_signals.task_list_updated.emit()
         except Exception as e:
             print(f"Error in mark_important: {e}")
 
 
 class TaskListWidget(QListWidget):
+
     def __init__(self, task_list_name, parent, pin, queue, stack):
         super().__init__()
         self.task_list_name = task_list_name
@@ -253,17 +255,6 @@ class TaskListCollection(QWidget):
         self.tree_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree_widget.expandAll()
         self.layout.addWidget(self.tree_widget)
-
-        # Add buttons for adding categories and task lists
-        # self.button_layout = QHBoxLayout()
-        # self.add_category_button = QPushButton("Add Category")
-        # self.add_category_button.clicked.connect(self.add_category)
-        # self.add_task_list_button = QPushButton("Add Task List")
-        # self.add_task_list_button.clicked.connect(self.add_task_list)
-        #
-        # self.button_layout.addWidget(self.add_category_button)
-        # self.button_layout.addWidget(self.add_task_list_button)
-        # self.layout.addLayout(self.button_layout)
 
     def load_task_lists(self):
         try:
@@ -785,7 +776,7 @@ class TaskListDockStacked(QDockWidget):
                     recur_every=task_data["recur_every"]
                 )
                 task_list_widget.task_list.add_task(task)
-                task_list_widget.load_tasks()
+                global_signals.task_list_updated.emit()
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
@@ -866,6 +857,7 @@ class TaskListDockStacked(QDockWidget):
 
 
 class TaskListDock(QDockWidget):
+
     def __init__(self, task_list_name, parent=None):
         super().__init__(task_list_name, parent)
         self.task_list_widget = TaskListWidget(task_list_name, parent, False, False, False)
@@ -913,7 +905,7 @@ class TaskListDock(QDockWidget):
                     is_important=task_data["is_important"]
                 )
                 task_list_widget.task_list.add_task(task)
-                task_list_widget.load_tasks()
+                global_signals.task_list_updated.emit()
         except Exception as e:
             print(f"An error occurred while adding a task: {e}")
 
@@ -1113,7 +1105,7 @@ class HistoryDock(QDockWidget):
                 list_widget_item = self.parent.task_list_collection.item(i)
                 if list_widget_item.text() == task.list_name:
                     task_list_widget = self.parent.hash_to_widget[hash(task.list_name)]
-                    task_list_widget.load_tasks()
+                    global_signals.task_list_updated.emit()
                     break
 
 
