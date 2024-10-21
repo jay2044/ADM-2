@@ -134,13 +134,12 @@ class TaskWidget(QWidget):
 
 
 class TaskListWidget(QListWidget):
-
-    def __init__(self, task_list_name, parent, pin, queue, stack):
+    def __init__(self, task_list, parent):
         super().__init__()
-        self.task_list_name = task_list_name
+        self.task_list = task_list
+        self.task_list_name = task_list.list_name
         self.parent = parent
         self.manager = self.parent.task_manager
-        self.task_list = TaskList(task_list_name, self.manager, pin, queue, stack)
         self.setup_ui()
         self.load_tasks()
 
@@ -268,6 +267,7 @@ class TaskListCollection(QWidget):
             )
 
             for category_name, category_info in sorted_categories:
+                # Create QTreeWidgetItem for the category
                 category_item = QTreeWidgetItem(self.tree_widget)
                 category_item.setText(0, category_name)
                 category_item.setExpanded(True)
@@ -281,22 +281,31 @@ class TaskListCollection(QWidget):
                 )
 
                 for task_list_info in sorted_task_lists:
+                    task_list_name = task_list_info["list_name"]
+
+                    # Create QTreeWidgetItem for the task list
                     task_list_item = QTreeWidgetItem(category_item)
-                    task_list_item.setText(0, task_list_info["list_name"])
+                    task_list_item.setText(0, task_list_name)
                     task_list_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'task_list', 'info': task_list_info})
                     task_list_item.setFlags(task_list_item.flags() | Qt.ItemFlag.ItemIsEditable)
 
-                    # Add task list widget to the stack widget if not already added
-                    task_list_name = task_list_info["list_name"]
-                    hash_key = hash(task_list_name)
-                    if hash_key not in self.parent.hash_to_widget:
-                        task_list_widget = TaskListWidget(
+                    # Retrieve or create TaskList instance
+                    if task_list_name in self.parent.task_lists:
+                        task_list = self.parent.task_lists[task_list_name]
+                    else:
+                        task_list = TaskList(
                             task_list_name,
-                            self.parent,
+                            self.task_manager,
                             task_list_info["pin"],
                             task_list_info["queue"],
                             task_list_info["stack"]
                         )
+                        self.parent.task_lists[task_list_name] = task_list
+
+                    # Add TaskListWidget to the stack widget if not already added
+                    hash_key = hash(task_list_name)
+                    if hash_key not in self.parent.hash_to_widget:
+                        task_list_widget = TaskListWidget(task_list, self.parent)
                         self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
                         self.parent.hash_to_widget[hash_key] = task_list_widget
 
@@ -369,7 +378,7 @@ class TaskListCollection(QWidget):
                 self.categories = self.task_manager.get_categories()
                 self.load_task_lists()
                 # Add to the stack widget
-                task_list_widget = TaskListWidget(task_list_name, self.parent, False, False, False)
+                task_list_widget = TaskListWidget(self.parent.task_lists[task_list_name], self.parent)
                 self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
                 self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
                 self.parent.stacked_task_list.stack_widget.setCurrentWidget(task_list_widget)
@@ -577,7 +586,7 @@ class TaskListCollection(QWidget):
             self.categories[category_name].append({"list_name": new_name, "pin": False, "queue": False, "stack": False})
             self.load_task_lists()
             # Add to the stack widget
-            task_list_widget = TaskListWidget(new_name, self.parent, False, False, False)
+            task_list_widget = TaskListWidget(self.parent.task_lists[task_list_name], self.parent)
             self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
             self.parent.hash_to_widget[hash(new_name)] = task_list_widget
             self.parent.stacked_task_list.stack_widget.setCurrentWidget(task_list_widget)
@@ -857,13 +866,22 @@ class TaskListDockStacked(QDockWidget):
 
 
 class TaskListDock(QDockWidget):
-
     def __init__(self, task_list_name, parent=None):
         super().__init__(task_list_name, parent)
-        self.task_list_widget = TaskListWidget(task_list_name, parent, False, False, False)
-        self.priority_filter = False
         self.parent = parent
         self.task_manager = self.parent.task_manager
+
+        # Retrieve the shared TaskList instance
+        if task_list_name in self.parent.task_lists:
+            task_list = self.parent.task_lists[task_list_name]
+        else:
+            # Should not happen, but handle it just in case
+            task_list = TaskList(task_list_name, self.task_manager, False, False, False)
+            self.parent.task_lists[task_list_name] = task_list
+
+        # Use the shared TaskList instance to create TaskListWidget
+        self.task_list_widget = TaskListWidget(task_list, self.parent)
+        self.priority_filter = False
         self.set_allowed_areas()
         self.setup_ui()
 

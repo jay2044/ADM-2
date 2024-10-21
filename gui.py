@@ -39,6 +39,7 @@ class MainWindow(QMainWindow):
     def __init__(self, app):
         super().__init__()
         self.task_manager = TaskListManager()
+        self.task_lists = {}
         self.settings = QSettings("123", "ADM")
         self.setup_ui(app)
         self.options()
@@ -199,8 +200,18 @@ class MainWindow(QMainWindow):
             print(f"Error in dropEvent: {e}")
 
     def handle_task_list_update(self):
-        self.stacked_task_list.get_current_task_list_widget().load_tasks()
+        # Update all open TaskListDocks
         for dock_widget in self.findChildren(TaskListDock):
             dock_widget.task_list_widget.load_tasks()
+
+        # Update the current widget in the stacked task list
+        current_widget = self.stacked_task_list.get_current_task_list_widget()
+        if current_widget:
+            current_widget.load_tasks()
+
+        # Update other components if necessary
+        self.history_dock.update_history()
+        self.calendar_dock.update_calendar()
+
         print("Task list has been updated globally")
 
