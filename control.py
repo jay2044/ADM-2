@@ -8,6 +8,7 @@ class CustomDateEdit(QDateEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCalendarPopup(True)
+        self.setObjectName("customDateEdit")
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
@@ -97,6 +98,7 @@ class AddTaskDialog(QDialog):
         weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         for day in weekdays:
             checkbox = QCheckBox(day)
+            checkbox.setObjectName(f"{day}Checkbox")  # For each day in the loop
             self.weekday_checkboxes.append(checkbox)
             self.specific_weekdays_layout.addWidget(checkbox)
 
@@ -121,6 +123,21 @@ class AddTaskDialog(QDialog):
 
         # Set focus on the title edit when the dialog opens
         self.title_edit.setFocus()
+
+        self.setObjectName("addTaskDialog")
+        self.title_edit.setObjectName("titleEdit")
+        self.description_edit.setObjectName("descriptionEdit")
+        self.due_time_edit.setObjectName("dueTimeEdit")
+        self.priority_spinbox.setObjectName("prioritySpinBox")
+        self.important_checkbox.setObjectName("importantCheckbox")
+        self.recurring_checkbox.setObjectName("recurringCheckbox")
+        self.recurrence_options_widget.setObjectName("recurrenceOptionsWidget")
+        self.every_n_days_radio.setObjectName("everyNDaysRadio")
+        self.specific_weekdays_radio.setObjectName("specificWeekdaysRadio")
+        self.every_n_days_widget.setObjectName("everyNDaysWidget")
+        self.every_n_days_spinbox.setObjectName("everyNDaysSpinBox")
+        self.specific_weekdays_widget.setObjectName("specificWeekdaysWidget")
+        self.buttons.setObjectName("dialogButtons")
 
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
@@ -282,6 +299,7 @@ class EditTaskDialog(QDialog):
         }
         for day in weekdays:
             checkbox = QCheckBox(day)
+            checkbox.setObjectName(f"{day}Checkbox")  # For each day in the loop
             self.weekday_checkboxes.append(checkbox)
             self.specific_weekdays_layout.addWidget(checkbox)
 
@@ -332,6 +350,12 @@ class EditTaskDialog(QDialog):
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         self.layout.addRow(self.buttons)
+
+        self.setObjectName("editTaskDialog")
+        self.title_edit.setObjectName("titleEdit")
+        self.description_edit.setObjectName("descriptionEdit")
+        self.due_date_edit.setObjectName("dueDateEdit")
+        self.due_time_edit.setObjectName("dueTimeEdit")
 
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:

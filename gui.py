@@ -68,8 +68,10 @@ class MainWindow(QMainWindow):
         top_left_point = center_point - QPoint(window_width // 2, window_height // 2)
         self.move(top_left_point)
         self.central_widget = QWidget()
+        self.central_widget.setObjectName("centralWidget")  # Set objectName for the central widget
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout()
+        self.main_layout.setObjectName("mainLayout")  # Set objectName for main layout
         self.central_widget.setLayout(self.main_layout)
 
     def options(self):
@@ -79,25 +81,28 @@ class MainWindow(QMainWindow):
 
     def setup_layouts(self):
         self.left_widget = QWidget()
+        self.left_widget.setObjectName("leftWidget")  # Set objectName for the left widget
         self.left_layout = QVBoxLayout()
+        self.left_layout.setObjectName("leftLayout")  # Set objectName for the left layout
         self.left_widget.setLayout(self.left_layout)
         self.main_layout.addWidget(self.left_widget)
 
     def setup_left_widgets(self):
         self.hash_to_widget = {}  # List of task list widgets.
         self.task_list_collection = TaskListCollection(self)
+        self.task_list_collection.setObjectName("taskListCollection")  # Set objectName for task list collection
         self.left_top_toolbar = TaskListManagerToolbar(self)
+        self.left_top_toolbar.setObjectName("leftTopToolbar")  # Set objectName for toolbar
         self.left_layout.addWidget(self.left_top_toolbar)
         self.left_layout.addWidget(self.task_list_collection)
         self.info_bar = InfoBar(self)
+        self.info_bar.setObjectName("infoBar")  # Set objectName for info bar
         self.left_layout.addWidget(self.info_bar)
 
     def setup_right_widgets(self):
         self.stacked_task_list = TaskListDockStacked(self)
         self.stacked_task_list.setObjectName("stackedTaskListDock")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
-
-        # self.task_list_collection.load_task_lists()
 
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)
