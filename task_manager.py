@@ -438,7 +438,7 @@ class TaskListManager:
                 UPDATE task_lists
                 SET pin = ?, queue = ?, stack = ?
                 WHERE list_name = ?
-            """, (int(task_list["pin"]), int(task_list["queue"]), int(task_list["stack"]), task_list["list_name"]))
+            """, (int(task_list.pin), int(task_list.queue), int(task_list.stack), task_list.list_name))
             self.conn.commit()
         except Exception as e:
             print(f"Error in update_task_list: {e}")
