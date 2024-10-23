@@ -524,23 +524,30 @@ class TaskListCollection(QWidget):
         new_name, ok = QInputDialog.getText(self, "Rename Task List", "Enter new name:", text=old_name)
         if ok and new_name.strip():
             new_name = new_name.strip()
-            if any(new_name == task_list["list_name"] for task_lists in self.categories.values() for task_list in
-                   task_lists):
+
+            # Check for duplicate task list name
+            if any(new_name == task_list["list_name"] for category in self.categories.values() for task_list in
+                   category["task_lists"]):
                 QMessageBox.warning(self, "Duplicate Task List", "A task list with this name already exists.")
                 return
-            # Update in categories
+
+            # Update task list name in the categories structure
             category_name = item.parent().text(0)
             for task_list in self.categories[category_name]['task_lists']:
                 if task_list["list_name"] == old_name:
                     task_list["list_name"] = new_name
                     break
 
-            # Update in task manager
+            # Update in task manager (database)
             self.task_manager.change_task_list_name_by_name(old_name, new_name)
+
             # Update in UI
             item.setText(0, new_name)
+
             # Update hash_to_widget
             self.parent.hash_to_widget[hash(new_name)] = self.parent.hash_to_widget.pop(hash(old_name))
+
+            # Reload task lists and select the renamed task list
             self.load_task_lists()
             self.select_task_list_in_tree(new_name)
 
@@ -559,8 +566,7 @@ class TaskListCollection(QWidget):
         new_name, ok = QInputDialog.getText(self, "Duplicate Task List", "Enter new name:")
         if ok and new_name.strip():
             new_name = new_name.strip()
-            if any(new_name == task_list["list_name"] for task_lists in self.categories.values() for task_list in
-                   task_lists):
+            if any(new_name == task_list["list_name"] for task_lists in self.categories.values() for task_list in task_lists['task_lists']):
                 QMessageBox.warning(self, "Duplicate Task List", "A task list with this name already exists.")
                 return
             # Duplicate the task list
@@ -583,7 +589,7 @@ class TaskListCollection(QWidget):
                 )
                 self.task_manager.add_task(new_task, new_name)
             # Add to categories
-            self.categories[category_name].append({"list_name": new_name, "pin": False, "queue": False, "stack": False})
+            self.categories[category_name]['task_lists'].append({"list_name": new_name, "pin": False, "queue": False, "stack": False})
             self.load_task_lists()
             # Add to the stack widget
             task_list_widget = TaskListWidget(self.parent.task_lists[task_list_name], self.parent)
@@ -601,7 +607,7 @@ class TaskListCollection(QWidget):
             # Remove from categories
             category_name = item.parent().text(0)
             self.categories[category_name] = [task_list for task_list in self.categories[category_name] if
-                                              task_list["list_name"] != task_list_name]
+                                              task_list != task_list_name]
             # Remove from task manager
             self.task_manager.remove_task_list(task_list_name)
             # Remove from UI
@@ -656,31 +662,48 @@ class TaskListCollection(QWidget):
 
     def delete_category(self, item):
         category_name = item.text(0)
+
         if category_name == "Uncategorized":
             QMessageBox.warning(self, "Invalid Operation", "Cannot delete the 'Uncategorized' category.")
             return
+
         reply = QMessageBox.question(self, 'Delete Category',
                                      f'Are you sure you want to delete the category "{category_name}" and all its task lists?',
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
+
         if reply == QMessageBox.StandardButton.Yes:
-            # Remove all task lists in the category
-            for task_list_info in self.categories[category_name]:
-                task_list_name = task_list_info["list_name"]
-                # Remove from task manager
-                self.task_manager.remove_task_list(task_list_name)
-                # Remove from stack widget
-                hash_key = hash(task_list_name)
-                if hash_key in self.parent.hash_to_widget:
-                    widget_to_remove = self.parent.hash_to_widget.pop(hash_key)
-                    self.parent.stacked_task_list.stack_widget.removeWidget(widget_to_remove)
-                    widget_to_remove.deleteLater()
-            # Remove category
-            del self.categories[category_name]
-            # Remove from UI
-            index = self.tree_widget.indexOfTopLevelItem(item)
-            self.tree_widget.takeTopLevelItem(index)
-            self.load_task_lists()
+            try:
+                # Remove all task lists in the category
+                task_lists_in_category = self.categories.get(category_name, {}).get("task_lists", [])
+                for task_list_info in task_lists_in_category:
+                    task_list_name = task_list_info["list_name"]
+
+                    # Remove from task manager
+                    self.task_manager.remove_task_list(task_list_name)
+
+                    # Remove from stack widget
+                    hash_key = hash(task_list_name)
+                    if hash_key in self.parent.hash_to_widget:
+                        widget_to_remove = self.parent.hash_to_widget.pop(hash_key)
+                        self.parent.stacked_task_list.stack_widget.removeWidget(widget_to_remove)
+                        widget_to_remove.deleteLater()
+
+                # Remove category from the database
+                self.task_manager.remove_category(category_name)
+
+                # Remove category from the data structure
+                del self.categories[category_name]
+
+                # Remove category from UI (tree widget)
+                index = self.tree_widget.indexOfTopLevelItem(item)
+                self.tree_widget.takeTopLevelItem(index)
+
+                # Reload task lists to refresh the UI
+                self.load_task_lists()
+
+            except Exception as e:
+                print(f"Error in delete_category: {e}")
 
 
 class InfoBar(QWidget):

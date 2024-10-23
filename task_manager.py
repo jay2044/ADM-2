@@ -307,6 +307,12 @@ class TaskListManager:
         # Reload categories
         self.categories = self.load_categories()
 
+    def remove_category(self, category_name):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM categories WHERE name=?", (category_name,))
+        self.conn.commit()
+        self.categories = self.load_categories()  # Refresh in-memory categories after removal
+
     def get_categories(self):
         self.categories = self.load_categories()
         return self.categories
@@ -338,7 +344,7 @@ class TaskListManager:
             self.task_lists = [task_list for task_list in self.task_lists if task_list["list_name"] != list_name]
             # Remove from categories
             for category_name, task_lists in self.categories.items():
-                self.categories[category_name] = [tl for tl in task_lists if tl["list_name"] != list_name]
+                self.categories[category_name] = [tl for tl in task_lists if tl != list_name]
 
     def change_task_list_name(self, task_list, new_name):
         cursor = self.conn.cursor()
@@ -367,26 +373,31 @@ class TaskListManager:
 
     def change_task_list_name_by_name(self, old_name, new_name):
         cursor = self.conn.cursor()
+
+        # Update task list name in task_lists table
         cursor.execute("""
             UPDATE task_lists
             SET list_name = ?
             WHERE list_name = ?
         """, (new_name, old_name))
+
+        # Update task list name in tasks table
         cursor.execute("""
             UPDATE tasks
             SET list_name = ?
             WHERE list_name = ?
         """, (new_name, old_name))
+
         self.conn.commit()
-        for tl in self.task_lists:
-            if tl["list_name"] == old_name:
-                tl["list_name"] = new_name
-                break
+
+        # Update in-memory task lists
+        self.task_lists = [new_name if tl == old_name else tl for tl in self.task_lists]
+
         # Update in categories
-        for category_name, task_lists in self.categories.items():
-            for tl in task_lists:
-                if tl["list_name"] == old_name:
-                    tl["list_name"] = new_name
+        for category_name, task_list_info in self.categories.items():
+            for task_list in task_list_info['task_lists']:
+                if task_list["list_name"] == old_name:
+                    task_list["list_name"] = new_name
                     break
 
     def add_task(self, task, list_name):
