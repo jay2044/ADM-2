@@ -17,6 +17,9 @@ class TaskWidget(QWidget):
         self.setup_ui()
         self.setup_timer()
 
+        self.checkbox.setObjectName("taskCheckbox")
+        self.radio_button.setObjectName("importantRadioButton")
+
     def setup_ui(self):
         self.layout = QHBoxLayout()
         self.setLayout(self.layout)
@@ -220,6 +223,8 @@ class TaskListManagerToolbar(QToolBar):
         self.add_action("T", parent, parent.toggle_stacked_task_list)
         self.add_action("H", parent, parent.toggle_history)
         self.add_action("C", parent, parent.toggle_calendar)
+
+        self.setObjectName("taskListManagerToolbar")
 
     def add_action(self, text, parent, function):
         action = QAction(text, parent)
@@ -750,6 +755,10 @@ class TaskListDockStacked(QDockWidget):
         self.set_allowed_areas()
         self.setup_ui()
 
+        self.setObjectName("taskListDockStacked")
+        self.toolbar.setObjectName("taskListToolbar")
+        self.stack_widget.setObjectName("stackWidget")
+
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
@@ -910,6 +919,10 @@ class TaskListDock(QDockWidget):
         self.set_allowed_areas()
         self.setup_ui()
 
+        self.setObjectName(f"TaskListDock_{self.task_list_name}")
+        self.toolbar.setObjectName("taskListToolbarDock")
+        self.task_list_widget.setObjectName("taskListWidgetDock")
+
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
@@ -1043,6 +1056,10 @@ class HistoryDock(QDockWidget):
 
         self.update_history()
 
+        self.setObjectName("historyDock")
+        self.search_bar.setObjectName("historySearchBar")
+        self.history_tree.setObjectName("historyTree")
+
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
@@ -1160,6 +1177,10 @@ class CalendarDock(QDockWidget):
 
         self.set_allowed_areas()
         self.setup_ui()
+
+        self.setObjectName("calendarDock")
+        self.calendar.setObjectName("calendarWidget")
+        self.task_list_widget.setObjectName("calendarTaskListWidget")
 
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
