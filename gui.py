@@ -114,61 +114,32 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def save_settings(self):
-        settings = QSettings("YourApp", "YourAppSettings")
+        settings = QSettings("YourApp", "ADM")
         settings.setValue("mainWindowState", self.saveState())
 
-        # Save each dock widget's name and geometry
-        dock_widgets = []
-        for dock in self.findChildren(QDockWidget):
-            if dock.objectName().startswith("TaskListDock_"):
-                dock_widgets.append(dock.objectName())
-                settings.setValue(f"{dock.objectName()}_geometry", json.dumps(self.saveDockWidgetGeometry(dock)))
-
-        settings.setValue("dockWidgets", json.dumps(dock_widgets))
+        # Save list of dynamically added dock widgets
+        open_dock_widgets = []
+        for dock in self.findChildren(TaskListDock):
+            dock_info = {
+                'objectName': dock.objectName(),
+                'task_list_name': dock.task_list_name
+            }
+            open_dock_widgets.append(dock_info)
+        settings.setValue("openDockWidgets", json.dumps(open_dock_widgets))
 
     def load_settings(self):
-        settings = QSettings("YourApp", "YourAppSettings")
+        settings = QSettings("YourApp", "ADM")
+
+        # Recreate dynamically added dock widgets
+        open_dock_widgets = json.loads(settings.value("openDockWidgets", "[]"))
+        for dock_info in open_dock_widgets:
+            dock = TaskListDock(dock_info['task_list_name'], self)
+            dock.setObjectName(dock_info['objectName'])
+            dock.setWindowTitle(dock_info['task_list_name'])
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+        # Restore the main window state
         self.restoreState(settings.value("mainWindowState"))
-
-        # Restore dynamically added dock widgets
-        dock_widgets = json.loads(settings.value("dockWidgets", "[]"))
-        for dock_name in dock_widgets:
-            dock_geometry_str = settings.value(f"{dock_name}_geometry")
-            if dock_geometry_str:
-                dock_geometry = json.loads(dock_geometry_str)
-                task_list_name = "_".join(
-                    dock_name.split("_")[1:-1])  # Extracts the original task_list_name without the ID
-                dock = TaskListDock(task_list_name, self)
-                dock.setObjectName(dock_name)
-                self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-                self.restoreDockWidgetGeometry(dock, dock_geometry)
-
-    def restoreDockWidgetGeometry(self, dock_widget, geometry):
-        if not geometry or not isinstance(geometry, dict):
-            return
-
-        floating = geometry.get("floating", "false").lower() == "true"
-        dock_widget.setFloating(floating)
-
-        if floating:
-            pos = [int(x) for x in geometry.get("pos", "0,0").split(",")]
-            size = [int(x) for x in geometry.get("size", "100,100").split(",")]
-            dock_widget.resize(QSize(size[0], size[1]))
-            dock_widget.move(QPoint(pos[0], pos[1]))
-
-        area = area_map.get(geometry.get("area"), Qt.DockWidgetArea.RightDockWidgetArea)
-        self.addDockWidget(area, dock_widget)
-
-        dock_widget.setVisible(geometry.get("visible") == "True")
-
-    def saveDockWidgetGeometry(self, dock_widget):
-        return {
-            "pos": f"{dock_widget.pos().x()},{dock_widget.pos().y()}",
-            "size": f"{dock_widget.size().width()},{dock_widget.size().height()}",
-            "floating": str(dock_widget.isFloating()),
-            "area": str(self.dockWidgetArea(dock_widget)),
-            "visible": str(dock_widget.isVisible())
-        }
 
     def toggle_stacked_task_list(self):
         self.stacked_task_list.setVisible(not self.stacked_task_list.isVisible())
@@ -201,7 +172,6 @@ class MainWindow(QMainWindow):
                     unique_id = random.randint(1000, 9999)  # Generates a random 4-digit number
                     dock = TaskListDock(task_list_name, self)
                     dock.setObjectName(f"TaskListDock_{task_list_name}_{unique_id}")
-                    dock.setWindowTitle(task_list_name)
 
                     drop_pos = event.position().toPoint()
 

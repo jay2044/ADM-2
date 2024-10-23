@@ -893,6 +893,8 @@ class TaskListDock(QDockWidget):
         super().__init__(task_list_name, parent)
         self.parent = parent
         self.task_manager = self.parent.task_manager
+        self.task_list_name = task_list_name
+        self.setWindowTitle(task_list_name)
 
         # Retrieve the shared TaskList instance
         if task_list_name in self.parent.task_lists:
