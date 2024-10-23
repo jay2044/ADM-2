@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import random
 
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
@@ -93,16 +94,19 @@ class MainWindow(QMainWindow):
 
     def setup_right_widgets(self):
         self.stacked_task_list = TaskListDockStacked(self)
+        self.stacked_task_list.setObjectName("stackedTaskListDock")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
 
         # self.task_list_collection.load_task_lists()
 
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)
+        self.history_dock.setObjectName("historyDock")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
 
     def setup_calendar_dock(self):
         self.calendar_dock = CalendarDock(self)
+        self.calendar_dock.setObjectName("calendarDock")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.calendar_dock)
 
     def closeEvent(self, event):
@@ -110,38 +114,34 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def save_settings(self):
-        self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("windowState", self.saveState())
-        self.settings.setValue("rightDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.stacked_task_list)))
-        self.settings.setValue("historyDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.history_dock)))
-        self.settings.setValue("calendarDockGeometry", json.dumps(self.saveDockWidgetGeometry(self.calendar_dock)))
+        settings = QSettings("YourApp", "YourAppSettings")
+        settings.setValue("mainWindowState", self.saveState())
 
-        for dock_widget in self.findChildren(TaskListDock):
-            task_list_name = dock_widget.windowTitle()
-            self.settings.setValue(f"TaskListDock_{task_list_name}_geometry",
-                                   json.dumps(self.saveDockWidgetGeometry(dock_widget)))
+        # Save each dock widget's name and geometry
+        dock_widgets = []
+        for dock in self.findChildren(QDockWidget):
+            if dock.objectName().startswith("TaskListDock_"):
+                dock_widgets.append(dock.objectName())
+                settings.setValue(f"{dock.objectName()}_geometry", json.dumps(self.saveDockWidgetGeometry(dock)))
+
+        settings.setValue("dockWidgets", json.dumps(dock_widgets))
 
     def load_settings(self):
-        self.restoreGeometry(self.settings.value("geometry", QByteArray()))
+        settings = QSettings("YourApp", "YourAppSettings")
+        self.restoreState(settings.value("mainWindowState"))
 
-        stacked_task_list_geometry = json.loads(self.settings.value("rightDockGeometry", "{}"))
-        history_dock_geometry = json.loads(self.settings.value("historyDockGeometry", "{}"))
-        calendar_dock_geometry = json.loads(self.settings.value("calendarDockGeometry", "{}"))
-
-        self.restoreDockWidgetGeometry(self.stacked_task_list, stacked_task_list_geometry)
-        self.restoreDockWidgetGeometry(self.history_dock, history_dock_geometry)
-        self.restoreDockWidgetGeometry(self.calendar_dock, calendar_dock_geometry)
-
-        # Load TaskListDock widgets
-        for task_list_name in self.task_lists:
-            dock_geometry_str = self.settings.value(f"TaskListDock_{task_list_name}_geometry")
+        # Restore dynamically added dock widgets
+        dock_widgets = json.loads(settings.value("dockWidgets", "[]"))
+        for dock_name in dock_widgets:
+            dock_geometry_str = settings.value(f"{dock_name}_geometry")
             if dock_geometry_str:
                 dock_geometry = json.loads(dock_geometry_str)
+                task_list_name = "_".join(
+                    dock_name.split("_")[1:-1])  # Extracts the original task_list_name without the ID
                 dock = TaskListDock(task_list_name, self)
+                dock.setObjectName(dock_name)
                 self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
                 self.restoreDockWidgetGeometry(dock, dock_geometry)
-
-        self.restoreState(self.settings.value("windowState", QByteArray()))
 
     def restoreDockWidgetGeometry(self, dock_widget, geometry):
         if not geometry or not isinstance(geometry, dict):
@@ -196,7 +196,13 @@ class MainWindow(QMainWindow):
                 task_list_item = self.task_list_collection.tree_widget.currentItem()
                 if task_list_item and task_list_item.parent():
                     task_list_name = task_list_item.text(0)
+
+                    # Generate a random identifier for the object name
+                    unique_id = random.randint(1000, 9999)  # Generates a random 4-digit number
                     dock = TaskListDock(task_list_name, self)
+                    dock.setObjectName(f"TaskListDock_{task_list_name}_{unique_id}")
+                    dock.setWindowTitle(task_list_name)
+
                     drop_pos = event.position().toPoint()
 
                     # Determine the dock area based on the drop position
