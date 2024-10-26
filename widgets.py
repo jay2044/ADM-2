@@ -102,11 +102,22 @@ class TaskWidget(QWidget):
                 self.task.description = task_data["description"]
                 self.task.due_date = task_data["due_date"]
                 self.task.due_time = task_data["due_time"]
-                self.task.is_important = task_data["is_important"]
                 self.task.priority = task_data["priority"]
+                self.task.is_important = task_data["is_important"]
                 self.task.recurring = task_data["recurring"]
                 self.task.recur_every = task_data["recur_every"]
-                self.task_list_widget.task_list.update_task(self.task)
+                # Advanced Fields
+                self.task.status = task_data["status"]
+                self.task.estimate = task_data["estimate"]
+                self.task.count_required = task_data["count_required"]
+                self.task.count_completed = task_data["count_completed"]
+                self.task.dependencies = task_data["dependencies"]
+                self.task.deadline_flexibility = task_data["deadline_flexibility"]
+                self.task.effort_level = task_data["effort_level"]
+                self.task.resources = task_data["resources"]
+                self.task.notes = task_data["notes"]
+                self.task.time_logged = task_data["time_logged"]
+
                 global_signals.task_list_updated.emit()
         except Exception as e:
             print(f"Error in edit_task: {e}")
@@ -145,6 +156,8 @@ class TaskListWidget(QListWidget):
         self.manager = self.parent.task_manager
         self.setup_ui()
         self.load_tasks()
+
+        global_signals.task_list_updated.connect(self.load_tasks)
 
     def setup_ui(self):
         self.setDragEnabled(True)
@@ -804,8 +817,6 @@ class TaskListDockStacked(QDockWidget):
 
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 task_data = dialog.get_task_data()
-                print(task_data["recur_every"])
-                print(task_data["recur_every"])
                 task = Task(
                     title=task_data["title"],
                     description=task_data["description"],
@@ -814,7 +825,17 @@ class TaskListDockStacked(QDockWidget):
                     is_important=task_data["is_important"],
                     priority=task_data["priority"],
                     recurring=task_data["recurring"],
-                    recur_every=task_data["recur_every"]
+                    recur_every=task_data["recur_every"],
+                    status=task_data["status"],
+                    estimate=task_data["estimate"],
+                    count_required=task_data["count_required"],
+                    count_completed=task_data["count_completed"],
+                    dependencies=task_data["dependencies"],
+                    deadline_flexibility=task_data["deadline_flexibility"],
+                    effort_level=task_data["effort_level"],
+                    resources=task_data["resources"],
+                    notes=task_data["notes"],
+                    time_logged=task_data["time_logged"]
                 )
                 task_list_widget.task_list.add_task(task)
                 global_signals.task_list_updated.emit()
@@ -958,7 +979,20 @@ class TaskListDock(QDockWidget):
                     description=task_data["description"],
                     due_date=task_data["due_date"],
                     due_time=task_data["due_time"],
-                    is_important=task_data["is_important"]
+                    is_important=task_data["is_important"],
+                    priority=task_data["priority"],
+                    recurring=task_data["recurring"],
+                    recur_every=task_data["recur_every"],
+                    status=task_data["status"],
+                    estimate=task_data["estimate"],
+                    count_required=task_data["count_required"],
+                    count_completed=task_data["count_completed"],
+                    dependencies=task_data["dependencies"],
+                    deadline_flexibility=task_data["deadline_flexibility"],
+                    effort_level=task_data["effort_level"],
+                    resources=task_data["resources"],
+                    notes=task_data["notes"],
+                    time_logged=task_data["time_logged"]
                 )
                 task_list_widget.task_list.add_task(task)
                 global_signals.task_list_updated.emit()
