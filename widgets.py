@@ -1,3 +1,4 @@
+from PIL.ImageChops import offset
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
@@ -83,42 +84,33 @@ class TaskWidget(QWidget):
 
     def edit_task(self):
         try:
-            dialog = EditTaskDialog(self.task, self.task_list_widget, self)
-            dialog.adjustSize()
+            # Set parent to None to avoid dependency on main_window
+            dialog = TaskDetailDialog(self.task, self.task_list_widget, parent=None)
 
-            task_list_widget_geometry = self.task_list_widget.geometry()
-            dialog_width = int(task_list_widget_geometry.width() * 0.8)
-            dialog_height = task_list_widget_geometry.height()
-            dialog_x = self.task_list_widget.mapToGlobal(
-                QPoint(task_list_widget_geometry.width() - dialog_width, 0)).x()
-            dialog_y = self.task_list_widget.mapToGlobal(QPoint(0, 0)).y()
+            # Position the dialog to appear over the dock containing the task
+            dock_widget = self.task_list_widget
+            if dock_widget:
+                dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
+                dock_size = dock_widget.size()
 
-            dialog.resize(dialog_width, dialog_height)
-            dialog.move(dialog_x, dialog_y)
+                # Adjust to make it slightly narrower and aligned to the right of the dock
+                offset = int(0.2 * dock_size.width())
+                dialog_width = dock_size.width() - offset
+                dialog_height = dock_size.height()
+                dialog_x = dock_pos.x() + offset
+                dialog_y = dock_pos.y()
 
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                task_data = dialog.get_task_data()
-                self.task.title = task_data["title"]
-                self.task.description = task_data["description"]
-                self.task.due_date = task_data["due_date"]
-                self.task.due_time = task_data["due_time"]
-                self.task.priority = task_data["priority"]
-                self.task.is_important = task_data["is_important"]
-                self.task.recurring = task_data["recurring"]
-                self.task.recur_every = task_data["recur_every"]
-                # Advanced Fields
-                self.task.status = task_data["status"]
-                self.task.estimate = task_data["estimate"]
-                self.task.count_required = task_data["count_required"]
-                self.task.count_completed = task_data["count_completed"]
-                self.task.dependencies = task_data["dependencies"]
-                self.task.deadline_flexibility = task_data["deadline_flexibility"]
-                self.task.effort_level = task_data["effort_level"]
-                self.task.resources = task_data["resources"]
-                self.task.notes = task_data["notes"]
-                self.task.time_logged = task_data["time_logged"]
+                dialog.resize(dialog_width, dialog_height)
+                dialog.move(dialog_x, dialog_y)
 
-                global_signals.task_list_updated.emit()
+                # Set fixed size to prevent resizing
+                dialog.setFixedSize(dialog_width, dialog_height)
+            else:
+                # Default positioning if dock widget not found
+                dialog.adjustSize()
+                dialog.move(self.mapToGlobal(QPoint(0, 0)))
+
+            dialog.exec()
         except Exception as e:
             print(f"Error in edit_task: {e}")
 
@@ -584,7 +576,8 @@ class TaskListCollection(QWidget):
         new_name, ok = QInputDialog.getText(self, "Duplicate Task List", "Enter new name:")
         if ok and new_name.strip():
             new_name = new_name.strip()
-            if any(new_name == task_list["list_name"] for task_lists in self.categories.values() for task_list in task_lists['task_lists']):
+            if any(new_name == task_list["list_name"] for task_lists in self.categories.values() for task_list in
+                   task_lists['task_lists']):
                 QMessageBox.warning(self, "Duplicate Task List", "A task list with this name already exists.")
                 return
             # Duplicate the task list
@@ -607,7 +600,8 @@ class TaskListCollection(QWidget):
                 )
                 self.task_manager.add_task(new_task, new_name)
             # Add to categories
-            self.categories[category_name]['task_lists'].append({"list_name": new_name, "pin": False, "queue": False, "stack": False})
+            self.categories[category_name]['task_lists'].append(
+                {"list_name": new_name, "pin": False, "queue": False, "stack": False})
             self.load_task_lists()
             # Add to the stack widget
             task_list_widget = TaskListWidget(self.parent.task_lists[task_list_name], self.parent)
