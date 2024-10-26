@@ -12,7 +12,9 @@ def sanitize_name(name):
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
                  completed=False, categories=None, recurring=False, recur_every=None, last_completed_date=None,
-                 list_name=None):
+                 list_name=None, status="Not Started", estimate=0.0, count_required=0, count_completed=0,
+                 subtasks=None, dependencies=None, deadline_flexibility="Strict", effort_level="Medium",
+                 resources=None, notes="", time_logged=0.0, recurring_subtasks=None):
         self.id = task_id
         self.title = title
         self.description = description
@@ -28,6 +30,20 @@ class Task:
         self.last_completed_date = last_completed_date  # Datetime object
         self.list_name = list_name  # Added to keep track of the task's list name
 
+        # Advanced attributes
+        self.status = status  # e.g., 'Not Started', 'In Progress', etc.
+        self.estimate = estimate  # float, in hours or days
+        self.count_required = count_required  # int
+        self.count_completed = count_completed  # int
+        self.subtasks = subtasks if subtasks else []
+        self.dependencies = dependencies if dependencies else []
+        self.deadline_flexibility = deadline_flexibility  # 'Strict' or 'Flexible'
+        self.effort_level = effort_level  # 'Easy', 'Medium', 'Hard'
+        self.resources = resources if resources else []
+        self.notes = notes
+        self.time_logged = time_logged  # float, in hours
+        self.recurring_subtasks = recurring_subtasks if recurring_subtasks else []
+
     def mark_as_important(self):
         self.is_important = True
 
@@ -40,6 +56,7 @@ class Task:
     def set_completed(self):
         self.completed = True
         self.last_completed_date = datetime.now()
+        self.status = "Completed"
 
     def add_category(self, category):
         if category not in self.categories:
@@ -54,6 +71,35 @@ class Task:
 
     def get_unique_identifier(self):
         return f"{self.title}_{self.due_date}_{self.due_time}"
+
+    @property
+    def progress(self):
+        if self.count_required > 0:
+            return (self.count_completed / self.count_required) * 100
+        elif self.subtasks:
+            completed_subtasks = sum(1 for subtask in self.subtasks if subtask['completed'])
+            return (completed_subtasks / len(self.subtasks)) * 100
+        else:
+            return 0.0
+
+    def calculate_priority_weighting(self):
+        # Example implementation; you can adjust the weighting factors
+        priority_score = self.priority
+        if self.is_important:
+            priority_score += 2
+        if self.due_date:
+            days_until_due = (datetime.strptime(self.due_date, '%Y-%m-%d') - datetime.now()).days
+            if days_until_due <= 0:
+                priority_score += 5  # Overdue tasks get higher priority
+            elif days_until_due <= 3:
+                priority_score += 3
+            elif days_until_due <= 7:
+                priority_score += 1
+        if self.dependencies:
+            priority_score -= len(self.dependencies)  # Tasks with dependencies might have lower priority
+        if self.estimate:
+            priority_score += self.estimate / 10  # Longer tasks might be given slightly higher priority
+        return priority_score
 
     def __str__(self):
         return f"Task: {self.title}\nDue: {self.due_date} at {self.due_time}\nAdded on: {self.added_date_time}\nPriority: {self.priority}\nImportant: {self.is_important}\nCompleted: {self.completed}"
@@ -125,7 +171,7 @@ class TaskList:
 
     def get_tasks_filter_priority(self):
         filtered_tasks = [task for task in self.tasks if not task.completed]
-        return sorted(filtered_tasks, key=lambda task: task.priority, reverse=True)
+        return sorted(filtered_tasks, key=lambda task: task.calculate_priority_weighting(), reverse=True)
 
     def __str__(self):
         return '\n'.join(str(task) for task in self.tasks if not task.completed)
@@ -163,6 +209,7 @@ class TaskListManager:
             FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
         );
         """
+
         create_tasks_table = """
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,6 +226,18 @@ class TaskListManager:
             recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)),
             recur_every TEXT,
             last_completed_date TEXT,
+            status TEXT,
+            estimate REAL,
+            count_required INTEGER,
+            count_completed INTEGER,
+            subtasks TEXT,
+            dependencies TEXT,
+            deadline_flexibility TEXT,
+            effort_level TEXT,
+            resources TEXT,
+            notes TEXT,
+            time_logged REAL,
+            recurring_subtasks TEXT,
             FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
         );
         """
@@ -189,12 +248,29 @@ class TaskListManager:
             cursor.execute(create_tasks_table)
             self.conn.commit()
 
-            # Check if 'pin' column exists and add if necessary
-            cursor.execute("PRAGMA table_info(categories)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'pin' not in columns:
-                cursor.execute("ALTER TABLE categories ADD COLUMN pin BOOLEAN NOT NULL DEFAULT 0")
-                self.conn.commit()
+            # Check and add missing columns
+            cursor.execute("PRAGMA table_info(tasks)")
+            existing_columns = [column[1] for column in cursor.fetchall()]
+
+            required_columns = [
+                ('status', 'TEXT'),
+                ('estimate', 'REAL'),
+                ('count_required', 'INTEGER'),
+                ('count_completed', 'INTEGER'),
+                ('subtasks', 'TEXT'),
+                ('dependencies', 'TEXT'),
+                ('deadline_flexibility', 'TEXT'),
+                ('effort_level', 'TEXT'),
+                ('resources', 'TEXT'),
+                ('notes', 'TEXT'),
+                ('time_logged', 'REAL'),
+                ('recurring_subtasks', 'TEXT'),
+            ]
+
+            for column_name, column_def in required_columns:
+                if column_name not in existing_columns:
+                    cursor.execute(f"ALTER TABLE tasks ADD COLUMN {column_name} {column_def}")
+            self.conn.commit()
         except sqlite3.Error as e:
             print(f"Error creating tables: {e}")
 
@@ -288,7 +364,19 @@ class TaskListManager:
                 recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
                 last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
                     'last_completed_date'] else None,
-                list_name=row['list_name']
+                list_name=row['list_name'],
+                status=row['status'] if 'status' in row.keys() else "Not Started",
+                estimate=row['estimate'] if 'estimate' in row.keys() else 0.0,
+                count_required=row['count_required'] if 'count_required' in row.keys() else 0,
+                count_completed=row['count_completed'] if 'count_completed' in row.keys() else 0,
+                subtasks=json.loads(row['subtasks']) if row['subtasks'] else [],
+                dependencies=json.loads(row['dependencies']) if row['dependencies'] else [],
+                deadline_flexibility=row['deadline_flexibility'] if 'deadline_flexibility' in row.keys() else "Strict",
+                effort_level=row['effort_level'] if 'effort_level' in row.keys() else "Medium",
+                resources=json.loads(row['resources']) if row['resources'] else [],
+                notes=row['notes'] if 'notes' in row.keys() else "",
+                time_logged=row['time_logged'] if 'time_logged' in row.keys() else 0.0,
+                recurring_subtasks=json.loads(row['recurring_subtasks']) if row['recurring_subtasks'] else [],
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
             tasks.append(task)
@@ -403,11 +491,27 @@ class TaskListManager:
     def add_task(self, task, list_name):
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every, last_completed_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
-             int(task.is_important), task.added_date_time.isoformat(), ','.join(task.categories), int(task.recurring),
-             json.dumps(task.recur_every),
-             task.last_completed_date.isoformat() if task.last_completed_date else None)
+            """
+            INSERT INTO tasks (
+                list_name, title, description, due_date, due_time, completed, priority, is_important,
+                added_date_time, categories, recurring, recur_every, last_completed_date,
+                status, estimate, count_required, count_completed, subtasks, dependencies,
+                deadline_flexibility, effort_level, resources, notes, time_logged, recurring_subtasks
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed),
+                task.priority, int(task.is_important), task.added_date_time.isoformat(),
+                ','.join(task.categories), int(task.recurring), json.dumps(task.recur_every),
+                task.last_completed_date.isoformat() if task.last_completed_date else None,
+                task.status, task.estimate, task.count_required, task.count_completed,
+                json.dumps(task.subtasks) if task.subtasks else None,
+                json.dumps(task.dependencies) if task.dependencies else None,
+                task.deadline_flexibility, task.effort_level,
+                json.dumps(task.resources) if task.resources else None,
+                task.notes, task.time_logged,
+                json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None
+            )
         )
         self.conn.commit()
         task.id = cursor.lastrowid
@@ -416,13 +520,22 @@ class TaskListManager:
         cursor = self.conn.cursor()
         cursor.execute("""
             UPDATE tasks
-            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?
+            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
+                status=?, estimate=?, count_required=?, count_completed=?, subtasks=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?
             WHERE id=?
         """, (
             task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
             int(task.is_important), ','.join(task.categories), int(task.recurring),
             json.dumps(task.recur_every),
-            task.last_completed_date.isoformat() if task.last_completed_date else None, task.id)
+            task.last_completed_date.isoformat() if task.last_completed_date else None,
+            task.status, task.estimate, task.count_required, task.count_completed,
+            json.dumps(task.subtasks) if task.subtasks else None,
+            json.dumps(task.dependencies) if task.dependencies else None,
+            task.deadline_flexibility, task.effort_level,
+            json.dumps(task.resources) if task.resources else None,
+            task.notes, task.time_logged,
+            json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
+            task.id)
                        )
         self.conn.commit()
 
