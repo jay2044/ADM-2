@@ -293,14 +293,12 @@ class TaskDetailDialog(QDialog):
         # Scroll Area
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.main_layout.addWidget(self.scroll_area)
 
         # Container widget for scroll area content
         self.scroll_widget = QWidget()
         self.scroll_area.setWidget(self.scroll_widget)
-
-        # In setup_ui method
-        self.scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Layout for the scroll widget
         self.scroll_layout = QVBoxLayout(self.scroll_widget)
@@ -358,6 +356,10 @@ class TaskDetailDialog(QDialog):
         # Update task name
         self.task_name_label.setText(self.task.title)
 
+        # Completed Status
+        completed_label = QLabel(f"Completed: {'Yes' if self.task.completed else 'No'}")
+        self.details_layout.addWidget(completed_label)
+
         # Description
         if self.task.description:
             description_label = QLabel(self.task.description)
@@ -379,9 +381,67 @@ class TaskDetailDialog(QDialog):
         priority_label = QLabel(f"Priority: {self.task.priority}")
         self.details_layout.addWidget(priority_label)
 
+        # Is Important
+        important_label = QLabel(f"Important: {'Yes' if self.task.is_important else 'No'}")
+        self.details_layout.addWidget(important_label)
+
+        # Categories
+        if self.task.categories:
+            categories_label = QLabel("Categories: " + ", ".join(self.task.categories))
+            self.details_layout.addWidget(categories_label)
+
+        # Recurring
+        if self.task.recurring:
+            recurring_text = "Recurring: Yes"
+            if self.task.recur_every:
+                recur_details = ", ".join(str(x) for x in self.task.recur_every)
+                recurring_text += f" ({recur_details})"
+            recurring_label = QLabel(recurring_text)
+            self.details_layout.addWidget(recurring_label)
+
+        # Last Completed Date
+        if self.task.last_completed_date:
+            last_completed_label = QLabel(f"Last Completed: {self.task.last_completed_date.strftime('%Y-%m-%d')}")
+            self.details_layout.addWidget(last_completed_label)
+
+        # Added Date and Time
+        added_label = QLabel(f"Added On: {self.task.added_date_time.strftime('%Y-%m-%d %H:%M')}")
+        self.details_layout.addWidget(added_label)
+
+        # List Name
+        if self.task.list_name:
+            list_name_label = QLabel(f"List: {self.task.list_name}")
+            self.details_layout.addWidget(list_name_label)
+
         # Status
         status_label = QLabel(f"Status: {self.task.status}")
         self.details_layout.addWidget(status_label)
+
+        # Estimate
+        estimate_label = QLabel(f"Estimate: {self.task.estimate} hours")
+        self.details_layout.addWidget(estimate_label)
+
+        # Time Logged
+        time_logged_label = QLabel(f"Time Logged: {self.task.time_logged} hours")
+        self.details_layout.addWidget(time_logged_label)
+
+        # Deadline Flexibility
+        deadline_label = QLabel(f"Deadline Flexibility: {self.task.deadline_flexibility}")
+        self.details_layout.addWidget(deadline_label)
+
+        # Effort Level
+        effort_label = QLabel(f"Effort Level: {self.task.effort_level}")
+        self.details_layout.addWidget(effort_label)
+
+        # Dependencies
+        if self.task.dependencies:
+            dependencies_label = QLabel("Dependencies: " + ", ".join(self.task.dependencies))
+            self.details_layout.addWidget(dependencies_label)
+
+        # Resources
+        if self.task.resources:
+            resources_label = QLabel("Resources: " + ", ".join(self.task.resources))
+            self.details_layout.addWidget(resources_label)
 
         # Progress Bar for Count
         if self.task.count_required > 0:
@@ -418,7 +478,7 @@ class TaskDetailDialog(QDialog):
             notes_content.setWordWrap(True)
             self.details_layout.addWidget(notes_content)
 
-        # Subtasks (if implemented)
+        # Subtasks
         if hasattr(self.task, 'subtasks') and self.task.subtasks:
             subtasks_label = QLabel("Subtasks:")
             subtasks_label.setStyleSheet("font-weight: bold;")
@@ -426,8 +486,7 @@ class TaskDetailDialog(QDialog):
             for subtask in self.task.subtasks:
                 subtask_checkbox = QCheckBox(subtask.title)
                 subtask_checkbox.setChecked(subtask.completed)
-                # Optionally connect signals to handle subtask completion
-                subtask_checkbox.stateChanged.connect(lambda state, st=subtask: self.toggle_subtask(st, state))
+                subtask_checkbox.setEnabled(False)  # Disable editing in view mode
                 self.details_layout.addWidget(subtask_checkbox)
 
         # Ensure the buttons layout is not added in view mode
@@ -453,6 +512,11 @@ class TaskDetailDialog(QDialog):
         self.task_name_edit = QLineEdit(self.task.title)
         self.header_layout.replaceWidget(self.task_name_label, self.task_name_edit)
         self.task_name_label.hide()
+
+        # Completed
+        self.completed_checkbox = QCheckBox("Completed")
+        self.completed_checkbox.setChecked(self.task.completed)
+        self.details_layout.addWidget(self.completed_checkbox)
 
         # Description
         self.description_edit = QTextEdit(self.task.description)
@@ -485,12 +549,74 @@ class TaskDetailDialog(QDialog):
         self.details_layout.addWidget(QLabel("Priority:"))
         self.details_layout.addWidget(self.priority_spinbox)
 
+        # Is Important
+        self.is_important_checkbox = QCheckBox("Important")
+        self.is_important_checkbox.setChecked(self.task.is_important)
+        self.details_layout.addWidget(self.is_important_checkbox)
+
+        # Categories
+        self.categories_edit = QLineEdit(", ".join(self.task.categories))
+        self.details_layout.addWidget(QLabel("Categories (comma-separated):"))
+        self.details_layout.addWidget(self.categories_edit)
+
+        # Recurring
+        self.recurring_checkbox = QCheckBox("Recurring")
+        self.recurring_checkbox.setChecked(self.task.recurring)
+        self.details_layout.addWidget(self.recurring_checkbox)
+
+        # Recur Every
+        self.recur_every_edit = QLineEdit(", ".join(map(str, self.task.recur_every)))
+        self.details_layout.addWidget(QLabel("Recur Every (list of days or numbers):"))
+        self.details_layout.addWidget(self.recur_every_edit)
+
         # Status
         self.status_combo = QComboBox()
         self.status_combo.addItems(["Not Started", "In Progress", "Completed", "Failed", "On Hold"])
         self.status_combo.setCurrentText(self.task.status)
         self.details_layout.addWidget(QLabel("Status:"))
         self.details_layout.addWidget(self.status_combo)
+
+        # Estimate
+        self.estimate_spinbox = QDoubleSpinBox()
+        self.estimate_spinbox.setMinimum(0)
+        self.estimate_spinbox.setMaximum(10000)
+        self.estimate_spinbox.setDecimals(2)
+        self.estimate_spinbox.setValue(self.task.estimate)
+        self.details_layout.addWidget(QLabel("Estimate (hours):"))
+        self.details_layout.addWidget(self.estimate_spinbox)
+
+        # Time Logged
+        self.time_logged_spinbox = QDoubleSpinBox()
+        self.time_logged_spinbox.setMinimum(0)
+        self.time_logged_spinbox.setMaximum(10000)
+        self.time_logged_spinbox.setDecimals(2)
+        self.time_logged_spinbox.setValue(self.task.time_logged)
+        self.details_layout.addWidget(QLabel("Time Logged (hours):"))
+        self.details_layout.addWidget(self.time_logged_spinbox)
+
+        # Deadline Flexibility
+        self.deadline_flexibility_combo = QComboBox()
+        self.deadline_flexibility_combo.addItems(["Strict", "Flexible"])
+        self.deadline_flexibility_combo.setCurrentText(self.task.deadline_flexibility)
+        self.details_layout.addWidget(QLabel("Deadline Flexibility:"))
+        self.details_layout.addWidget(self.deadline_flexibility_combo)
+
+        # Effort Level
+        self.effort_level_combo = QComboBox()
+        self.effort_level_combo.addItems(["Easy", "Medium", "Hard"])
+        self.effort_level_combo.setCurrentText(self.task.effort_level)
+        self.details_layout.addWidget(QLabel("Effort Level:"))
+        self.details_layout.addWidget(self.effort_level_combo)
+
+        # Dependencies
+        self.dependencies_edit = QLineEdit(", ".join(self.task.dependencies))
+        self.details_layout.addWidget(QLabel("Dependencies (comma-separated):"))
+        self.details_layout.addWidget(self.dependencies_edit)
+
+        # Resources
+        self.resources_edit = QLineEdit(", ".join(self.task.resources))
+        self.details_layout.addWidget(QLabel("Resources (comma-separated):"))
+        self.details_layout.addWidget(self.resources_edit)
 
         # Count Required and Completed
         self.count_required_spinbox = QSpinBox()
@@ -541,11 +667,33 @@ class TaskDetailDialog(QDialog):
 
         # Update task with new values
         self.task.title = self.task_name_edit.text()
+        self.task.completed = self.completed_checkbox.isChecked()
         self.task.description = self.description_edit.toPlainText()
         self.task.due_date = self.due_date_edit.date().toString("yyyy-MM-dd")
         self.task.due_time = self.due_time_edit.time().toString("HH:mm")
         self.task.priority = self.priority_spinbox.value()
+        self.task.is_important = self.is_important_checkbox.isChecked()
+        self.task.categories = [cat.strip() for cat in self.categories_edit.text().split(',') if cat.strip()]
+        self.task.recurring = self.recurring_checkbox.isChecked()
+
+        # Parse recur_every input
+        recur_every_text = self.recur_every_edit.text()
+        if recur_every_text.strip():
+            try:
+                self.task.recur_every = [int(item.strip()) for item in recur_every_text.split(',') if item.strip()]
+            except ValueError:
+                QMessageBox.warning(self, "Input Error", "Recur Every must be a list of integers separated by commas.")
+                return
+        else:
+            self.task.recur_every = []
+
         self.task.status = self.status_combo.currentText()
+        self.task.estimate = self.estimate_spinbox.value()
+        self.task.time_logged = self.time_logged_spinbox.value()
+        self.task.deadline_flexibility = self.deadline_flexibility_combo.currentText()
+        self.task.effort_level = self.effort_level_combo.currentText()
+        self.task.dependencies = [dep.strip() for dep in self.dependencies_edit.text().split(',') if dep.strip()]
+        self.task.resources = [res.strip() for res in self.resources_edit.text().split(',') if res.strip()]
         self.task.count_required = self.count_required_spinbox.value()
         self.task.count_completed = self.count_completed_spinbox.value()
         self.task.notes = self.notes_edit.toPlainText()
@@ -623,3 +771,4 @@ class TaskDetailDialog(QDialog):
                 widget.deleteLater()
             elif item.layout() is not None:
                 self.clear_layout(item.layout())
+
