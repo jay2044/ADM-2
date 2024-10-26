@@ -9,6 +9,21 @@ def sanitize_name(name):
     return re.sub(r'\W+', '_', name)
 
 
+class Subtask:
+    def __init__(self, title, description='', due_date=None, due_time=None,
+                 completed=False, subtask_id=None, task_id=None):
+        self.id = subtask_id
+        self.task_id = task_id  # The parent task's ID
+        self.title = title
+        self.description = description
+        self.due_date = due_date  # Expected format: 'YYYY-MM-DD'
+        self.due_time = due_time  # Expected format: 'HH:MM'
+        self.completed = completed
+
+    def __str__(self):
+        return f"Subtask: {self.title}, Completed: {self.completed}"
+
+
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
                  completed=False, categories=None, recurring=False, recur_every=None, last_completed_date=None,
@@ -35,7 +50,7 @@ class Task:
         self.estimate = estimate  # float, in hours or days
         self.count_required = count_required  # int
         self.count_completed = count_completed  # int
-        self.subtasks = subtasks if subtasks else []
+        self.subtasks = subtasks if subtasks else []  # List of Subtask objects
         self.dependencies = dependencies if dependencies else []
         self.deadline_flexibility = deadline_flexibility  # 'Strict' or 'Flexible'
         self.effort_level = effort_level  # 'Easy', 'Medium', 'Hard'
@@ -77,7 +92,9 @@ class Task:
         if self.count_required > 0:
             return (self.count_completed / self.count_required) * 100
         elif self.subtasks:
-            completed_subtasks = sum(1 for subtask in self.subtasks if subtask['completed'])
+            if len(self.subtasks) == 0:
+                return 0.0
+            completed_subtasks = sum(1 for subtask in self.subtasks if subtask.completed)
             return (completed_subtasks / len(self.subtasks)) * 100
         else:
             return 0.0
@@ -128,6 +145,19 @@ class TaskList:
 
     def update_task(self, task):
         self.manager.update_task(task)
+
+    # Subtask management methods
+    def add_subtask(self, task, subtask):
+        subtask.task_id = task.id
+        self.manager.add_subtask(subtask)
+        task.subtasks.append(subtask)
+
+    def remove_subtask(self, task, subtask):
+        self.manager.remove_subtask(subtask)
+        task.subtasks = [st for st in task.subtasks if st.id != subtask.id]
+
+    def update_subtask(self, subtask):
+        self.manager.update_subtask(subtask)
 
     def get_tasks(self):
         important_tasks = [task for task in self.tasks if task.is_important and not task.completed]
@@ -230,7 +260,6 @@ class TaskListManager:
             estimate REAL,
             count_required INTEGER,
             count_completed INTEGER,
-            subtasks TEXT,
             dependencies TEXT,
             deadline_flexibility TEXT,
             effort_level TEXT,
@@ -241,11 +270,26 @@ class TaskListManager:
             FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
         );
         """
+
+        create_subtasks_table = """
+        CREATE TABLE IF NOT EXISTS subtasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            due_date TEXT,
+            due_time TEXT,
+            completed BOOLEAN NOT NULL CHECK (completed IN (0,1)),
+            FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+        """
+
         try:
             cursor = self.conn.cursor()
             cursor.execute(create_categories_table)
             cursor.execute(create_task_lists_table)
             cursor.execute(create_tasks_table)
+            cursor.execute(create_subtasks_table)
             self.conn.commit()
 
             # Check and add missing columns
@@ -257,7 +301,6 @@ class TaskListManager:
                 ('estimate', 'REAL'),
                 ('count_required', 'INTEGER'),
                 ('count_completed', 'INTEGER'),
-                ('subtasks', 'TEXT'),
                 ('dependencies', 'TEXT'),
                 ('deadline_flexibility', 'TEXT'),
                 ('effort_level', 'TEXT'),
@@ -369,7 +412,6 @@ class TaskListManager:
                 estimate=row['estimate'] if 'estimate' in row.keys() else 0.0,
                 count_required=row['count_required'] if 'count_required' in row.keys() else 0,
                 count_completed=row['count_completed'] if 'count_completed' in row.keys() else 0,
-                subtasks=json.loads(row['subtasks']) if row['subtasks'] else [],
                 dependencies=json.loads(row['dependencies']) if row['dependencies'] else [],
                 deadline_flexibility=row['deadline_flexibility'] if 'deadline_flexibility' in row.keys() else "Strict",
                 effort_level=row['effort_level'] if 'effort_level' in row.keys() else "Medium",
@@ -379,8 +421,58 @@ class TaskListManager:
                 recurring_subtasks=json.loads(row['recurring_subtasks']) if row['recurring_subtasks'] else [],
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
+            # Load subtasks for this task
+            task.subtasks = self.load_subtasks(task.id)
             tasks.append(task)
         return tasks
+
+    def load_subtasks(self, task_id):
+        subtasks = []
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM subtasks WHERE task_id=?", (task_id,))
+        rows = cursor.fetchall()
+        for row in rows:
+            subtask = Subtask(
+                title=row['title'],
+                description=row['description'],
+                due_date=row['due_date'],
+                due_time=row['due_time'],
+                completed=bool(row['completed']),
+                subtask_id=row['id'],
+                task_id=row['task_id']
+            )
+            subtasks.append(subtask)
+        return subtasks
+
+    def add_subtask(self, subtask):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO subtasks (task_id, title, description, due_date, due_time, completed)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            subtask.task_id, subtask.title, subtask.description,
+            subtask.due_date, subtask.due_time, int(subtask.completed)
+        ))
+        self.conn.commit()
+        subtask.id = cursor.lastrowid
+
+    def update_subtask(self, subtask):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE subtasks
+            SET title=?, description=?, due_date=?, due_time=?, completed=?
+            WHERE id=?
+        """, (
+            subtask.title, subtask.description,
+            subtask.due_date, subtask.due_time, int(subtask.completed),
+            subtask.id
+        ))
+        self.conn.commit()
+
+    def remove_subtask(self, subtask):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM subtasks WHERE id=?", (subtask.id,))
+        self.conn.commit()
 
     def add_category(self, category_name):
         cursor = self.conn.cursor()
@@ -495,9 +587,9 @@ class TaskListManager:
             INSERT INTO tasks (
                 list_name, title, description, due_date, due_time, completed, priority, is_important,
                 added_date_time, categories, recurring, recur_every, last_completed_date,
-                status, estimate, count_required, count_completed, subtasks, dependencies,
+                status, estimate, count_required, count_completed, dependencies,
                 deadline_flexibility, effort_level, resources, notes, time_logged, recurring_subtasks
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed),
@@ -505,7 +597,6 @@ class TaskListManager:
                 ','.join(task.categories), int(task.recurring), json.dumps(task.recur_every),
                 task.last_completed_date.isoformat() if task.last_completed_date else None,
                 task.status, task.estimate, task.count_required, task.count_completed,
-                json.dumps(task.subtasks) if task.subtasks else None,
                 json.dumps(task.dependencies) if task.dependencies else None,
                 task.deadline_flexibility, task.effort_level,
                 json.dumps(task.resources) if task.resources else None,
@@ -516,12 +607,17 @@ class TaskListManager:
         self.conn.commit()
         task.id = cursor.lastrowid
 
+        # Add subtasks if any
+        for subtask in task.subtasks:
+            subtask.task_id = task.id
+            self.add_subtask(subtask)
+
     def update_task(self, task):
         cursor = self.conn.cursor()
         cursor.execute("""
             UPDATE tasks
             SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
-                status=?, estimate=?, count_required=?, count_completed=?, subtasks=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?
+                status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?
             WHERE id=?
         """, (
             task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
@@ -529,7 +625,6 @@ class TaskListManager:
             json.dumps(task.recur_every),
             task.last_completed_date.isoformat() if task.last_completed_date else None,
             task.status, task.estimate, task.count_required, task.count_completed,
-            json.dumps(task.subtasks) if task.subtasks else None,
             json.dumps(task.dependencies) if task.dependencies else None,
             task.deadline_flexibility, task.effort_level,
             json.dumps(task.resources) if task.resources else None,
@@ -538,6 +633,24 @@ class TaskListManager:
             task.id)
                        )
         self.conn.commit()
+
+        # Update subtasks
+        existing_subtask_ids = [subtask.id for subtask in task.subtasks if subtask.id]
+        cursor.execute("SELECT id FROM subtasks WHERE task_id=?", (task.id,))
+        db_subtask_ids = [row['id'] for row in cursor.fetchall()]
+
+        # Remove subtasks that are no longer in the task's subtasks list
+        for db_subtask_id in db_subtask_ids:
+            if db_subtask_id not in existing_subtask_ids:
+                self.remove_subtask(Subtask(subtask_id=db_subtask_id))
+
+        # Add or update subtasks
+        for subtask in task.subtasks:
+            if subtask.id:
+                self.update_subtask(subtask)
+            else:
+                subtask.task_id = task.id
+                self.add_subtask(subtask)
 
     def remove_task(self, task):
         cursor = self.conn.cursor()
