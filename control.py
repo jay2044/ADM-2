@@ -21,42 +21,51 @@ class AddTaskDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Add New Task")
 
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        # Set dialog properties
+        self.resize(500, 400)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
 
-        self.layout = QFormLayout(self)
+        # Main layout
+        self.main_layout = QVBoxLayout(self)
+
+        # Tab widget
+        self.tab_widget = QTabWidget(self)
+        self.main_layout.addWidget(self.tab_widget)
+
+        # Basic Tab
+        self.basic_tab = QWidget()
+        self.basic_layout = QFormLayout(self.basic_tab)
 
         # Basic Fields
         self.title_edit = QLineEdit(self)
-        self.layout.addRow("Title:", self.title_edit)
+        self.title_edit.setPlaceholderText("Enter task title")
+        self.basic_layout.addRow("Title*:", self.title_edit)
 
         self.description_edit = QLineEdit(self)
-        self.layout.addRow("Description:", self.description_edit)
+        self.description_edit.setPlaceholderText("Enter task description")
+        self.basic_layout.addRow("Description:", self.description_edit)
 
         self.due_date_edit = CustomDateEdit(self)
-        self.layout.addRow("Due Date:", self.due_date_edit)
+        self.basic_layout.addRow("Due Date:", self.due_date_edit)
 
         self.due_time_edit = QTimeEdit(self)
-        self.layout.addRow("Due Time:", self.due_time_edit)
+        self.basic_layout.addRow("Due Time:", self.due_time_edit)
 
         self.priority_spinbox = QSpinBox(self)
         self.priority_spinbox.setMinimum(0)
         self.priority_spinbox.setMaximum(10)
         self.priority_spinbox.setValue(0)
-        self.layout.addRow("Priority:", self.priority_spinbox)
+        self.basic_layout.addRow("Priority:", self.priority_spinbox)
 
         self.important_checkbox = QCheckBox("Important", self)
-        self.layout.addRow(self.important_checkbox)
+        self.basic_layout.addRow(self.important_checkbox)
 
         self.recurring_checkbox = QCheckBox("Recurring", self)
-        self.layout.addRow(self.recurring_checkbox)
+        self.basic_layout.addRow(self.recurring_checkbox)
 
         # Recurrence Options
         self.recurrence_options_widget = QWidget()
-        self.recurrence_layout = QVBoxLayout()
-        self.recurrence_options_widget.setLayout(self.recurrence_layout)
-        self.layout.addRow(self.recurrence_options_widget)
-
-        self.recurrence_options_widget.hide()
+        self.recurrence_layout = QVBoxLayout(self.recurrence_options_widget)
 
         self.recur_type_group = QButtonGroup(self)
 
@@ -71,8 +80,7 @@ class AddTaskDialog(QDialog):
 
         # Every N Days Widget
         self.every_n_days_widget = QWidget()
-        self.every_n_days_layout = QHBoxLayout()
-        self.every_n_days_widget.setLayout(self.every_n_days_layout)
+        self.every_n_days_layout = QHBoxLayout(self.every_n_days_widget)
 
         self.every_n_days_label = QLabel("Every")
         self.every_n_days_spinbox = QSpinBox()
@@ -87,8 +95,7 @@ class AddTaskDialog(QDialog):
 
         # Specific Weekdays Widget
         self.specific_weekdays_widget = QWidget()
-        self.specific_weekdays_layout = QHBoxLayout()
-        self.specific_weekdays_widget.setLayout(self.specific_weekdays_layout)
+        self.specific_weekdays_layout = QHBoxLayout(self.specific_weekdays_widget)
 
         self.weekday_checkboxes = []
         weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -101,19 +108,24 @@ class AddTaskDialog(QDialog):
         self.recurrence_layout.addWidget(self.every_n_days_widget)
         self.recurrence_layout.addWidget(self.specific_weekdays_widget)
 
+        # Initially hide recurrence detail widgets
         self.every_n_days_widget.hide()
         self.specific_weekdays_widget.hide()
 
-        # Advanced Options
-        self.advanced_checkbox = QCheckBox("Advanced", self)
-        self.layout.addRow(self.advanced_checkbox)
+        # Add recurrence options to basic layout
+        self.basic_layout.addRow(self.recurrence_options_widget)
 
-        self.advanced_options_widget = QWidget()
-        self.advanced_layout = QFormLayout()
-        self.advanced_options_widget.setLayout(self.advanced_layout)
-        self.layout.addRow(self.advanced_options_widget)
+        # Connect signals
+        self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
+        self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
+        self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
 
-        self.advanced_options_widget.hide()
+        # Add Basic Tab to Tab Widget
+        self.tab_widget.addTab(self.basic_tab, "Basic")
+
+        # Advanced Tab
+        self.advanced_tab = QWidget()
+        self.advanced_layout = QFormLayout(self.advanced_tab)
 
         # Advanced Fields
         self.status_combo = QComboBox()
@@ -137,6 +149,7 @@ class AddTaskDialog(QDialog):
         self.advanced_layout.addRow("Count Completed:", self.count_completed_spinbox)
 
         self.dependencies_edit = QLineEdit()
+        self.dependencies_edit.setPlaceholderText("Dependency tasks, separated by commas")
         self.advanced_layout.addRow("Dependencies:", self.dependencies_edit)
 
         self.deadline_flexibility_combo = QComboBox()
@@ -148,6 +161,7 @@ class AddTaskDialog(QDialog):
         self.advanced_layout.addRow("Effort Level:", self.effort_level_combo)
 
         self.resources_edit = QLineEdit()
+        self.resources_edit.setPlaceholderText("Resources, separated by commas")
         self.advanced_layout.addRow("Resources:", self.resources_edit)
 
         self.notes_edit = QTextEdit()
@@ -160,24 +174,19 @@ class AddTaskDialog(QDialog):
         self.time_logged_spinbox.setDecimals(2)
         self.advanced_layout.addRow("Time Logged (hours):", self.time_logged_spinbox)
 
-        # Signals and Slots
-        self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
-        self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
-        self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
-        self.advanced_checkbox.stateChanged.connect(self.toggle_advanced_options)
+        # Add Advanced Tab to Tab Widget
+        self.tab_widget.addTab(self.advanced_tab, "Advanced")
 
         # Dialog Buttons
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        self.layout.addRow(self.buttons)
+        self.main_layout.addWidget(self.buttons)
 
         self.title_edit.setFocus()
 
         # Object Names (for styling or testing)
         self.setObjectName("addTaskDialog")
-        self.advanced_checkbox.setObjectName("advancedCheckbox")
-        self.advanced_options_widget.setObjectName("advancedOptionsWidget")
 
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
@@ -198,11 +207,11 @@ class AddTaskDialog(QDialog):
             self.every_n_days_widget.hide()
             self.specific_weekdays_widget.hide()
 
-    def toggle_advanced_options(self, state):
-        if state == Qt.CheckState.Checked.value:
-            self.advanced_options_widget.show()
-        else:
-            self.advanced_options_widget.hide()
+    def accept(self):
+        if not self.title_edit.text().strip():
+            QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
+            return
+        super().accept()
 
     def get_task_data(self):
         task_data = {
@@ -215,16 +224,16 @@ class AddTaskDialog(QDialog):
             "recurring": self.recurring_checkbox.isChecked(),
             "recur_every": [],  # Calculated below
             # Default Advanced Fields
-            "status": "Not Started",
-            "estimate": 0.0,
-            "count_required": 0,
-            "count_completed": 0,
+            "status": self.status_combo.currentText(),
+            "estimate": self.estimate_spinbox.value(),
+            "count_required": self.count_required_spinbox.value(),
+            "count_completed": self.count_completed_spinbox.value(),
             "dependencies": [],
-            "deadline_flexibility": "Strict",
-            "effort_level": "Medium",
+            "deadline_flexibility": self.deadline_flexibility_combo.currentText(),
+            "effort_level": self.effort_level_combo.currentText(),
             "resources": [],
-            "notes": "",
-            "time_logged": 0.0
+            "notes": self.notes_edit.toPlainText(),
+            "time_logged": self.time_logged_spinbox.value()
         }
 
         # Recurrence Data
@@ -250,19 +259,10 @@ class AddTaskDialog(QDialog):
             task_data["recur_every"] = None
 
         # Advanced Data
-        if self.advanced_checkbox.isChecked():
-            task_data["status"] = self.status_combo.currentText()
-            task_data["estimate"] = self.estimate_spinbox.value()
-            task_data["count_required"] = self.count_required_spinbox.value()
-            task_data["count_completed"] = self.count_completed_spinbox.value()
-            dependencies_text = self.dependencies_edit.text()
-            task_data["dependencies"] = [dep.strip() for dep in dependencies_text.split(",") if dep.strip()]
-            task_data["deadline_flexibility"] = self.deadline_flexibility_combo.currentText()
-            task_data["effort_level"] = self.effort_level_combo.currentText()
-            resources_text = self.resources_edit.text()
-            task_data["resources"] = [res.strip() for res in resources_text.split(",") if res.strip()]
-            task_data["notes"] = self.notes_edit.toPlainText()
-            task_data["time_logged"] = self.time_logged_spinbox.value()
+        dependencies_text = self.dependencies_edit.text()
+        task_data["dependencies"] = [dep.strip() for dep in dependencies_text.split(",") if dep.strip()]
+        resources_text = self.resources_edit.text()
+        task_data["resources"] = [res.strip() for res in resources_text.split(",") if res.strip()]
 
         return task_data
 
@@ -272,56 +272,67 @@ class EditTaskDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Edit Task")
 
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        # Set dialog properties
+        self.resize(500, 400)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
 
         self.task = task
         self.task_list_widget = task_list_widget
 
-        self.layout = QFormLayout(self)
+        # Main layout
+        self.main_layout = QVBoxLayout(self)
+
+        # Tab widget
+        self.tab_widget = QTabWidget(self)
+        self.main_layout.addWidget(self.tab_widget)
+
+        # Basic Tab
+        self.basic_tab = QWidget()
+        self.basic_layout = QFormLayout(self.basic_tab)
 
         # Basic Fields
         self.title_edit = QLineEdit(self)
         self.title_edit.setText(task.title)
-        self.layout.addRow("Title:", self.title_edit)
+        self.title_edit.setPlaceholderText("Enter task title")
+        self.basic_layout.addRow("Title*:", self.title_edit)
 
         self.description_edit = QLineEdit(self)
         self.description_edit.setText(task.description)
-        self.layout.addRow("Description:", self.description_edit)
+        self.description_edit.setPlaceholderText("Enter task description")
+        self.basic_layout.addRow("Description:", self.description_edit)
 
         self.due_date_edit = CustomDateEdit(self)
         if task.due_date and task.due_date != "2000-01-01":
             self.due_date_edit.setDate(QDate.fromString(task.due_date, "yyyy-MM-dd"))
         else:
             self.due_date_edit.setDate(QDate.currentDate())
-        self.layout.addRow("Due Date:", self.due_date_edit)
+        self.basic_layout.addRow("Due Date:", self.due_date_edit)
 
         self.due_time_edit = QTimeEdit(self)
         if task.due_time and task.due_time != "00:00":
             self.due_time_edit.setTime(QTime.fromString(task.due_time, "HH:mm"))
         else:
             self.due_time_edit.setTime(QTime.currentTime())
-        self.layout.addRow("Due Time:", self.due_time_edit)
+        self.basic_layout.addRow("Due Time:", self.due_time_edit)
 
         self.priority_spinbox = QSpinBox(self)
         self.priority_spinbox.setMinimum(0)
         self.priority_spinbox.setMaximum(10)
         self.priority_spinbox.setValue(task.priority)
-        self.layout.addRow("Priority:", self.priority_spinbox)
+        self.basic_layout.addRow("Priority:", self.priority_spinbox)
 
         self.important_checkbox = QCheckBox("Important", self)
         self.important_checkbox.setChecked(task.is_important)
-        self.layout.addRow(self.important_checkbox)
+        self.basic_layout.addRow(self.important_checkbox)
 
         # Recurring Checkbox
         self.recurring_checkbox = QCheckBox("Recurring", self)
         self.recurring_checkbox.setChecked(task.recurring)
-        self.layout.addRow(self.recurring_checkbox)
+        self.basic_layout.addRow(self.recurring_checkbox)
 
         # Recurrence Options
         self.recurrence_options_widget = QWidget()
-        self.recurrence_layout = QVBoxLayout()
-        self.recurrence_options_widget.setLayout(self.recurrence_layout)
-        self.layout.addRow(self.recurrence_options_widget)
+        self.recurrence_layout = QVBoxLayout(self.recurrence_options_widget)
 
         self.recur_type_group = QButtonGroup(self)
 
@@ -336,8 +347,7 @@ class EditTaskDialog(QDialog):
 
         # Every N Days Widget
         self.every_n_days_widget = QWidget()
-        self.every_n_days_layout = QHBoxLayout()
-        self.every_n_days_widget.setLayout(self.every_n_days_layout)
+        self.every_n_days_layout = QHBoxLayout(self.every_n_days_widget)
 
         self.every_n_days_label = QLabel("Every")
         self.every_n_days_spinbox = QSpinBox()
@@ -351,8 +361,7 @@ class EditTaskDialog(QDialog):
 
         # Specific Weekdays Widget
         self.specific_weekdays_widget = QWidget()
-        self.specific_weekdays_layout = QHBoxLayout()
-        self.specific_weekdays_widget.setLayout(self.specific_weekdays_layout)
+        self.specific_weekdays_layout = QHBoxLayout(self.specific_weekdays_widget)
 
         self.weekday_checkboxes = []
         weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -378,6 +387,9 @@ class EditTaskDialog(QDialog):
         self.every_n_days_widget.hide()
         self.specific_weekdays_widget.hide()
 
+        # Add recurrence options to basic layout
+        self.basic_layout.addRow(self.recurrence_options_widget)
+
         # Set initial recurrence options
         if task.recurring:
             self.recurring_checkbox.setChecked(True)
@@ -396,16 +408,17 @@ class EditTaskDialog(QDialog):
         else:
             self.recurrence_options_widget.hide()
 
-        # Advanced Checkbox
-        self.advanced_checkbox = QCheckBox("Advanced", self)
-        self.layout.addRow(self.advanced_checkbox)
+        # Connect signals
+        self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
+        self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
+        self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
 
-        self.advanced_options_widget = QWidget()
-        self.advanced_layout = QFormLayout()
-        self.advanced_options_widget.setLayout(self.advanced_layout)
-        self.layout.addRow(self.advanced_options_widget)
+        # Add Basic Tab to Tab Widget
+        self.tab_widget.addTab(self.basic_tab, "Basic")
 
-        self.advanced_options_widget.hide()
+        # Advanced Tab
+        self.advanced_tab = QWidget()
+        self.advanced_layout = QFormLayout(self.advanced_tab)
 
         # Advanced Fields
         self.status_combo = QComboBox()
@@ -434,6 +447,7 @@ class EditTaskDialog(QDialog):
 
         self.dependencies_edit = QLineEdit()
         self.dependencies_edit.setText(", ".join(task.dependencies))
+        self.dependencies_edit.setPlaceholderText("Dependency tasks, separated by commas")
         self.advanced_layout.addRow("Dependencies:", self.dependencies_edit)
 
         self.deadline_flexibility_combo = QComboBox()
@@ -448,6 +462,7 @@ class EditTaskDialog(QDialog):
 
         self.resources_edit = QLineEdit()
         self.resources_edit.setText(", ".join(task.resources))
+        self.resources_edit.setPlaceholderText("Resources, separated by commas")
         self.advanced_layout.addRow("Resources:", self.resources_edit)
 
         self.notes_edit = QTextEdit()
@@ -462,27 +477,8 @@ class EditTaskDialog(QDialog):
         self.time_logged_spinbox.setValue(task.time_logged)
         self.advanced_layout.addRow("Time Logged (hours):", self.time_logged_spinbox)
 
-        # Show Advanced Options if any advanced field is set
-        if any([
-            task.status != "Not Started",
-            task.estimate > 0.0,
-            task.count_required > 0,
-            task.count_completed > 0,
-            task.dependencies,
-            task.deadline_flexibility != "Strict",
-            task.effort_level != "Medium",
-            task.resources,
-            task.notes,
-            task.time_logged > 0.0
-        ]):
-            self.advanced_checkbox.setChecked(True)
-            self.advanced_options_widget.show()
-
-        # Signals and Slots
-        self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
-        self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
-        self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
-        self.advanced_checkbox.stateChanged.connect(self.toggle_advanced_options)
+        # Add Advanced Tab to Tab Widget
+        self.tab_widget.addTab(self.advanced_tab, "Advanced")
 
         # Delete Button
         hbox_layout = QHBoxLayout()
@@ -490,22 +486,16 @@ class EditTaskDialog(QDialog):
         self.delete_button.clicked.connect(self.delete_task_button_action)
         hbox_layout.addStretch(1)
         hbox_layout.addWidget(self.delete_button)
-        self.layout.addRow(hbox_layout)
+        self.main_layout.addLayout(hbox_layout)
 
         # Dialog Buttons
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        self.layout.addRow(self.buttons)
+        self.main_layout.addWidget(self.buttons)
 
         # Object Names
         self.setObjectName("editTaskDialog")
-        self.title_edit.setObjectName("titleEdit")
-        self.description_edit.setObjectName("descriptionEdit")
-        self.due_date_edit.setObjectName("dueDateEdit")
-        self.due_time_edit.setObjectName("dueTimeEdit")
-        self.advanced_checkbox.setObjectName("advancedCheckbox")
-        self.advanced_options_widget.setObjectName("advancedOptionsWidget")
 
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
@@ -527,11 +517,11 @@ class EditTaskDialog(QDialog):
             self.every_n_days_widget.hide()
             self.specific_weekdays_widget.hide()
 
-    def toggle_advanced_options(self, state):
-        if state == Qt.CheckState.Checked.value:
-            self.advanced_options_widget.show()
-        else:
-            self.advanced_options_widget.hide()
+    def accept(self):
+        if not self.title_edit.text().strip():
+            QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
+            return
+        super().accept()
 
     def get_task_data(self):
         task_data = {
@@ -543,17 +533,17 @@ class EditTaskDialog(QDialog):
             "is_important": self.important_checkbox.isChecked(),
             "recurring": self.recurring_checkbox.isChecked(),
             "recur_every": None,  # Will be calculated below
-            # Default Advanced Fields
-            "status": self.task.status,
-            "estimate": self.task.estimate,
-            "count_required": self.task.count_required,
-            "count_completed": self.task.count_completed,
-            "dependencies": self.task.dependencies,
-            "deadline_flexibility": self.task.deadline_flexibility,
-            "effort_level": self.task.effort_level,
-            "resources": self.task.resources,
-            "notes": self.task.notes,
-            "time_logged": self.task.time_logged
+            # Advanced Fields
+            "status": self.status_combo.currentText(),
+            "estimate": self.estimate_spinbox.value(),
+            "count_required": self.count_required_spinbox.value(),
+            "count_completed": self.count_completed_spinbox.value(),
+            "dependencies": [],
+            "deadline_flexibility": self.deadline_flexibility_combo.currentText(),
+            "effort_level": self.effort_level_combo.currentText(),
+            "resources": [],
+            "notes": self.notes_edit.toPlainText(),
+            "time_logged": self.time_logged_spinbox.value()
         }
 
         # Recurrence Data
@@ -579,19 +569,10 @@ class EditTaskDialog(QDialog):
             task_data["recur_every"] = None
 
         # Advanced Data
-        if self.advanced_checkbox.isChecked():
-            task_data["status"] = self.status_combo.currentText()
-            task_data["estimate"] = self.estimate_spinbox.value()
-            task_data["count_required"] = self.count_required_spinbox.value()
-            task_data["count_completed"] = self.count_completed_spinbox.value()
-            dependencies_text = self.dependencies_edit.text()
-            task_data["dependencies"] = [dep.strip() for dep in dependencies_text.split(",") if dep.strip()]
-            task_data["deadline_flexibility"] = self.deadline_flexibility_combo.currentText()
-            task_data["effort_level"] = self.effort_level_combo.currentText()
-            resources_text = self.resources_edit.text()
-            task_data["resources"] = [res.strip() for res in resources_text.split(",") if res.strip()]
-            task_data["notes"] = self.notes_edit.toPlainText()
-            task_data["time_logged"] = self.time_logged_spinbox.value()
+        dependencies_text = self.dependencies_edit.text()
+        task_data["dependencies"] = [dep.strip() for dep in dependencies_text.split(",") if dep.strip()]
+        resources_text = self.resources_edit.text()
+        task_data["resources"] = [res.strip() for res in resources_text.split(",") if res.strip()]
 
         return task_data
 
@@ -602,4 +583,3 @@ class EditTaskDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self.task_list_widget.delete_task(self.task)
             self.accept()
-
