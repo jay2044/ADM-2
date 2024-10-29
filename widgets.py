@@ -85,7 +85,7 @@ class TaskWidget(QWidget):
     def edit_task(self):
         try:
             # Set parent to None to avoid dependency on main_window
-            dialog = TaskDetailDialog(self.task, self.task_list_widget, parent=None)
+            dialog = TaskDetailDialog(self.task, self.task_list_widget, self)
 
             # Position the dialog to appear over the dock containing the task
             dock_widget = self.task_list_widget
