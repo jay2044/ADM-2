@@ -59,6 +59,32 @@ class AddTaskDialog(QDialog):
         self.priority_spinbox.setValue(0)
         self.basic_layout.addRow("Priority:", self.priority_spinbox)
 
+        categories = []
+        # if a TaskListDock
+        if parent.type == "dock":
+            print("dock")
+            categories = parent.task_list_widget.task_list.get_task_categories()
+        elif parent.type == "stack":  #if TaskListStacked
+            print("stack")
+            categories = parent.get_current_task_list_widget().task_list.get_task_categories()
+
+        # Create a QListWidget for multiple category selection
+        self.category_choices = QListWidget(self)
+        self.category_choices.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+
+        if categories:
+            # Add existing categories to the QListWidget
+            for category in categories:
+                item = QListWidgetItem(category)
+                self.category_choices.addItem(item)
+
+        self.basic_layout.addRow("Category:", self.category_choices)
+
+        # Add Button for adding new categories
+        self.add_category_button = QPushButton("Add Category", self)
+        self.add_category_button.clicked.connect(self.add_category)
+        self.basic_layout.addRow(self.add_category_button)
+
         self.important_checkbox = QCheckBox("Important", self)
         self.basic_layout.addRow(self.important_checkbox)
 
@@ -191,6 +217,19 @@ class AddTaskDialog(QDialog):
         # Object Names (for styling or testing)
         self.setObjectName("addTaskDialog")
 
+    # Define the add_category function
+    def add_category(self):
+        # Open an input dialog to get the new category name
+        category, ok = QInputDialog.getText(self, "Add Category", "Enter new category name:")
+        if ok and category:  # If the user confirmed and the input is not empty
+            # Check if category already exists to avoid duplicates
+            existing_categories = [self.category_choices.item(i).text() for i in
+                                   range(self.category_choices.count())]
+            if category not in existing_categories:
+                # Add the new category to the QListWidget
+                self.category_choices.addItem(category)
+            else:
+                QMessageBox.information(self, "Duplicate Category", "This category already exists.")
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
             self.recurrence_options_widget.show()
@@ -217,12 +256,16 @@ class AddTaskDialog(QDialog):
         super().accept()
 
     def get_task_data(self):
+        selected_categories = [
+            item.text() for item in self.category_choices.selectedItems()
+        ]
         task_data = {
             "title": self.title_edit.text(),
             "description": self.description_edit.text(),
             "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
             "due_time": self.due_time_edit.time().toString("HH:mm"),
             "priority": self.priority_spinbox.value(),
+            "categories": selected_categories,
             "is_important": self.important_checkbox.isChecked(),
             "recurring": self.recurring_checkbox.isChecked(),
             "recur_every": [],  # Calculated below
@@ -771,4 +814,3 @@ class TaskDetailDialog(QDialog):
                 widget.deleteLater()
             elif item.layout() is not None:
                 self.clear_layout(item.layout())
-

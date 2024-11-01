@@ -756,6 +756,7 @@ class TaskListToolbar(QToolBar):
 class TaskListDockStacked(QDockWidget):
     def __init__(self, parent=None):
         super().__init__("Tasks", parent)
+        self.type = "stack"
         self.priority_filter = False
         self.parent = parent
         self.task_manager = self.parent.task_manager
@@ -818,6 +819,7 @@ class TaskListDockStacked(QDockWidget):
                     due_time=task_data["due_time"],
                     is_important=task_data["is_important"],
                     priority=task_data["priority"],
+                    categories=task_data["categories"],
                     recurring=task_data["recurring"],
                     recur_every=task_data["recur_every"],
                     status=task_data["status"],
@@ -915,6 +917,7 @@ class TaskListDockStacked(QDockWidget):
 class TaskListDock(QDockWidget):
     def __init__(self, task_list_name, parent=None):
         super().__init__(task_list_name, parent)
+        self.type = "dock"
         self.parent = parent
         self.task_manager = self.parent.task_manager
         self.task_list_name = task_list_name
@@ -975,6 +978,7 @@ class TaskListDock(QDockWidget):
                     due_time=task_data["due_time"],
                     is_important=task_data["is_important"],
                     priority=task_data["priority"],
+                    categories=task_data["categories"],
                     recurring=task_data["recurring"],
                     recur_every=task_data["recur_every"],
                     status=task_data["status"],

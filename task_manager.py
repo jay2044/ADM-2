@@ -123,17 +123,37 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name, manager, pin=False, queue=False, stack=False, category=None):
+    def __init__(self, list_name, manager, pin=False, queue=False, stack=False, category=None, task_categories=None):
         self.list_name = list_name
         self.manager = manager
-        self.tasks = self.load_tasks()
         self.pin = pin
         self.queue = queue
         self.stack = stack
         self.category = category
+        self.task_categories = task_categories or []
+        self.tasks = self.load_tasks()
+
+    def set_category(self, category):
+        self.category = category
+
+    def add_task_category(self, task_categories):
+        self.task_categories.append(task_categories)
+
+    def remove_task_category(self, task_categories):
+        self.task_categories.remove(task_categories)
+
+    def get_task_categories(self):
+        return self.task_categories
 
     def load_tasks(self):
-        return self.manager.load_tasks(self.list_name)
+        tasks = self.manager.load_tasks(self.list_name)
+        for task in tasks:
+            if isinstance(task.categories, list):
+                for category in task.categories:
+                    if category not in self.task_categories:
+                        self.task_categories.append(category)
+                        print(category)
+        return tasks
 
     def add_task(self, task):
         self.manager.add_task(task, self.list_name)
@@ -233,6 +253,7 @@ class TaskListManager:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             list_name TEXT NOT NULL UNIQUE,
             category_id INTEGER,
+            task_categories TEXT,
             pin BOOLEAN NOT NULL DEFAULT 0,
             queue BOOLEAN NOT NULL DEFAULT 0,
             stack BOOLEAN NOT NULL DEFAULT 0,
@@ -345,7 +366,8 @@ class TaskListManager:
                     "pin": bool(task_list_row["pin"]),
                     "queue": bool(task_list_row["queue"]),
                     "stack": bool(task_list_row["stack"]),
-                    "category": category_name
+                    "category": category_name,
+                    "task_categories": task_list_row["task_categories"]
                 })
 
         # Always include "Uncategorized" category
@@ -363,7 +385,8 @@ class TaskListManager:
                 "pin": bool(task_list_row["pin"]),
                 "queue": bool(task_list_row["queue"]),
                 "stack": bool(task_list_row["stack"]),
-                "category": None
+                "category": None,
+                "task_categories": task_list_row["task_categories"]
             })
 
         return categories
@@ -383,7 +406,8 @@ class TaskListManager:
                 "pin": bool(row["pin"]),
                 "queue": bool(row["queue"]),
                 "stack": bool(row["stack"]),
-                "category": row["category_name"]
+                "category": row["category_name"],
+                "task_categories": row["task_categories"]
             })
         return task_lists
 
