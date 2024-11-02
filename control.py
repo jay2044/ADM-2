@@ -6,6 +6,76 @@ from task_manager import *
 from gui import global_signals
 
 
+class TagInputWidget(QWidget):
+    def __init__(self, tags):
+        super().__init__()
+        self.available_tags = tags
+        self.tag_list = []
+        self.layout = QVBoxLayout()
+        self.input_field = QComboBox(self)
+        self.input_field.setEditable(True)
+        self.input_field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.input_field.lineEdit().setPlaceholderText("add a tag...")
+        self.input_field.addItems(self.available_tags)
+        self.input_field.setCurrentIndex(-1)
+        self.input_field.lineEdit().returnPressed.connect(self.add_tag)
+        self.input_field.lineEdit().textEdited.connect(self.update_suggestions)
+
+        self.tags_layout = QHBoxLayout()
+        self.layout.addLayout(self.tags_layout)
+        self.layout.addWidget(self.input_field)
+        self.setLayout(self.layout)
+
+    def add_tag(self):
+        tag_text = self.input_field.currentText().strip()
+        if tag_text and tag_text not in self.tag_list:
+            tag_label = QLabel(f"{tag_text} ")
+            delete_button = QPushButton("x")
+            delete_button.setFixedSize(15, 15)
+            delete_button.clicked.connect(lambda _, t=tag_text: self.remove_tag(t))
+
+            tag_layout = QHBoxLayout()
+            tag_layout.addWidget(tag_label)
+            tag_layout.addWidget(delete_button)
+            tag_layout.setContentsMargins(0, 0, 0, 0)
+            tag_layout.setSpacing(0)
+
+            tag_widget = QWidget()
+            tag_widget.setLayout(tag_layout)
+            self.tags_layout.addWidget(tag_widget)
+            self.tag_list.append(tag_text)
+            tag_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+            self.input_field.setCurrentText("")
+            self.reset_suggestions()
+
+    def remove_tag(self, tag_text):
+        for i in reversed(range(self.tags_layout.count())):
+            tag_widget = self.tags_layout.itemAt(i).widget()
+            tag_label = tag_widget.findChild(QLabel)
+            if tag_label and tag_label.text().strip() == f"{tag_text}":
+                self.tags_layout.takeAt(i).widget().deleteLater()
+                self.tag_list.remove(tag_text)
+                self.reset_suggestions()
+                break
+
+    def update_suggestions(self, text):
+        self.filtered_tags = [tag for tag in self.available_tags if text.lower() in tag.lower()]
+        self.input_field.clear()
+        self.input_field.addItems(self.filtered_tags)
+        self.input_field.setCurrentText(text)
+        # self.input_field.setCurrentIndex(-1)
+
+    def reset_suggestions(self):
+        self.filtered_tags = [tag for tag in self.available_tags if tag not in self.tag_list]
+        self.input_field.clear()
+        self.input_field.addItems(self.filtered_tags)
+        self.input_field.setCurrentIndex(-1)
+
+    def get_tags(self):
+        return self.tag_list
+
+
 class CustomDateEdit(QDateEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -63,25 +133,11 @@ class AddTaskDialog(QDialog):
         # if a TaskListDock
         if parent.type == "dock":
             categories = parent.task_list_widget.task_list.get_task_categories()
-        elif parent.type == "stack":  #if TaskListStacked
+        elif parent.type == "stack":  # if TaskListStacked
             categories = parent.get_current_task_list_widget().task_list.get_task_categories()
 
-        # Create a QListWidget for multiple category selection
-        self.category_choices = QListWidget(self)
-        self.category_choices.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-
-        if categories:
-            # Add existing categories to the QListWidget
-            for category in categories:
-                item = QListWidgetItem(category)
-                self.category_choices.addItem(item)
-
-        self.basic_layout.addRow("Category:", self.category_choices)
-
-        # Add Button for adding new categories
-        self.add_category_button = QPushButton("Add Category", self)
-        self.add_category_button.clicked.connect(self.add_category)
-        self.basic_layout.addRow(self.add_category_button)
+        self.categories_input = TagInputWidget(categories)
+        self.basic_layout.addRow("Category:", self.categories_input)
 
         self.important_checkbox = QCheckBox("Important", self)
         self.basic_layout.addRow(self.important_checkbox)
@@ -215,19 +271,6 @@ class AddTaskDialog(QDialog):
         # Object Names (for styling or testing)
         self.setObjectName("addTaskDialog")
 
-    # Define the add_category function
-    def add_category(self):
-        # Open an input dialog to get the new category name
-        category, ok = QInputDialog.getText(self, "Add Category", "Enter new category name:")
-        if ok and category:  # If the user confirmed and the input is not empty
-            # Check if category already exists to avoid duplicates
-            existing_categories = [self.category_choices.item(i).text() for i in
-                                   range(self.category_choices.count())]
-            if category not in existing_categories:
-                # Add the new category to the QListWidget
-                self.category_choices.addItem(category)
-            else:
-                QMessageBox.information(self, "Duplicate Category", "This category already exists.")
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
             self.recurrence_options_widget.show()
@@ -254,16 +297,13 @@ class AddTaskDialog(QDialog):
         super().accept()
 
     def get_task_data(self):
-        selected_categories = [
-            item.text() for item in self.category_choices.selectedItems()
-        ]
         task_data = {
             "title": self.title_edit.text(),
             "description": self.description_edit.text(),
             "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
             "due_time": self.due_time_edit.time().toString("HH:mm"),
             "priority": self.priority_spinbox.value(),
-            "categories": selected_categories,
+            "categories": self.categories_input.get_tags(),
             "is_important": self.important_checkbox.isChecked(),
             "recurring": self.recurring_checkbox.isChecked(),
             "recur_every": [],  # Calculated below
