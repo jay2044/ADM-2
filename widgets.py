@@ -76,16 +76,20 @@ class TaskWidget(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self.timer.isActive():
-                self.timer.stop()
-                self.edit_task()
-        super().mouseReleaseEvent(event)
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                if self.timer.isActive():
+                    self.timer.stop()
+                    self.edit_task()
+            super().mouseReleaseEvent(event)
+        except Exception as e:
+            print(e)
 
     def edit_task(self):
         try:
             # Set parent to None to avoid dependency on main_window
             dialog = TaskDetailDialog(self.task, self.task_list_widget, self)
+            global_signals.task_list_updated.emit()
 
             # Position the dialog to appear over the dock containing the task
             dock_widget = self.task_list_widget

@@ -152,7 +152,6 @@ class TaskList:
                 for category in task.categories:
                     if category not in self.task_categories:
                         self.task_categories.append(category)
-                        print(category)
         return tasks
 
     def add_task(self, task):

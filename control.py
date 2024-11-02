@@ -62,10 +62,8 @@ class AddTaskDialog(QDialog):
         categories = []
         # if a TaskListDock
         if parent.type == "dock":
-            print("dock")
             categories = parent.task_list_widget.task_list.get_task_categories()
         elif parent.type == "stack":  #if TaskListStacked
-            print("stack")
             categories = parent.get_current_task_list_widget().task_list.get_task_categories()
 
         # Create a QListWidget for multiple category selection
