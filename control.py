@@ -95,7 +95,7 @@ class AddTaskDialog(QDialog):
 
         # Set dialog properties
         self.resize(500, 400)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
 
         # Main layout
         self.main_layout = QVBoxLayout(self)
@@ -271,6 +271,19 @@ class AddTaskDialog(QDialog):
         # Object Names (for styling or testing)
         self.setObjectName("addTaskDialog")
 
+    def focusOutEvent(self, event):
+        print("lost focus")
+        self.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            if self.categories_input.input_field.lineEdit().hasFocus():
+                event.accept()
+            else:
+                super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
+
     def toggle_recurrence_options(self, state):
         if state == Qt.CheckState.Checked.value:
             self.recurrence_options_widget.show()
@@ -357,7 +370,7 @@ class TaskDetailDialog(QDialog):
         self.setWindowTitle("Task Details")
 
         # Set dialog properties
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
         self.task = task
         self.task_list_widget = task_list_widget
         self.is_edit_mode = False
