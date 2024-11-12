@@ -688,6 +688,17 @@ class TaskDetailDialog(QDialog):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.cancel_edits)
 
+        # Add buttons to the buttons_layout
+        self.buttons_layout.addWidget(self.save_button)
+        self.buttons_layout.addWidget(self.cancel_button)
+
+        # Initially hide the buttons
+        self.save_button.hide()
+        self.cancel_button.hide()
+
+        # Add the buttons_layout to the main_layout
+        self.main_layout.addLayout(self.buttons_layout)
+
     def display_task_details(self):
         # Clear existing widgets
         self.clear_layout(self.details_layout)
@@ -902,12 +913,6 @@ class TaskDetailDialog(QDialog):
         # Add the tag widget to the main layout with center alignment
         self.details_layout.addWidget(tag_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        if self.is_edit_mode:
-            self.main_layout.addLayout(self.buttons_layout)
-        else:
-            if self.buttons_layout.parent() == self.main_layout:
-                self.main_layout.removeItem(self.buttons_layout)
-
     def edit_task_name(self, event):
         # Replace QLabel with QLineEdit for editing
         self.task_name_edit = QLineEdit(self.task_name_label.text())
@@ -1079,6 +1084,12 @@ class TaskDetailDialog(QDialog):
             self.edit_button.hide()
             self.switch_to_edit_mode()
 
+    def add_labeled_widget(self, label_text, widget):
+        layout = QHBoxLayout()
+        layout.addWidget(QLabel(label_text))
+        layout.addWidget(widget)
+        self.details_layout.addLayout(layout)
+
     def switch_to_edit_mode(self):
         # Clear existing widgets
         self.clear_layout(self.details_layout)
@@ -1090,62 +1101,18 @@ class TaskDetailDialog(QDialog):
 
         # Description
         self.description_edit = QTextEdit(self.task.description)
-        self.details_layout.addWidget(QLabel("Description:"))
-        self.details_layout.addWidget(self.description_edit)
+        self.add_labeled_widget("Description:", self.description_edit)
 
-        # Due Date and Time in two rows
-        self.due_layout = QGridLayout()
-        self.details_layout.addLayout(self.due_layout)
-
-        # Labels in the first row
-        self.due_layout.addWidget(QLabel("Due Date:"), 0, 0)
-        self.due_layout.addWidget(QLabel("Due Time:"), 0, 1)
-
-        # Widgets in the second row
-        self.due_date_edit = QDateEdit()
-        self.due_date_edit.setCalendarPopup(True)
-        if self.task.due_date != "2000-01-01":
-            self.due_date_edit.setDate(QDate.fromString(self.task.due_date, "yyyy-MM-dd"))
-        else:
-            self.due_date_edit.setDate(QDate.currentDate())
-        self.due_layout.addWidget(self.due_date_edit, 1, 0)
-
-        self.due_time_edit = QTimeEdit()
-        if self.task.due_time != "00:00":
-            self.due_time_edit.setTime(QTime.fromString(self.task.due_time, "HH:mm"))
-        else:
-            self.due_time_edit.setTime(QTime.currentTime())
-        self.due_layout.addWidget(self.due_time_edit, 1, 1)
-
-        # Priority and Important in the same row
-        self.priority_layout = QHBoxLayout()
-        self.details_layout.addLayout(self.priority_layout)
-
-        # Priority label and widget
-        self.priority_layout.addWidget(QLabel("Priority:"))
+        # Priority
         self.priority_spinbox = QSpinBox()
-        self.priority_spinbox.setMinimum(0)
-        self.priority_spinbox.setMaximum(10)
+        self.priority_spinbox.setRange(0, 10)
         self.priority_spinbox.setValue(self.task.priority)
-        self.priority_layout.addWidget(self.priority_spinbox)
+        self.add_labeled_widget("Priority:", self.priority_spinbox)
 
-        # Important label and checkbox
-        self.priority_layout.addWidget(QLabel("Important:"))
-        self.is_important_checkbox = QCheckBox()
-        self.is_important_checkbox.setChecked(self.task.is_important)
-        self.priority_layout.addWidget(self.is_important_checkbox)
-
-        # Categories in the same row using TagInputWidget
-        self.category_layout = QHBoxLayout()
-        self.details_layout.addLayout(self.category_layout)
-
-        # Categories label
-        self.category_layout.addWidget(QLabel("Categories:"))
-
-        # Tag input widget for categories
-        self.categories_input = TagInputWidget(self.task_list_widget.task_list.get_task_categories(),
-                                               self.task.categories)
-        self.category_layout.addWidget(self.categories_input)
+        # Categories
+        self.categories_input = TagInputWidget(
+            self.task_list_widget.task_list.get_task_categories(), self.task.categories)
+        self.add_labeled_widget("Categories:", self.categories_input)
 
         # Recurring
         self.recurring_checkbox = QCheckBox("Recurring")
@@ -1154,181 +1121,128 @@ class TaskDetailDialog(QDialog):
 
         # Recur Every
         self.recur_every_edit = QLineEdit(", ".join(map(str, self.task.recur_every)))
-        self.details_layout.addWidget(QLabel("Recur Every (list of days or numbers):"))
-        self.details_layout.addWidget(self.recur_every_edit)
-
-        # Status
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(["Not Started", "In Progress", "Completed", "Failed", "On Hold"])
-        self.status_combo.setCurrentText(self.task.status)
-        self.details_layout.addWidget(QLabel("Status:"))
-        self.details_layout.addWidget(self.status_combo)
+        self.add_labeled_widget("Recur Every (list of days or numbers):", self.recur_every_edit)
 
         # Estimate
         self.estimate_spinbox = QDoubleSpinBox()
-        self.estimate_spinbox.setMinimum(0)
-        self.estimate_spinbox.setMaximum(10000)
+        self.estimate_spinbox.setRange(0, 10000)
         self.estimate_spinbox.setDecimals(2)
         self.estimate_spinbox.setValue(self.task.estimate)
-        self.details_layout.addWidget(QLabel("Estimate (hours):"))
-        self.details_layout.addWidget(self.estimate_spinbox)
+        self.add_labeled_widget("Estimate (hours):", self.estimate_spinbox)
 
         # Time Logged
         self.time_logged_spinbox = QDoubleSpinBox()
-        self.time_logged_spinbox.setMinimum(0)
-        self.time_logged_spinbox.setMaximum(10000)
+        self.time_logged_spinbox.setRange(0, 10000)
         self.time_logged_spinbox.setDecimals(2)
         self.time_logged_spinbox.setValue(self.task.time_logged)
-        self.details_layout.addWidget(QLabel("Time Logged (hours):"))
-        self.details_layout.addWidget(self.time_logged_spinbox)
+        self.add_labeled_widget("Time Logged (hours):", self.time_logged_spinbox)
 
-        # Deadline Flexibility
-        self.deadline_flexibility_combo = QComboBox()
-        self.deadline_flexibility_combo.addItems(["Strict", "Flexible"])
-        self.deadline_flexibility_combo.setCurrentText(self.task.deadline_flexibility)
-        self.details_layout.addWidget(QLabel("Deadline Flexibility:"))
-        self.details_layout.addWidget(self.deadline_flexibility_combo)
-
-        # Effort Level
-        self.effort_level_combo = QComboBox()
-        self.effort_level_combo.addItems(["Easy", "Medium", "Hard"])
-        self.effort_level_combo.setCurrentText(self.task.effort_level)
-        self.details_layout.addWidget(QLabel("Effort Level:"))
-        self.details_layout.addWidget(self.effort_level_combo)
-
-        # Dependencies
-        self.dependencies_edit = QLineEdit(", ".join(self.task.dependencies))
-        self.details_layout.addWidget(QLabel("Dependencies (comma-separated):"))
-        self.details_layout.addWidget(self.dependencies_edit)
-
-        # Resources
-        self.resources_edit = QLineEdit(", ".join(self.task.resources))
-        self.details_layout.addWidget(QLabel("Resources (comma-separated):"))
-        self.details_layout.addWidget(self.resources_edit)
-
-        # Count Required and Completed
+        # Count Required
         self.count_required_spinbox = QSpinBox()
-        self.count_required_spinbox.setMinimum(0)
-        self.count_required_spinbox.setMaximum(1000)
+        self.count_required_spinbox.setRange(0, 1000)
         self.count_required_spinbox.setValue(self.task.count_required)
-        self.details_layout.addWidget(QLabel("Count Required:"))
-        self.details_layout.addWidget(self.count_required_spinbox)
+        self.add_labeled_widget("Count Required:", self.count_required_spinbox)
 
+        # Count Completed
         self.count_completed_spinbox = QSpinBox()
-        self.count_completed_spinbox.setMinimum(0)
-        self.count_completed_spinbox.setMaximum(1000)
+        self.count_completed_spinbox.setRange(0, 1000)
         self.count_completed_spinbox.setValue(self.task.count_completed)
-        self.details_layout.addWidget(QLabel("Count Completed:"))
-        self.details_layout.addWidget(self.count_completed_spinbox)
+        self.add_labeled_widget("Count Completed:", self.count_completed_spinbox)
 
         # Notes
         self.notes_edit = QTextEdit(self.task.notes)
-        self.details_layout.addWidget(QLabel("Notes:"))
-        self.details_layout.addWidget(self.notes_edit)
+        self.add_labeled_widget("Notes:", self.notes_edit)
 
-        # Subtasks Editing (if applicable)
-        if hasattr(self.task, 'subtasks') and self.task.subtasks:
-            self.details_layout.addWidget(QLabel("Subtasks:"))
-            self.subtask_edits = []
-            for subtask in self.task.subtasks:
-                subtask_layout = QHBoxLayout()
-                subtask_checkbox = QCheckBox()
-                subtask_checkbox.setChecked(subtask.completed)
-                subtask_title_edit = QLineEdit(subtask.title)
-                subtask_layout.addWidget(subtask_checkbox)
-                subtask_layout.addWidget(subtask_title_edit)
-                self.details_layout.addLayout(subtask_layout)
-                self.subtask_edits.append((subtask, subtask_checkbox, subtask_title_edit))
-
-        # Add Save and Cancel buttons
-        self.buttons_layout.addWidget(self.save_button)
-        self.buttons_layout.addWidget(self.cancel_button)
-        self.main_layout.addLayout(self.buttons_layout)
-
+        # Show Save and Cancel buttons
         self.save_button.show()
         self.cancel_button.show()
 
     def save_task_edits(self):
-        if not self.task_name_edit.text().strip():
-            QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
-            return
+        # Validate title
+        try:
+            title = self.task_name_edit.text().strip()
+            if not title:
+                QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
+                return
+            # Update task attributes and log each
+            self.task.title = title
+        except Exception as e:
+            print(e)
 
-        # Update task with new values
-        self.task.title = self.task_name_edit.text()
+        # Logging example
+        print("Saving task edits...")
+
         self.task.description = self.description_edit.toPlainText()
-        self.task.due_date = self.due_date_edit.date().toString("yyyy-MM-dd")
-        self.task.due_time = self.due_time_edit.time().toString("HH:mm")
-        self.task.priority = self.priority_spinbox.value()
-        self.task.is_important = self.is_important_checkbox.isChecked()
-        self.task.categories = self.categories_input.get_tags()
-        self.task.recurring = self.recurring_checkbox.isChecked()
+        print("Description:", self.task.description)
 
-        # Parse recur_every input
-        recur_every_text = self.recur_every_edit.text()
-        if recur_every_text.strip():
+        self.task.priority = self.priority_spinbox.value()
+        print("Priority:", self.task.priority)
+
+        self.task.categories = self.categories_input.get_tags()
+        print("Categories:", self.task.categories)
+
+        self.task.recurring = self.recurring_checkbox.isChecked()
+        print("Recurring:", self.task.recurring)
+
+        recur_every_text = self.recur_every_edit.text().strip()
+        if recur_every_text:
             try:
-                self.task.recur_every = [int(item.strip()) for item in recur_every_text.split(',') if item.strip()]
+                self.task.recur_every = [int(item) for item in recur_every_text.split(',') if item.strip().isdigit()]
+                print("Recur Every:", self.task.recur_every)
             except ValueError:
                 QMessageBox.warning(self, "Input Error", "Recur Every must be a list of integers separated by commas.")
                 return
         else:
             self.task.recur_every = []
 
-        self.task.status = self.status_combo.currentText()
+        # Remaining attributes with logging
         self.task.estimate = self.estimate_spinbox.value()
-        self.task.time_logged = self.time_logged_spinbox.value()
-        self.task.deadline_flexibility = self.deadline_flexibility_combo.currentText()
-        self.task.effort_level = self.effort_level_combo.currentText()
-        self.task.dependencies = [dep.strip() for dep in self.dependencies_edit.text().split(',') if dep.strip()]
-        self.task.resources = [res.strip() for res in self.resources_edit.text().split(',') if res.strip()]
-        self.task.count_required = self.count_required_spinbox.value()
-        self.task.notes = self.notes_edit.toPlainText()
+        print("Estimate:", self.task.estimate)
 
-        # Update subtasks (if applicable)
+        self.task.time_logged = self.time_logged_spinbox.value()
+        print("Time Logged:", self.task.time_logged)
+
+        self.task.count_required = self.count_required_spinbox.value()
+        print("Count Required:", self.task.count_required)
+
+        self.task.count_completed = self.count_completed_spinbox.value()
+        print("Count Completed:", self.task.count_completed)
+
+        self.task.notes = self.notes_edit.toPlainText()
+        print("Notes:", self.task.notes)
+
+        # Subtasks
         if hasattr(self, 'subtask_edits'):
-            updated_subtasks = []
             for subtask, checkbox, title_edit in self.subtask_edits:
                 subtask.completed = checkbox.isChecked()
                 subtask.title = title_edit.text()
-                updated_subtasks.append(subtask)
-            self.task.subtasks = updated_subtasks
+                print("Subtask:", subtask.title, "Completed:", subtask.completed)
 
-        # Update task in the task manager
+        # Update task and refresh UI
         self.task_list_widget.task_list.update_task(self.task)
-        # Emit a signal to update the UI
         global_signals.task_list_updated.emit()
-
-        # Switch back to view mode
-        self.is_edit_mode = False
-        self.edit_button.show()
-        self.header_layout.replaceWidget(self.task_name_edit, self.task_name_label)
-        self.task_name_edit.deleteLater()
-        self.task_name_label.show()
-
-        # Remove buttons from layout
-        self.buttons_layout.removeWidget(self.save_button)
-        self.buttons_layout.removeWidget(self.cancel_button)
-        self.save_button.hide()
-        self.cancel_button.hide()
-
-        # Refresh the details view
-        self.display_task_details()
+        self.exit_edit_mode()
 
     def cancel_edits(self):
-        # Switch back to view mode without saving
+        # Exit edit mode without saving changes
+        self.exit_edit_mode()
+
+    def exit_edit_mode(self):
         self.is_edit_mode = False
         self.edit_button.show()
-        self.header_layout.replaceWidget(self.task_name_edit, self.task_name_label)
-        self.task_name_edit.deleteLater()
-        self.task_name_label.show()
+        try:
+            # Replace QLineEdit with QLabel for task name
+            self.header_layout.replaceWidget(self.task_name_edit, self.task_name_label)
+            self.task_name_edit.deleteLater()
+            self.task_name_label.show()
+        except Exception as e:
+            print(e)
 
-        # Remove buttons from layout
-        self.buttons_layout.removeWidget(self.save_button)
-        self.buttons_layout.removeWidget(self.cancel_button)
+        # Hide the Save and Cancel buttons
         self.save_button.hide()
         self.cancel_button.hide()
 
-        # Refresh the details view
+        # Refresh the task details view
         self.display_task_details()
 
     # Functions to update time_logged
@@ -1361,12 +1275,6 @@ class TaskDetailDialog(QDialog):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
-
-    def toggle_subtask(self, subtask, state):
-        subtask.completed = (state == Qt.CheckState.Checked.value)
-        # Optionally, update the task manager and UI
-        self.task_list_widget.task_list.update_task(self.task)
-        global_signals.task_list_updated.emit()
 
     def clear_layout(self, layout):
         while layout.count():
