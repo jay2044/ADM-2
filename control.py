@@ -1046,32 +1046,39 @@ class TaskDetailDialog(QDialog):
         dialog.move(label_pos - QPoint(dialog.width() // 2, dialog.height() // 2))
         dialog.exec()
 
+    def update_task_due_date(self, due_date):
+        # Update task's due date
+        self.task.due_date = due_date
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
+
+    def update_task_due_time(self, due_time):
+        # Update task's due time
+        self.task.due_time = due_time
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
+
     def update_due_date_from_calendar(self, calendar):
-        # Update task's due date based on the calendar selection
-        selected_date = calendar.selectedDate()
-        self.task.due_date = selected_date.toString("yyyy-MM-dd")
-        global_signals.task_list_updated.emit()
-        global_signals.task_list_updated.emit()
+        # Use update_task_due_date to set due date based on calendar selection
+        selected_date = calendar.selectedDate().toString("yyyy-MM-dd")
+        self.update_task_due_date(selected_date)
         self.setup_due_date_display()
 
     def update_due_time_from_time_edit(self, time_edit):
-        # Update task's due time based on the time edit
-        selected_time = time_edit.time()
-        self.task.due_time = selected_time.toString("HH:mm")
-        global_signals.task_list_updated.emit()
+        # Use update_task_due_time to set due time based on time edit
+        selected_time = time_edit.time().toString("HH:mm")
+        self.update_task_due_time(selected_time)
         self.setup_due_date_display()
 
     def clear_due_date(self, calendar):
-        # Clear the due date, keep due time as is
-        self.task.due_date = "2000-01-01"  # or another default/undefined value
-        global_signals.task_list_updated.emit()
+        # Use update_task_due_date to clear the due date
+        self.update_task_due_date("2000-01-01")  # Default/undefined date
         calendar.clearFocus()
         self.setup_due_date_display()
 
     def clear_due_time(self, time_edit):
-        # Clear the due time, keep due date as is
-        self.task.due_time = "00:00"  # or another default/undefined value
-        global_signals.task_list_updated.emit()
+        # Use update_task_due_time to clear the due time
+        self.update_task_due_time("00:00")  # Default/undefined time
         time_edit.setTime(QTime(0, 0))
         self.setup_due_date_display()
 
