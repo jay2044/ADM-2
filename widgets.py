@@ -286,7 +286,7 @@ class TaskListCollection(QWidget):
                 category_item = QTreeWidgetItem(self.tree_widget)
                 category_item.setText(0, category_name)
                 category_item.setExpanded(True)
-                category_item.setFlags(category_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                category_item.setFlags(category_item.flags())
                 category_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'category', 'name': category_name})
 
                 # Sort task lists based on 'pin' attribute and alphabetically
@@ -302,7 +302,7 @@ class TaskListCollection(QWidget):
                     task_list_item = QTreeWidgetItem(category_item)
                     task_list_item.setText(0, task_list_name)
                     task_list_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'task_list', 'info': task_list_info})
-                    task_list_item.setFlags(task_list_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    task_list_item.setFlags(task_list_item.flags())
 
                     # Retrieve or create TaskList instance
                     if task_list_name in self.parent.task_lists:

@@ -162,6 +162,11 @@ class TaskList:
     def add_task(self, task):
         self.manager.add_task(task, self.list_name)
         self.tasks.append(task)
+        # Check if task has categories and update task_categories if new ones are found
+        if hasattr(task, 'categories') and isinstance(task.categories, list):
+            for category in task.categories:
+                if category not in self.task_categories:
+                    self.task_categories.append(category)
 
     def remove_task(self, task):
         self.manager.remove_task(task)

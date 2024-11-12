@@ -1179,7 +1179,7 @@ class TaskDetailDialog(QDialog):
         print("Priority:", self.task.priority)
 
         self.task.categories = self.categories_input.get_tags()
-        print("Categories:", self.task.categories)
+        print("Categories:", self.categories_input.get_tags())
 
         self.task.recurring = self.recurring_checkbox.isChecked()
         print("Recurring:", self.task.recurring)
