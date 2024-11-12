@@ -120,7 +120,8 @@ class TaskWidget(QWidget):
 
     def task_checked(self, state):
         try:
-            self.task.completed = bool(state)
+            if bool(state):
+                self.task.set_completed()
             self.task_list_widget.task_list.update_task(self.task)
             global_signals.task_list_updated.emit()
 

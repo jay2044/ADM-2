@@ -11,14 +11,12 @@ def sanitize_name(name):
 
 class Subtask:
     def __init__(self, title, description='', due_date=None, due_time=None,
-                 completed=False, subtask_id=None, task_id=None):
+                 completed=False, subtask_id=None, task_id=None, order=0):
         self.id = subtask_id
-        self.task_id = task_id  # The parent task's ID
+        self.task_id = task_id
         self.title = title
-        self.description = description
-        self.due_date = due_date  # Expected format: 'YYYY-MM-DD'
-        self.due_time = due_time  # Expected format: 'HH:MM'
         self.completed = completed
+        self.order = order
 
     def __str__(self):
         return f"Subtask: {self.title}, Completed: {self.completed}"
@@ -41,7 +39,13 @@ class Task:
         self.added_date_time = datetime.now()
         self.categories = categories if categories else []
         self.recurring = recurring
-        self.recur_every = recur_every if isinstance(recur_every, list) else []
+        # Allow recur_every to be either an int or a list
+        if isinstance(recur_every, int):
+            self.recur_every = [recur_every]
+        elif isinstance(recur_every, list):
+            self.recur_every = recur_every
+        else:
+            self.recur_every = []
         self.last_completed_date = last_completed_date  # Datetime object
         self.list_name = list_name  # Added to keep track of the task's list name
 
@@ -71,6 +75,7 @@ class Task:
     def set_completed(self):
         self.completed = True
         self.last_completed_date = datetime.now()
+        print(f"set completed on {self.last_completed_date}")
         self.status = "Completed"
 
     def add_category(self, category):
@@ -292,17 +297,15 @@ class TaskListManager:
         """
 
         create_subtasks_table = """
-        CREATE TABLE IF NOT EXISTS subtasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            due_date TEXT,
-            due_time TEXT,
-            completed BOOLEAN NOT NULL CHECK (completed IN (0,1)),
-            FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
-        );
-        """
+            CREATE TABLE IF NOT EXISTS subtasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                completed BOOLEAN NOT NULL CHECK (completed IN (0,1)),
+                "order" INTEGER,
+                FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            );
+            """
 
         try:
             cursor = self.conn.cursor()
@@ -310,6 +313,11 @@ class TaskListManager:
             cursor.execute(create_task_lists_table)
             cursor.execute(create_tasks_table)
             cursor.execute(create_subtasks_table)
+            # Check and add missing columns to subtasks table
+            cursor.execute("PRAGMA table_info(subtasks)")
+            existing_columns = [column[1] for column in cursor.fetchall()]
+            if "order" not in existing_columns:
+                cursor.execute("ALTER TABLE subtasks ADD COLUMN \"order\" INTEGER")
             self.conn.commit()
 
             # Check and add missing columns
@@ -452,42 +460,46 @@ class TaskListManager:
     def load_subtasks(self, task_id):
         subtasks = []
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM subtasks WHERE task_id=?", (task_id,))
+        cursor.execute("SELECT * FROM subtasks WHERE task_id=? ORDER BY \"order\"", (task_id,))
         rows = cursor.fetchall()
         for row in rows:
             subtask = Subtask(
                 title=row['title'],
-                description=row['description'],
-                due_date=row['due_date'],
-                due_time=row['due_time'],
                 completed=bool(row['completed']),
                 subtask_id=row['id'],
-                task_id=row['task_id']
+                task_id=row['task_id'],
+                order=row['order'] if 'order' in row.keys() else 0
             )
             subtasks.append(subtask)
         return subtasks
 
     def add_subtask(self, subtask):
         cursor = self.conn.cursor()
+        # Get the maximum order value
+        cursor.execute("SELECT MAX(\"order\") FROM subtasks WHERE task_id=?", (subtask.task_id,))
+        max_order = cursor.fetchone()[0]
+        if max_order is None:
+            max_order = 0
+        else:
+            max_order += 1
         cursor.execute("""
-            INSERT INTO subtasks (task_id, title, description, due_date, due_time, completed)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO subtasks (task_id, title, completed, "order")
+            VALUES (?, ?, ?, ?)
         """, (
-            subtask.task_id, subtask.title, subtask.description,
-            subtask.due_date, subtask.due_time, int(subtask.completed)
+            subtask.task_id, subtask.title, int(subtask.completed), max_order
         ))
         self.conn.commit()
         subtask.id = cursor.lastrowid
+        subtask.order = max_order
 
     def update_subtask(self, subtask):
         cursor = self.conn.cursor()
         cursor.execute("""
             UPDATE subtasks
-            SET title=?, description=?, due_date=?, due_time=?, completed=?
+            SET title=?, completed=?, "order"=?
             WHERE id=?
         """, (
-            subtask.title, subtask.description,
-            subtask.due_date, subtask.due_time, int(subtask.completed),
+            subtask.title, int(subtask.completed), subtask.order,
             subtask.id
         ))
         self.conn.commit()
@@ -713,10 +725,28 @@ class TaskListManager:
 
     def manage_recurring_tasks(self):
         cursor = self.conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE recurring=1")
         rows = cursor.fetchall()
 
+        # Define weekday mapping for reference
+        weekday_mapping = {
+            "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4,
+            "Fri": 5, "Sat": 6, "Sun": 7
+        }
+
         for row in rows:
+            # Interpret recur_every as weekday names or integer days
+            recur_every_raw = json.loads(row['recur_every']) if row['recur_every'] else []
+            print(f"Processing task '{row['title']}' with recur_every: {recur_every_raw}")
+
+            if isinstance(recur_every_raw, int):
+                recur_every = [recur_every_raw]
+            elif isinstance(recur_every_raw, list):
+                recur_every = [day for day in recur_every_raw if day in weekday_mapping]
+            else:
+                recur_every = []
+
             task = Task(
                 title=row['title'],
                 description=row['description'],
@@ -728,33 +758,52 @@ class TaskListManager:
                 completed=bool(row['completed']),
                 categories=row['categories'].split(',') if row['categories'] else [],
                 recurring=bool(row['recurring']),
-                recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
+                recur_every=recur_every,
                 last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
                     'last_completed_date'] else None,
                 list_name=row['list_name']
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
 
-            if task.completed:
-                if task.recur_every:
-                    if len(task.recur_every) == 1:
-                        # "Every N days" recurrence
-                        days_to_add = task.recur_every[0]
-                        new_due_date = datetime.strptime(task.due_date, '%Y-%m-%d') + timedelta(days=days_to_add)
-                    else:
-                        # "Specific weekdays" recurrence
-                        today = datetime.now()
-                        today_weekday = today.isoweekday()  # 1 (Monday) - 7 (Sunday)
-                        days_ahead_list = [((weekday - today_weekday) % 7 or 7) for weekday in task.recur_every]
-                        days_until_next = min(days_ahead_list)
-                        new_due_date = today + timedelta(days=days_until_next)
-                    # Update task with new due date and reset completion status
-                    task.due_date = new_due_date.strftime('%Y-%m-%d')
-                    task.completed = False
-                    self.update_task(task)
+            # Print last completed date
+            if task.last_completed_date:
+                print(f"Task '{task.title}' last completed on: {task.last_completed_date.date()}")
+
+            # Skip tasks completed today
+            if task.last_completed_date and task.last_completed_date.date() == datetime.now().date():
+                print(f"Skipping task '{task.title}' as it was completed today.")
+                continue
+
+            # Process recurring tasks based on recur_every
+            if task.completed and task.recur_every:
+                if len(task.recur_every) == 1 and isinstance(task.recur_every[0], int):
+                    days_to_add = task.recur_every[0]
+                    next_available_date = (task.last_completed_date + timedelta(days=days_to_add)
+                                           if task.last_completed_date else datetime.now() + timedelta(
+                        days=days_to_add))
+
+                    print(f"Task '{task.title}' calculated next available date: {next_available_date.date()}")
+
+                    if next_available_date <= datetime.now():
+                        print(f"Reopening task '{task.title}' as it has reached its recurrence date.")
+                        task.completed = False
+                        self.update_task(task)
+
                 else:
-                    # Handle the case where recur_every is empty
-                    pass
+                    # Handle weekday names in recur_every
+                    today = datetime.now()
+                    today_weekday = today.isoweekday()
+
+                    print(
+                        f"Today is weekday {today_weekday}. Task '{task.title}' checks against recur_every: {task.recur_every} it was last set complet on {task.last_completed_date}")
+
+                    # Check if today matches any specified weekday in recur_every
+                    if any(weekday_mapping[day] == today_weekday for day in task.recur_every):
+                        print(f"Reopening task '{task.title}' as today matches one of its specified recurrence days.")
+                        task.completed = False
+                        self.update_task(task)
+                    else:
+                        print(f"Task '{task.title}' does not recur today.")
 
     def __del__(self):
         self.conn.close()
