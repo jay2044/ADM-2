@@ -103,10 +103,10 @@ class SubtaskWindow(QWidget):
         self.task_list = task_list
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setStyleSheet("border-radius: 10px;")
-        self.setMinimumSize(300, 400)
+        self.setMinimumSize(50, 100)
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        # self.main_layout.setContentsMargins(10, 10, 10, 10)
 
         self.input_layout = QHBoxLayout()
         self.subtask_input = QLineEdit()
@@ -688,6 +688,226 @@ class TaskDetailDialog(QDialog):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.cancel_edits)
 
+    def display_task_details(self):
+        # Clear existing widgets
+        self.clear_layout(self.details_layout)
+        self.details_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Update task name
+        self.task_name_label.setText(self.task.title)
+
+        # If task is recurring, show when it is recurring
+        if self.task.recurring:
+            recurring_list = self.task.recur_every
+            if all(isinstance(item, str) for item in recurring_list):
+                # Convert each item in the list to a string before joining
+                str_recurring_list = ", ".join(map(str, recurring_list))
+                str_recurring_list = "Due every " + str_recurring_list
+            else:
+                str_recurring_list = str(recurring_list[0])
+
+                if self.task.last_completed_date is not None:
+                    days_due_in = (self.task.last_completed_date + timedelta(
+                        days=int(recurring_list[0])) - datetime.now()).days
+                    str_recurring_list = f"Due every {str_recurring_list} days, next in {days_due_in} days."
+                else:
+                    str_recurring_list = f"Due every {str_recurring_list} days."
+
+            recurring_label = QLabel(str_recurring_list)
+            recurring_label.setStyleSheet("font-size: 12px; color: gray;")
+            recurring_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+            self.details_layout.addWidget(recurring_label, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Create the layout for dropdowns
+        dropdown_layout = QHBoxLayout()
+        dropdown_layout.setContentsMargins(0, 0, 0, 0)
+        dropdown_layout.setSpacing(10)
+
+        # Status dropdown
+        status_dropdown = QComboBox()
+        status_dropdown.addItems(["Not Started", "In Progress", "Completed", "Failed", "On Hold"])
+        status_dropdown.setCurrentText(self.task.status if self.task.status else "Task Status")
+        status_dropdown.currentTextChanged.connect(lambda value: setattr(self.task, 'status', value))
+        dropdown_layout.addWidget(status_dropdown)
+
+        # Deadline flexibility dropdown
+        flexibility_dropdown = QComboBox()
+        flexibility_dropdown.addItems(["Strict", "Flexible"])
+        flexibility_dropdown.setCurrentText(
+            self.task.deadline_flexibility if self.task.deadline_flexibility else "Deadline Flexibility")
+        flexibility_dropdown.currentTextChanged.connect(lambda value: setattr(self.task, 'deadline_flexibility', value))
+        dropdown_layout.addWidget(flexibility_dropdown)
+
+        # Effort level dropdown
+        effort_dropdown = QComboBox()
+        effort_dropdown.addItems(["Easy", "Medium", "Hard"])
+        effort_dropdown.setCurrentText(self.task.effort_level if self.task.effort_level else "Effort Level")
+        effort_dropdown.currentTextChanged.connect(lambda value: setattr(self.task, 'effort_level', value))
+        dropdown_layout.addWidget(effort_dropdown)
+
+        # Add the dropdown layout to the details layout
+        self.details_layout.addLayout(dropdown_layout)
+
+        # Description with a QWidget container for background differentiation
+        if self.task.description:
+            # Description container with rounded edges using a shadow effect
+            description_container = QWidget()
+            description_container.setAutoFillBackground(True)
+
+            # Add rounded corners effect using a shadow
+            shadow_effect = QGraphicsDropShadowEffect()
+            shadow_effect.setBlurRadius(10)
+            shadow_effect.setOffset(0, 0)  # Center shadow for a uniform effect around the edges
+            description_container.setGraphicsEffect(shadow_effect)
+
+            # Layout for the description content
+            description_layout = QVBoxLayout(description_container)
+            description_layout.setContentsMargins(5, 5, 5, 5)  # Padding for rounded corner effect
+
+            # Description label inside the container
+            description_label = QLabel(self.task.description)
+            description_label.setWordWrap(True)
+            description_layout.addWidget(description_label)
+
+            self.details_layout.addWidget(description_container)
+
+        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
+        self.details_layout.addWidget(sub_task_window)
+
+        # Progress Bar for Time Logged
+        if self.task.estimate > 0:
+            time_layout = QHBoxLayout()
+            time_layout.setContentsMargins(0, 0, 0, 0)
+            time_layout.setSpacing(5)
+
+            time_label = QLabel(f"Hr: {self.task.time_logged}/{self.task.estimate}")
+            time_layout.addWidget(time_label, alignment=Qt.AlignmentFlag.AlignLeft)
+
+            time_progress_bar = QProgressBar()
+            time_progress_bar.setMinimum(0)
+            time_progress_bar.setMaximum(int(self.task.estimate))
+            time_progress_bar.setValue(int(self.task.time_logged))
+            time_progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            time_layout.addWidget(time_progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
+
+            # Increment/Decrement Buttons
+            increment_time_button = QPushButton("+")
+            decrement_time_button = QPushButton("-")
+            record_time_button = QPushButton("l>")
+
+            for btn in [increment_time_button, decrement_time_button, record_time_button]:
+                btn.setFixedSize(20, 20)
+
+            increment_time_button.clicked.connect(self.increment_time_logged)
+            decrement_time_button.clicked.connect(self.decrement_time_logged)
+
+            # Add buttons to a separate layout aligned to the right
+            button_layout = QHBoxLayout()
+            button_layout.setSpacing(2)
+            button_layout.addWidget(increment_time_button)
+            button_layout.addWidget(decrement_time_button)
+            button_layout.addWidget(record_time_button)
+
+            # Wrap buttons in a widget and align to the right
+            button_widget = QWidget()
+            button_widget.setLayout(button_layout)
+            time_layout.addWidget(button_widget, alignment=Qt.AlignmentFlag.AlignRight)
+
+            self.details_layout.addLayout(time_layout)
+
+        # Progress Bar for Count
+        if self.task.count_required > 0:
+            progress_layout = QHBoxLayout()
+            progress_layout.setContentsMargins(0, 0, 0, 0)
+            progress_layout.setSpacing(5)
+
+            progress_label = QLabel(f"C: {self.task.count_completed}/{self.task.count_required}")
+            progress_layout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignLeft)
+
+            progress_bar = QProgressBar()
+            progress_bar.setMinimum(0)
+            progress_bar.setMaximum(self.task.count_required)
+            progress_bar.setValue(self.task.count_completed)
+            progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            progress_layout.addWidget(progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
+
+            # Increment/Decrement Buttons
+            increment_button = QPushButton("+")
+            decrement_button = QPushButton("-")
+
+            for btn in [increment_button, decrement_button]:
+                btn.setFixedSize(20, 20)
+
+            increment_button.clicked.connect(self.increment_count)
+            decrement_button.clicked.connect(self.decrement_count)
+
+            # Add buttons to a separate layout aligned to the right
+            button_layout = QHBoxLayout()
+            button_layout.setSpacing(2)
+            button_layout.addWidget(increment_button)
+            button_layout.addWidget(decrement_button)
+
+            # Wrap buttons in a widget and align to the right
+            button_widget = QWidget()
+            button_widget.setLayout(button_layout)
+            progress_layout.addWidget(button_widget, alignment=Qt.AlignmentFlag.AlignRight)
+
+            self.details_layout.addLayout(progress_layout)
+
+        # Notes
+        if self.task.notes:
+            notes_label = QLabel("Note:")
+            notes_label.setStyleSheet("font-weight: bold;")
+            self.details_layout.addWidget(notes_label)
+            notes_content = QLabel(self.task.notes)
+            notes_content.setWordWrap(True)
+            self.details_layout.addWidget(notes_content)
+
+        # Create the tag layout
+        tag_layout = QHBoxLayout()
+        tag_layout.setContentsMargins(0, 0, 0, 0)
+        tag_layout.setSpacing(5)  # Adds spacing between tags
+        tag_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Center align tags within the layout
+
+        # Set up the tag widget
+        tag_widget = QWidget()
+        tag_widget.setLayout(tag_layout)
+        tag_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # Allow the widget to expand
+
+        # Style each tag label with centered alignment, shadow, translucent background, and inverted text color
+        for category in self.task.categories:
+            tag_label = QLabel(f"{category} ")
+            tag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Center align text within the label
+
+            # Add shadow effect
+            shadow = QGraphicsDropShadowEffect()
+            shadow.setBlurRadius(10)
+            shadow.setOffset(2, 2)
+            shadow.setColor(QColor(0, 0, 0, 120))  # Light shadow with some transparency
+            tag_label.setGraphicsEffect(shadow)
+
+            # Translucent background color with inverted text color
+            tag_label.setStyleSheet("""
+                QLabel {
+                    background-color: rgba(211, 211, 211, 0.8);  /* Light gray with 80% opacity */
+                    color: black;  /* Inverted text color for better contrast on light background */
+                    border-radius: 10px;
+                    padding: 5px 10px;
+                }
+            """)
+
+            # Add the styled label to the layout
+            tag_layout.addWidget(tag_label)
+
+        # Add the tag widget to the main layout with center alignment
+        self.details_layout.addWidget(tag_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        if self.is_edit_mode:
+            self.main_layout.addLayout(self.buttons_layout)
+        else:
+            if self.buttons_layout.parent() == self.main_layout:
+                self.main_layout.removeItem(self.buttons_layout)
+
     def edit_task_name(self, event):
         # Replace QLabel with QLineEdit for editing
         self.task_name_edit = QLineEdit(self.task_name_label.text())
@@ -849,164 +1069,6 @@ class TaskDetailDialog(QDialog):
         global_signals.task_list_updated.emit()
         time_edit.setTime(QTime(0, 0))
         self.setup_due_date_display()
-
-    def display_task_details(self):
-        # Clear existing widgets
-        self.clear_layout(self.details_layout)
-        self.details_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Update task name
-        self.task_name_label.setText(self.task.title)
-
-        # If task is recurring, show when it is recurring
-        if self.task.recurring:
-            recurring_list = self.task.recur_every
-            if all(isinstance(item, str) for item in recurring_list):
-                # Convert each item in the list to a string before joining
-                str_recurring_list = ", ".join(map(str, recurring_list))
-                str_recurring_list = "Due every " + str_recurring_list
-            else:
-                str_recurring_list = str(recurring_list[0])
-
-                if self.task.last_completed_date is not None:
-                    days_due_in = (self.task.last_completed_date + timedelta(
-                        days=int(recurring_list[0])) - datetime.now()).days
-                    str_recurring_list = f"Due every {str_recurring_list} days, next in {days_due_in} days."
-                else:
-                    str_recurring_list = f"Due every {str_recurring_list} days."
-
-            recurring_label = QLabel(str_recurring_list)
-            recurring_label.setStyleSheet("font-size: 12px; color: gray;")
-            recurring_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-            self.details_layout.addWidget(recurring_label, alignment=Qt.AlignmentFlag.AlignRight)
-
-        # Description with a QWidget container for background differentiation
-        if self.task.description:
-            # Description container with rounded edges using a shadow effect
-            description_container = QWidget()
-            description_container.setAutoFillBackground(True)
-
-            # Add rounded corners effect using a shadow
-            shadow_effect = QGraphicsDropShadowEffect()
-            shadow_effect.setBlurRadius(10)
-            shadow_effect.setOffset(0, 0)  # Center shadow for a uniform effect around the edges
-            description_container.setGraphicsEffect(shadow_effect)
-
-            # Layout for the description content
-            description_layout = QVBoxLayout(description_container)
-            description_layout.setContentsMargins(5, 5, 5, 5)  # Padding for rounded corner effect
-
-            # Description label inside the container
-            description_label = QLabel(self.task.description)
-            description_label.setWordWrap(True)
-            description_layout.addWidget(description_label)
-
-            self.details_layout.addWidget(description_container)
-
-        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
-        self.details_layout.addWidget(sub_task_window)
-
-        # # Categories
-        # if self.task.categories:
-        #     categories_label = QLabel("Categories: " + ", ".join(self.task.categories))
-        #     self.details_layout.addWidget(categories_label)
-        #
-        # # Last Completed Date
-        # if self.task.last_completed_date:
-        #     last_completed_label = QLabel(f"Last Completed: {self.task.last_completed_date.strftime('%Y-%m-%d')}")
-        #     self.details_layout.addWidget(last_completed_label)
-        #
-        # # Added Date and Time
-        # added_label = QLabel(f"Added On: {self.task.added_date_time.strftime('%Y-%m-%d %H:%M')}")
-        # self.details_layout.addWidget(added_label)
-        #
-        # # List Name
-        # if self.task.list_name:
-        #     list_name_label = QLabel(f"List: {self.task.list_name}")
-        #     self.details_layout.addWidget(list_name_label)
-        #
-        # # Status
-        # status_label = QLabel(f"Status: {self.task.status}")
-        # self.details_layout.addWidget(status_label)
-        #
-        # # Estimate
-        # estimate_label = QLabel(f"Estimate: {self.task.estimate} hours")
-        # self.details_layout.addWidget(estimate_label)
-        #
-        # # Time Logged
-        # time_logged_label = QLabel(f"Time Logged: {self.task.time_logged} hours")
-        # self.details_layout.addWidget(time_logged_label)
-        #
-        # # Deadline Flexibility
-        # deadline_label = QLabel(f"Deadline Flexibility: {self.task.deadline_flexibility}")
-        # self.details_layout.addWidget(deadline_label)
-        #
-        # # Effort Level
-        # effort_label = QLabel(f"Effort Level: {self.task.effort_level}")
-        # self.details_layout.addWidget(effort_label)
-        #
-        # # Dependencies
-        # if self.task.dependencies:
-        #     dependencies_label = QLabel("Dependencies: " + ", ".join(self.task.dependencies))
-        #     self.details_layout.addWidget(dependencies_label)
-        #
-        # # Resources
-        # if self.task.resources:
-        #     resources_label = QLabel("Resources: " + ", ".join(self.task.resources))
-        #     self.details_layout.addWidget(resources_label)
-        #
-        # # Progress Bar for Count
-        # if self.task.count_required > 0:
-        #     progress_layout = QHBoxLayout()
-        #     progress_label = QLabel(f"Progress: {self.task.count_completed}/{self.task.count_required}")
-        #     progress_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        #     progress_layout.addWidget(progress_label)
-        #
-        #     progress_bar = QProgressBar()
-        #     progress_bar.setMinimum(0)
-        #     progress_bar.setMaximum(self.task.count_required)
-        #     progress_bar.setValue(self.task.count_completed)
-        #     progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        #     progress_layout.addWidget(progress_bar)
-        #
-        #     # Increment/Decrement Buttons
-        #     increment_button = QPushButton("+")
-        #     decrement_button = QPushButton("-")
-        #     increment_button.setFixedSize(30, 30)
-        #     decrement_button.setFixedSize(30, 30)
-        #     increment_button.clicked.connect(self.increment_count)
-        #     decrement_button.clicked.connect(self.decrement_count)
-        #     progress_layout.addWidget(increment_button)
-        #     progress_layout.addWidget(decrement_button)
-        #
-        #     self.details_layout.addLayout(progress_layout)
-        #
-        # # Notes
-        # if self.task.notes:
-        #     notes_label = QLabel("Notes:")
-        #     notes_label.setStyleSheet("font-weight: bold;")
-        #     self.details_layout.addWidget(notes_label)
-        #     notes_content = QLabel(self.task.notes)
-        #     notes_content.setWordWrap(True)
-        #     self.details_layout.addWidget(notes_content)
-        #
-        # # Subtasks
-        # if hasattr(self.task, 'subtasks') and self.task.subtasks:
-        #     subtasks_label = QLabel("Subtasks:")
-        #     subtasks_label.setStyleSheet("font-weight: bold;")
-        #     self.details_layout.addWidget(subtasks_label)
-        #     for subtask in self.task.subtasks:
-        #         subtask_checkbox = QCheckBox(subtask.title)
-        #         subtask_checkbox.setChecked(subtask.completed)
-        #         subtask_checkbox.setEnabled(False)  # Disable editing in view mode
-        #         self.details_layout.addWidget(subtask_checkbox)
-        #
-        # # Ensure the buttons layout is not added in view mode
-        # if self.is_edit_mode:
-        #     self.main_layout.addLayout(self.buttons_layout)
-        # else:
-        #     if self.buttons_layout.parent() == self.main_layout:
-        #         self.main_layout.removeItem(self.buttons_layout)
 
     def toggle_edit_mode(self):
         if self.is_edit_mode:
@@ -1268,6 +1330,23 @@ class TaskDetailDialog(QDialog):
 
         # Refresh the details view
         self.display_task_details()
+
+    # Functions to update time_logged
+    def increment_time_logged(self):
+        """Increment the time logged by one hour."""
+        if self.task.time_logged < self.task.estimate:
+            self.task.time_logged += 1
+            self.task_list_widget.task_list.update_task(self.task)
+            self.display_task_details()
+            global_signals.task_list_updated.emit()
+
+    def decrement_time_logged(self):
+        """Decrement the time logged by one hour, ensuring it doesn't go below zero."""
+        if self.task.time_logged > 0:
+            self.task.time_logged -= 1
+            self.task_list_widget.task_list.update_task(self.task)
+            self.display_task_details()
+            global_signals.task_list_updated.emit()
 
     def increment_count(self):
         if self.task.count_completed < self.task.count_required:
