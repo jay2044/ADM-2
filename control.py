@@ -184,6 +184,92 @@ class TimeProgressWidget(QWidget):
         self.time_label.setText(f"Hr: {time_logged_display}/{estimate_display}")
 
 
+class TaskDropdownsWidget(QWidget):
+    """
+    A custom widget that contains labeled dropdowns for task status,
+    deadline flexibility, and effort level in the same row.
+    """
+
+    def __init__(self, task, parent=None):
+        """
+        Initializes the TaskDropdownsWidget.
+
+        :param task: An object representing the task, with attributes for status,
+                     deadline_flexibility, and effort_level.
+        :param parent: Optional parent widget.
+        """
+        super().__init__(parent)
+        self.task = task
+
+        # Create the main layout
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(20)  # Add spacing between dropdowns
+
+        # Add labeled dropdowns
+        self.status_dropdown = self.add_labeled_dropdown(
+            main_layout,
+            "Status",
+            ["Not Started", "In Progress", "Completed", "Failed", "On Hold"],
+            self.task.status,
+            lambda value: setattr(self.task, 'status', value)
+        )
+
+        self.flexibility_dropdown = self.add_labeled_dropdown(
+            main_layout,
+            "Deadline Flexibility",
+            ["Strict", "Flexible"],
+            self.task.deadline_flexibility,
+            lambda value: setattr(self.task, 'deadline_flexibility', value)
+        )
+
+        self.effort_dropdown = self.add_labeled_dropdown(
+            main_layout,
+            "Effort Level",
+            ["Easy", "Medium", "Hard"],
+            self.task.effort_level,
+            lambda value: setattr(self.task, 'effort_level', value)
+        )
+
+        # Set the layout
+        self.setLayout(main_layout)
+
+    def add_labeled_dropdown(self, layout, label_text, items, current_value, on_change_callback):
+        """
+        Adds a label and a dropdown to the provided layout.
+
+        :param layout: The layout to add the widgets to.
+        :param label_text: The text for the label.
+        :param items: A list of items to add to the dropdown.
+        :param current_value: The current value to set in the dropdown.
+        :param on_change_callback: A callback function to call when the selection changes.
+        :return: Configured QComboBox instance.
+        """
+        # Create a vertical layout for the label and dropdown
+        dropdown_layout = QVBoxLayout()
+        dropdown_layout.setContentsMargins(0, 0, 0, 0)
+        dropdown_layout.setSpacing(0)  # Remove spacing between label and dropdown
+
+        # Create and configure the label
+        label = QLabel(label_text)
+        font = QFont()
+        font.setPointSize(8)  # Set small font size
+        label.setFont(font)
+        dropdown_layout.addWidget(label)
+
+        # Create and configure the dropdown
+        dropdown = QComboBox()
+        dropdown.addItems(items)
+        dropdown.setCurrentIndex(-1 if current_value is None else dropdown.findText(current_value))
+        dropdown.currentTextChanged.connect(on_change_callback)
+        dropdown_layout.addWidget(dropdown)
+
+        # Add the vertical layout to the main horizontal layout
+        layout.addLayout(dropdown_layout)
+
+        return dropdown
+
+
 class DescriptionContainer(QWidget):
     """
     A container widget with rounded edges, shadow effect, and a QTextEdit
@@ -714,6 +800,7 @@ class AddTaskDialog(QDialog):
         # Advanced Fields
         self.status_combo = QComboBox()
         self.status_combo.addItems(["Not Started", "In Progress", "Completed", "Failed", "On Hold"])
+        self.status_combo.setCurrentIndex(-1)
         self.advanced_layout.addRow("Status:", self.status_combo)
 
         self.estimate_spinbox = QDoubleSpinBox()
@@ -738,10 +825,12 @@ class AddTaskDialog(QDialog):
 
         self.deadline_flexibility_combo = QComboBox()
         self.deadline_flexibility_combo.addItems(["Strict", "Flexible"])
+        self.deadline_flexibility_combo.setCurrentIndex(-1)  # Initialize to None
         self.advanced_layout.addRow("Deadline Flexibility:", self.deadline_flexibility_combo)
 
         self.effort_level_combo = QComboBox()
         self.effort_level_combo.addItems(["Easy", "Medium", "Hard"])
+        self.effort_level_combo.setCurrentIndex(-1)  # Initialize to None
         self.advanced_layout.addRow("Effort Level:", self.effort_level_combo)
 
         self.resources_edit = QLineEdit()
@@ -823,13 +912,13 @@ class AddTaskDialog(QDialog):
             "recurring": self.recurring_checkbox.isChecked(),
             "recur_every": [],  # Calculated below
             # Default Advanced Fields
-            "status": self.status_combo.currentText(),
+            "status": self.status_combo.currentText() if self.status_combo.currentText() else None,
             "estimate": self.estimate_spinbox.value(),
             "count_required": self.count_required_spinbox.value(),
             "count_completed": self.count_completed_spinbox.value(),
             "dependencies": [],
-            "deadline_flexibility": self.deadline_flexibility_combo.currentText(),
-            "effort_level": self.effort_level_combo.currentText(),
+            "deadline_flexibility": self.deadline_flexibility_combo.currentText() if self.deadline_flexibility_combo.currentText() else None,
+            "effort_level": self.effort_level_combo.currentText() if self.effort_level_combo.currentText() else None,
             "resources": [],
             "notes": self.notes_edit.toPlainText(),
             "time_logged": self.time_logged_spinbox.value()
@@ -985,35 +1074,8 @@ class TaskDetailDialog(QDialog):
             recurring_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             self.details_layout.addWidget(recurring_label, alignment=Qt.AlignmentFlag.AlignRight)
 
-        # Create the layout for dropdowns
-        dropdown_layout = QHBoxLayout()
-        dropdown_layout.setContentsMargins(0, 0, 0, 0)
-        dropdown_layout.setSpacing(10)
-
-        # Status dropdown
-        status_dropdown = QComboBox()
-        status_dropdown.addItems(["Not Started", "In Progress", "Completed", "Failed", "On Hold"])
-        status_dropdown.setCurrentText(self.task.status if self.task.status else "Task Status")
-        status_dropdown.currentTextChanged.connect(lambda value: setattr(self.task, 'status', value))
-        dropdown_layout.addWidget(status_dropdown)
-
-        # Deadline flexibility dropdown
-        flexibility_dropdown = QComboBox()
-        flexibility_dropdown.addItems(["Strict", "Flexible"])
-        flexibility_dropdown.setCurrentText(
-            self.task.deadline_flexibility if self.task.deadline_flexibility else "Deadline Flexibility")
-        flexibility_dropdown.currentTextChanged.connect(lambda value: setattr(self.task, 'deadline_flexibility', value))
-        dropdown_layout.addWidget(flexibility_dropdown)
-
-        # Effort level dropdown
-        effort_dropdown = QComboBox()
-        effort_dropdown.addItems(["Easy", "Medium", "Hard"])
-        effort_dropdown.setCurrentText(self.task.effort_level if self.task.effort_level else "Effort Level")
-        effort_dropdown.currentTextChanged.connect(lambda value: setattr(self.task, 'effort_level', value))
-        dropdown_layout.addWidget(effort_dropdown)
-
-        # Add the dropdown layout to the details layout
-        self.details_layout.addLayout(dropdown_layout)
+        dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
+        self.details_layout.addWidget(dropdowns)
 
         # Check if task has a description
         if self.task.description:

@@ -25,9 +25,9 @@ class Subtask:
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
                  completed=False, categories=None, recurring=False, recur_every=None, last_completed_date=None,
-                 list_name=None, status="Not Started", estimate=0.0, count_required=0, count_completed=0,
-                 subtasks=None, dependencies=None, deadline_flexibility="Strict", effort_level="Medium",
-                 resources=None, notes="", time_logged=0.0, recurring_subtasks=None):
+                 list_name=None, status=None, estimate=0.0, count_required=0, count_completed=0,
+                 subtasks=None, dependencies=None, deadline_flexibility=None, effort_level=None,
+                 resources=None, notes=None, time_logged=0.0, recurring_subtasks=None):
         self.id = task_id
         self.title = title
         self.description = description
