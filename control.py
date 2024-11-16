@@ -48,7 +48,7 @@ class DescriptionContainer(QWidget):
         """
         self.description_text_edit.document().adjustSize()
         content_height = int(self.description_text_edit.document().size().height())
-        if content_height > 0 and content_height < 75:
+        if 0 < content_height < 75:
             self.description_text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.description_text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.setMaximumHeight(content_height)
@@ -275,7 +275,7 @@ class SubtaskWindow(QWidget):
         self.task_list.remove_subtask(self.task, subtask)
         self.load_subtasks()
 
-    def on_subtask_reordered(self, parent, start, end, destination, row):
+    def on_subtask_reordered(self, start, end, destination, row):
         """
         Reorder subtasks within the list and update their order in the database.
         """
@@ -296,12 +296,25 @@ class SubtaskWindow(QWidget):
 
 
 class TagInputWidget(QWidget):
+    """
+    A widget that allows users to input and manage tags dynamically.
+    Tags can be added from a predefined list or entered manually. Each tag
+    is displayed with a delete button for easy removal.
+    """
+
     def __init__(self, tags, tag_list=None):
+        """
+        Initializes the TagInputWidget.
+
+        :param tags: A list of available tags to suggest in the input field.
+        :param tag_list: An optional list of pre-existing tags to initialize the widget with.
+        """
         super().__init__()
         if tag_list is None:
             tag_list = []
         self.available_tags = tags
         self.tag_list = tag_list
+
         self.layout = QVBoxLayout()
         self.input_field = QComboBox(self)
         self.input_field.setEditable(True)
@@ -317,13 +330,16 @@ class TagInputWidget(QWidget):
         self.layout.addWidget(self.input_field)
         self.setLayout(self.layout)
 
-        # Automatically add tags from tag_list if it's not empty
         if self.tag_list:
             for tag in self.tag_list:
                 self.add_existing_tag(tag)
             self.reset_suggestions()
 
     def add_tag(self):
+        """
+        Adds a new tag from the input field to the tag list if it is valid
+        and not already present.
+        """
         tag_text = self.input_field.currentText().strip()
         if tag_text and tag_text not in self.tag_list:
             self.add_existing_tag(tag_text)
@@ -332,6 +348,11 @@ class TagInputWidget(QWidget):
             self.reset_suggestions()
 
     def add_existing_tag(self, tag_text):
+        """
+        Creates a tag display with the specified text and a delete button.
+
+        :param tag_text: The text of the tag to be added.
+        """
         tag_label = QLabel(f"{tag_text} ")
         delete_button = QPushButton("x")
         delete_button.setFixedSize(15, 25)
@@ -349,6 +370,11 @@ class TagInputWidget(QWidget):
         tag_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def remove_tag(self, tag_text):
+        """
+        Removes a tag from the tag list and its associated widget from the UI.
+
+        :param tag_text: The text of the tag to be removed.
+        """
         for i in reversed(range(self.tags_layout.count())):
             tag_widget = self.tags_layout.itemAt(i).widget()
             tag_label = tag_widget.findChild(QLabel)
@@ -573,7 +599,7 @@ class AddTaskDialog(QDialog):
         print("lost focus")
         self.close()
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event, **kwargs):
         if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             if self.categories_input.input_field.lineEdit().hasFocus():
                 event.accept()
@@ -970,7 +996,7 @@ class TaskDetailDialog(QDialog):
         self.task_name_label.show()
         global_signals.task_list_updated.emit()
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event, **kwargs):
         try:
             # Check if Enter was pressed to finish editing
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
