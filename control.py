@@ -6,6 +6,58 @@ from task_manager import *
 from gui import global_signals
 
 
+class DescriptionContainer(QWidget):
+    """
+    A container widget with rounded edges, shadow effect, and a QTextEdit
+    for displaying descriptions with adjustable height.
+    """
+
+    def __init__(self, description: str):
+        """
+        Initializes the DescriptionContainer with a description text.
+
+        :param description: The text content to display in the container.
+        """
+        super().__init__()
+
+        self.setAutoFillBackground(True)
+
+        shadow_effect = QGraphicsDropShadowEffect()
+        shadow_effect.setBlurRadius(10)
+        shadow_effect.setOffset(0, 0)
+        shadow_effect.setColor(QColor(0, 0, 0, 120))
+        self.setGraphicsEffect(shadow_effect)
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+
+        self.description_text_edit = QTextEdit(description)
+        self.description_text_edit.setReadOnly(True)
+        self.description_text_edit.viewport().setAutoFillBackground(False)
+        self.description_text_edit.setContentsMargins(0, 0, 0, 0)
+        self.description_text_edit.document().setDocumentMargin(0)
+        self.layout.addWidget(self.description_text_edit)
+
+        QTimer.singleShot(0, self.adjust_height)
+
+    def adjust_height(self):
+        """
+        Adjusts the height of the container based on the content size
+        and manages scrollbar visibility.
+        """
+        self.description_text_edit.document().adjustSize()
+        content_height = int(self.description_text_edit.document().size().height())
+        if content_height > 0 and content_height < 75:
+            self.description_text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.description_text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.setMaximumHeight(content_height)
+        else:
+            self.description_text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.description_text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.setMaximumHeight(75)
+
+
 class SubtaskItemWidget(QWidget):
     """
     Widget representing an individual subtask, allowing interaction via a checkbox and drag handle.
@@ -759,28 +811,10 @@ class TaskDetailDialog(QDialog):
         # Add the dropdown layout to the details layout
         self.details_layout.addLayout(dropdown_layout)
 
-        # Description with a QWidget container for background differentiation
+        # Check if task has a description
         if self.task.description:
-            # Description container with rounded edges using a shadow effect
-            description_container = QWidget()
-            description_container.setAutoFillBackground(True)
-
-            # Add rounded corners effect using a shadow
-            shadow_effect = QGraphicsDropShadowEffect()
-            shadow_effect.setBlurRadius(10)
-            shadow_effect.setOffset(0, 0)  # Center shadow for a uniform effect around the edges
-            description_container.setGraphicsEffect(shadow_effect)
-
-            # Layout for the description content
-            description_layout = QVBoxLayout(description_container)
-            description_layout.setContentsMargins(5, 5, 5, 5)  # Padding for rounded corner effect
-
-            # Description label inside the container
-            description_label = QLabel(self.task.description)
-            description_label.setWordWrap(True)
-            description_layout.addWidget(description_label)
-
-            self.details_layout.addWidget(description_container)
+            description_container = DescriptionContainer(self.task.description)
+            self.details_layout.addWidget(description_container, stretch=0)
 
         sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
         self.details_layout.addWidget(sub_task_window)
