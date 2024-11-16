@@ -89,6 +89,101 @@ class CountProgressWidget(QWidget):
         self.count_label.setText(f"{self.count_completed}/{self.count_required}")
 
 
+class TimeProgressWidget(QWidget):
+    """
+    A sleek widget displaying a progress bar for time logged,
+    including increment, decrement, and record buttons.
+    """
+
+    def __init__(self, estimate: float, time_logged: float = 0.0, parent=None):
+        """
+        Initializes the TimeProgressWidget.
+
+        :param estimate: Total estimated hours to complete the task.
+        :param time_logged: Initial hours logged.
+        :param parent: Optional parent widget.
+        """
+        super().__init__(parent)
+
+        self.estimate = estimate
+        self.time_logged = time_logged
+
+        # Main layout
+        self.time_layout = QHBoxLayout(self)
+        self.time_layout.setContentsMargins(10, 5, 10, 5)
+        self.time_layout.setSpacing(5)
+
+        # Decrement button
+        self.decrement_time_button = QPushButton("−", self)
+        self.decrement_time_button.setFixedSize(30, 30)
+        self.decrement_time_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.decrement_time_button.clicked.connect(self.decrement_time_logged)
+        self.time_layout.addWidget(self.decrement_time_button)
+
+        # Spacer between decrement button and progress bar
+        self.time_layout.addSpacerItem(QSpacerItem(10, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+
+        # Progress bar
+        self.time_progress_bar = QProgressBar(self)
+        self.time_progress_bar.setMinimum(0)
+        self.time_progress_bar.setMaximum(int(self.estimate))
+        self.time_progress_bar.setValue(int(self.time_logged))
+        self.time_progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_layout.addWidget(self.time_progress_bar)
+
+        # Spacer between progress bar and time label
+        self.time_layout.addSpacerItem(QSpacerItem(10, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+
+        # Time label
+        self.time_label = QLabel(self)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_layout.addWidget(self.time_label)
+
+        # Spacer between time label and buttons
+        self.time_layout.addSpacerItem(QSpacerItem(10, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+
+        # Increment and record buttons
+        self.increment_time_button = QPushButton("+", self)
+        self.increment_time_button.setFixedSize(30, 30)
+        self.increment_time_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.increment_time_button.clicked.connect(self.increment_time_logged)
+        self.time_layout.addWidget(self.increment_time_button)
+
+        self.record_time_button = QPushButton("⏱", self)
+        self.record_time_button.setFixedSize(30, 30)
+        self.record_time_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.record_time_button.clicked.connect(self.record_time)
+        self.time_layout.addWidget(self.record_time_button)
+
+        # Initial update
+        self.update_progress()
+
+    def increment_time_logged(self):
+        """Increments the time logged and updates the progress bar and labels."""
+        if self.time_logged < self.estimate:
+            self.time_logged += 1
+            self.update_progress()
+
+    def decrement_time_logged(self):
+        """Decrements the time logged and updates the progress bar and labels."""
+        if self.time_logged > 0:
+            self.time_logged -= 1
+            self.update_progress()
+
+    def record_time(self):
+        """Records an additional hour of work (or other logic)."""
+        pass
+
+    def update_progress(self):
+        """Updates the progress bar and time labels."""
+        self.time_progress_bar.setValue(int(self.time_logged))
+        percentage = (self.time_logged / self.estimate) * 100 if self.estimate > 0 else 0
+        self.time_progress_bar.setFormat(f"{percentage:.0f}%")
+        time_logged_display = f"{self.time_logged:.2f}".rstrip("0").rstrip(".")
+        estimate_display = f"{self.estimate:.2f}".rstrip("0").rstrip(".")
+        self.time_label.setText(f"Hr: {time_logged_display}/{estimate_display}")
+
+
 class DescriptionContainer(QWidget):
     """
     A container widget with rounded edges, shadow effect, and a QTextEdit
@@ -930,44 +1025,8 @@ class TaskDetailDialog(QDialog):
 
         # Progress Bar for Time Logged
         if self.task.estimate > 0:
-            time_layout = QHBoxLayout()
-            time_layout.setContentsMargins(0, 0, 0, 0)
-            time_layout.setSpacing(5)
-
-            time_label = QLabel(f"Hr: {self.task.time_logged}/{self.task.estimate}")
-            time_layout.addWidget(time_label, alignment=Qt.AlignmentFlag.AlignLeft)
-
-            time_progress_bar = QProgressBar()
-            time_progress_bar.setMinimum(0)
-            time_progress_bar.setMaximum(int(self.task.estimate))
-            time_progress_bar.setValue(int(self.task.time_logged))
-            time_progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            time_layout.addWidget(time_progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
-
-            # Increment/Decrement Buttons
-            increment_time_button = QPushButton("+")
-            decrement_time_button = QPushButton("-")
-            record_time_button = QPushButton("l>")
-
-            for btn in [increment_time_button, decrement_time_button, record_time_button]:
-                btn.setFixedSize(20, 20)
-
-            increment_time_button.clicked.connect(self.increment_time_logged)
-            decrement_time_button.clicked.connect(self.decrement_time_logged)
-
-            # Add buttons to a separate layout aligned to the right
-            button_layout = QHBoxLayout()
-            button_layout.setSpacing(2)
-            button_layout.addWidget(increment_time_button)
-            button_layout.addWidget(decrement_time_button)
-            button_layout.addWidget(record_time_button)
-
-            # Wrap buttons in a widget and align to the right
-            button_widget = QWidget()
-            button_widget.setLayout(button_layout)
-            time_layout.addWidget(button_widget, alignment=Qt.AlignmentFlag.AlignRight)
-
-            self.details_layout.addLayout(time_layout)
+            time_bar = TimeProgressWidget(estimate=self.task.estimate, time_logged=self.task.time_logged, parent=self)
+            self.details_layout.addWidget(time_bar)
 
         # Progress Bar for Count
         if self.task.count_required > 0:
