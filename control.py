@@ -6,6 +6,89 @@ from task_manager import *
 from gui import global_signals
 
 
+class CountProgressWidget(QWidget):
+    """
+    A sleek widget displaying a progress bar with count tracking,
+    including increment and decrement buttons, and percentage completed.
+    """
+
+    def __init__(self, count_required: int, count_completed: int = 0, parent=None):
+        """
+        Initializes the CountProgressWidget.
+
+        :param count_required: Total count required to complete the progress.
+        :param count_completed: Initial completed count.
+        :param parent: Optional parent widget.
+        """
+        super().__init__(parent)
+
+        self.count_required = count_required
+        self.count_completed = count_completed
+
+        # Main layout
+        self.progress_layout = QHBoxLayout(self)
+        self.progress_layout.setContentsMargins(10, 5, 10, 5)
+        self.progress_layout.setSpacing(5)
+
+        # Decrement button
+        self.decrement_button = QPushButton("−", self)
+        self.decrement_button.setFixedSize(30, 30)
+        self.decrement_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.decrement_button.clicked.connect(self.decrement_count)
+        self.progress_layout.addWidget(self.decrement_button)
+
+        # Spacer between decrement button and progress bar
+        self.progress_layout.addSpacerItem(QSpacerItem(10, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+
+        # Progress bar
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(self.count_required)
+        self.progress_bar.setValue(self.count_completed)
+        self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_layout.addWidget(self.progress_bar)
+
+        # Spacer between progress bar and count label
+        self.progress_layout.addSpacerItem(QSpacerItem(10, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+
+        # Count label
+        self.count_label = QLabel(self)
+        self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_layout.addWidget(self.count_label)
+
+        # Spacer between count label and increment button
+        self.progress_layout.addSpacerItem(QSpacerItem(10, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+
+        # Increment button
+        self.increment_button = QPushButton("+", self)
+        self.increment_button.setFixedSize(30, 30)
+        self.increment_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.increment_button.clicked.connect(self.increment_count)
+        self.progress_layout.addWidget(self.increment_button)
+
+        # Initial update
+        self.update_progress()
+
+    def increment_count(self):
+        """Increments the completed count and updates the progress bar and labels."""
+        if self.count_completed < self.count_required:
+            self.count_completed += 1
+            self.update_progress()
+
+    def decrement_count(self):
+        """Decrements the completed count and updates the progress bar and labels."""
+        if self.count_completed > 0:
+            self.count_completed -= 1
+            self.update_progress()
+
+    def update_progress(self):
+        """Updates the progress bar, count, and percentage labels."""
+        self.progress_bar.setValue(self.count_completed)
+        percentage = (self.count_completed / self.count_required) * 100 if self.count_required > 0 else 0
+        self.progress_bar.setFormat(f"{percentage:.0f}%")
+        self.count_label.setText(f"{self.count_completed}/{self.count_required}")
+
+
 class DescriptionContainer(QWidget):
     """
     A container widget with rounded edges, shadow effect, and a QTextEdit
@@ -888,42 +971,9 @@ class TaskDetailDialog(QDialog):
 
         # Progress Bar for Count
         if self.task.count_required > 0:
-            progress_layout = QHBoxLayout()
-            progress_layout.setContentsMargins(0, 0, 0, 0)
-            progress_layout.setSpacing(5)
-
-            progress_label = QLabel(f"C: {self.task.count_completed}/{self.task.count_required}")
-            progress_layout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignLeft)
-
-            progress_bar = QProgressBar()
-            progress_bar.setMinimum(0)
-            progress_bar.setMaximum(self.task.count_required)
-            progress_bar.setValue(self.task.count_completed)
-            progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            progress_layout.addWidget(progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
-
-            # Increment/Decrement Buttons
-            increment_button = QPushButton("+")
-            decrement_button = QPushButton("-")
-
-            for btn in [increment_button, decrement_button]:
-                btn.setFixedSize(20, 20)
-
-            increment_button.clicked.connect(self.increment_count)
-            decrement_button.clicked.connect(self.decrement_count)
-
-            # Add buttons to a separate layout aligned to the right
-            button_layout = QHBoxLayout()
-            button_layout.setSpacing(2)
-            button_layout.addWidget(increment_button)
-            button_layout.addWidget(decrement_button)
-
-            # Wrap buttons in a widget and align to the right
-            button_widget = QWidget()
-            button_widget.setLayout(button_layout)
-            progress_layout.addWidget(button_widget, alignment=Qt.AlignmentFlag.AlignRight)
-
-            self.details_layout.addLayout(progress_layout)
+            progress_bar = CountProgressWidget(count_required=self.task.count_required,
+                                               count_completed=self.task.count_completed, parent=self)
+            self.details_layout.addWidget(progress_bar)
 
         # Notes
         if self.task.notes:
