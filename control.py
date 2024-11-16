@@ -1023,16 +1023,17 @@ class TaskDetailDialog(QDialog):
         sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
         self.details_layout.addWidget(sub_task_window)
 
-        # Progress Bar for Time Logged
-        if self.task.estimate > 0:
-            time_bar = TimeProgressWidget(estimate=self.task.estimate, time_logged=self.task.time_logged, parent=self)
-            self.details_layout.addWidget(time_bar)
-
         # Progress Bar for Count
         if self.task.count_required > 0:
             progress_bar = CountProgressWidget(count_required=self.task.count_required,
                                                count_completed=self.task.count_completed, parent=self)
             self.details_layout.addWidget(progress_bar)
+
+        # Progress Bar for Time Logged
+        if self.task.estimate > 0:
+            time_bar = TimeProgressWidget(estimate=self.task.estimate, time_logged=self.task.time_logged,
+                                          parent=self)
+            self.details_layout.addWidget(time_bar)
 
         # Notes
         if self.task.notes:
