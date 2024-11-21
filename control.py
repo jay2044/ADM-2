@@ -61,6 +61,15 @@ class ResourcesWidget(QWidget):
         for resource in self.task.resources:
             self.add_resource_node(resource)
 
+        self.input_box.installEventFilter(self)
+
+    def eventFilter(self, source, event):
+        if source == self.input_box and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.add_new_resource()
+                return True  # Event handled
+        return super().eventFilter(source, event)
+
     def show_input_box(self):
         """
         Displays the input box for entering a new resource.
@@ -76,6 +85,7 @@ class ResourcesWidget(QWidget):
         if resource:
             self.add_resource_node(resource)
             self.task.resources.append(resource)
+            print(self.task.resources)
             self.task_list_updated()
         self.input_box.hide()
         self.input_box.clear()
@@ -192,11 +202,7 @@ class ResourcesWidget(QWidget):
         Emits a signal or performs an action when the task's resource list is updated.
         This method should be connected to update other parts of the application as needed.
         """
-        # Placeholder for signal emission or callback
-        # For example, you might have:
-        # self.task_updated_signal.emit(self.task)
-        self.parent.task_list_widget.task_list.update_task(self.task)
-        pass
+        self.parent.task_list_widget.manager.update_task(self.task)
 
 
 class CountProgressWidget(QWidget):
