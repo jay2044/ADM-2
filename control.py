@@ -6,6 +6,199 @@ from task_manager import *
 from gui import global_signals
 
 
+class ResourcesWidget(QWidget):
+    """
+    A widget for managing a list of resources (URLs or file paths) associated with a task.
+    Resources can be added, removed, and opened. Resources are displayed compactly and allow
+    horizontal scrolling.
+    """
+
+    def __init__(self, task, parent=None):
+        """
+        Initializes the ResourcesWidget with a scrollable area, an add button, and an input box.
+
+        @param task The task object to associate with this widget.
+        @param parent The parent widget, if any.
+        """
+        super().__init__(parent)
+        self.parent = parent
+        self.task = task
+        self.setFixedHeight(60)
+        self.main_layout = QHBoxLayout()
+        self.main_layout.setContentsMargins(5, 5, 5, 5)
+        self.main_layout.setSpacing(5)
+        self.setLayout(self.main_layout)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setFixedHeight(50)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        self.scroll_widget = QWidget()
+        self.scroll_layout = QHBoxLayout()
+        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
+        self.scroll_layout.setSpacing(5)
+        self.scroll_widget.setLayout(self.scroll_layout)
+
+        self.scroll_area.setWidget(self.scroll_widget)
+        self.main_layout.addWidget(self.scroll_area)
+
+        self.add_button = QPushButton("+", self)
+        self.add_button.setFixedSize(30, 30)
+        self.add_button.clicked.connect(self.show_input_box)
+        self.main_layout.addWidget(self.add_button)
+
+        self.input_box = QLineEdit(self)
+        self.input_box.setPlaceholderText("Enter URL or file path")
+        self.input_box.setFixedSize(200, 30)
+        self.input_box.hide()
+        self.input_box.returnPressed.connect(self.add_new_resource)
+        self.main_layout.addWidget(self.input_box)
+
+        # Populate existing resources from the task
+        for resource in self.task.resources:
+            self.add_resource_node(resource)
+
+    def show_input_box(self):
+        """
+        Displays the input box for entering a new resource.
+        """
+        self.input_box.show()
+        self.input_box.setFocus()
+
+    def add_new_resource(self):
+        """
+        Adds a new resource based on the input box's text. The input box is hidden after adding the resource.
+        """
+        resource = self.input_box.text().strip()
+        if resource:
+            self.add_resource_node(resource)
+            self.task.resources.append(resource)
+            self.task_list_updated()
+        self.input_box.hide()
+        self.input_box.clear()
+
+    def add_resource_node(self, resource):
+        """
+        Adds a resource node to the widget.
+
+        @param resource The resource to be added, either a URL or a file path.
+        """
+        if self.is_url(resource):
+            display_name = self.extract_display_name_from_url(resource)
+            is_url = True
+        else:
+            display_name = os.path.basename(resource)
+            is_url = False
+
+        resource_container = QWidget()
+        resource_layout = QHBoxLayout()
+        resource_layout.setContentsMargins(0, 0, 0, 0)
+        resource_layout.setSpacing(2)
+        resource_container.setLayout(resource_layout)
+
+        label = QLabel(display_name, self)
+        label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
+        label.mousePressEvent = lambda event, res=resource, url=is_url: self.open_resource(res, url)
+
+        delete_button = QPushButton("x", self)
+        delete_button.setFixedSize(20, 20)
+        delete_button.setToolTip("Remove resource")
+        delete_button.clicked.connect(lambda: self.remove_resource_node(resource_container, resource))
+
+        resource_layout.addWidget(label)
+        resource_layout.addWidget(delete_button)
+        self.scroll_layout.addWidget(resource_container)
+
+    def remove_resource_node(self, container, resource):
+        """
+        Removes a resource node from the widget and updates the task's resources.
+
+        @param container The container widget holding the resource node to be removed.
+        @param resource The resource string to remove from the task.
+        """
+        container.setParent(None)
+        container.deleteLater()
+        if resource in self.task.resources:
+            self.task.resources.remove(resource)
+            self.task_list_updated()
+
+    def is_url(self, resource):
+        """
+        Checks whether a given resource is a URL.
+
+        @param resource The resource to check.
+        @return True if the resource is a URL, False otherwise.
+        """
+        return resource.startswith("http://") or resource.startswith("https://") or resource.startswith("file:///")
+
+    def extract_display_name_from_url(self, url):
+        """
+        Extracts a display name from a URL, typically the domain name or the last path segment.
+
+        @param url The URL to extract the display name from.
+        @return The extracted display name.
+        """
+        parsed_url = QUrl(url)
+        host = parsed_url.host()
+        path = parsed_url.path()
+        if host:
+            return host
+        elif path:
+            return os.path.basename(path)
+        else:
+            return url
+
+    def open_resource(self, resource, is_url):
+        """
+        Opens a resource. URLs are opened in the default web browser. File paths are opened
+        with their associated application.
+
+        @param resource The resource to open.
+        @param is_url True if the resource is a URL, False if it is a file path.
+        """
+        if self.is_url(resource):
+            if resource.startswith("file:///"):
+                # Handle file URLs
+                resource_path = resource.replace("file:///", "", 1)
+                normalized_path = os.path.normpath(resource_path)
+                if os.path.exists(normalized_path):
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(normalized_path))
+                else:
+                    print(f"File not found: {normalized_path}")
+            else:
+                QDesktopServices.openUrl(QUrl(resource))
+        else:
+            normalized_path = os.path.normpath(resource)
+            if os.path.exists(normalized_path):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(normalized_path))
+            else:
+                print(f"File not found: {normalized_path}")
+
+    def get_all_resources(self):
+        """
+        Returns a list of all resources currently added to the widget.
+
+        @return A list of strings representing the resources.
+        """
+        return list(self.task.resources)
+
+    def task_list_updated(self):
+        """
+        Emits a signal or performs an action when the task's resource list is updated.
+        This method should be connected to update other parts of the application as needed.
+        """
+        # Placeholder for signal emission or callback
+        # For example, you might have:
+        # self.task_updated_signal.emit(self.task)
+        self.parent.task_list_widget.task_list.update_task(self.task)
+        pass
+
+
 class CountProgressWidget(QWidget):
     """
     A sleek widget displaying a progress bar with count tracking,
@@ -1100,6 +1293,10 @@ class TaskDetailDialog(QDialog):
 
         sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
         self.details_layout.addWidget(sub_task_window)
+
+        # Resources
+        self.resources_widget = ResourcesWidget(self.task, parent=self)
+        self.details_layout.addWidget(self.resources_widget)
 
         # Progress Bar for Count
         if self.task.count_required > 0:
