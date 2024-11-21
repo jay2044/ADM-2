@@ -269,6 +269,17 @@ class TaskDropdownsWidget(QWidget):
 
         return dropdown
 
+    def connect_dropdown_signals(self, status_callback, flexibility_callback, effort_callback):
+        """
+        Connects external callbacks to the dropdown signals.
+        :param status_callback: Callback for status dropdown.
+        :param flexibility_callback: Callback for deadline flexibility dropdown.
+        :param effort_callback: Callback for effort level dropdown.
+        """
+        self.status_dropdown.currentTextChanged.connect(status_callback)
+        self.flexibility_dropdown.currentTextChanged.connect(flexibility_callback)
+        self.effort_dropdown.currentTextChanged.connect(effort_callback)
+
 
 class DescriptionContainer(QWidget):
     """
@@ -1075,6 +1086,11 @@ class TaskDetailDialog(QDialog):
             self.details_layout.addWidget(recurring_label, alignment=Qt.AlignmentFlag.AlignRight)
 
         dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
+        dropdowns.connect_dropdown_signals(
+            lambda value: self.update_task_attribute('status', value),
+            lambda value: self.update_task_attribute('deadline_flexibility', value),
+            lambda value: self.update_task_attribute('effort_level', value)
+        )
         self.details_layout.addWidget(dropdowns)
 
         # Check if task has a description
@@ -1144,6 +1160,12 @@ class TaskDetailDialog(QDialog):
 
         # Add the tag widget to the main layout with center alignment
         self.details_layout.addWidget(tag_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def update_task_attribute(self, attribute, value):
+        self.task.set_attribute(attribute, value)
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
+        print(f"Updated {attribute}: {self.task.get_attribute(attribute)}")
 
     def edit_task_name(self, event):
         # Replace QLabel with QLineEdit for editing

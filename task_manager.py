@@ -63,6 +63,18 @@ class Task:
         self.time_logged = time_logged  # float, in hours
         self.recurring_subtasks = recurring_subtasks if recurring_subtasks else []
 
+    def set_attribute(self, attribute_name, value):
+        if hasattr(self, attribute_name):
+            setattr(self, attribute_name, value)
+        else:
+            raise AttributeError(f"{attribute_name} is not a valid attribute of Task")
+
+    def get_attribute(self, attribute_name):
+        if hasattr(self, attribute_name):
+            return getattr(self, attribute_name)
+        else:
+            raise AttributeError(f"{attribute_name} is not a valid attribute of Task")
+
     def mark_as_important(self):
         self.is_important = True
 
