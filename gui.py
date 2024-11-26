@@ -201,6 +201,10 @@ class MainWindow(QMainWindow):
             print(f"Error in dropEvent: {e}")
 
     def handle_task_list_update(self):
+        # Refresh all task lists
+        for task_list in self.task_lists.values():
+            task_list.refresh_tasks()
+
         # Update all open TaskListDocks
         for dock_widget in self.findChildren(TaskListDock):
             dock_widget.task_list_widget.load_tasks()

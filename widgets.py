@@ -164,6 +164,8 @@ class TaskListWidget(QListWidget):
 
     def load_tasks(self, priority_filter=False):
         try:
+            # Refresh the tasks from the database
+            self.task_list.tasks = self.task_list.load_tasks()
             self.clear()
             tasks = self.task_list.get_tasks_filter_priority() if priority_filter else self.task_list.get_tasks()
             for task in tasks:
@@ -1209,6 +1211,7 @@ class HistoryDock(QDockWidget):
 class CalendarDock(QDockWidget):
     def __init__(self, parent):
         super().__init__("Calendar", parent)
+        self.type = "calendar"
         self.parent = parent
         self.task_manager = self.parent.task_manager
 
@@ -1220,77 +1223,248 @@ class CalendarDock(QDockWidget):
         self.task_list_widget.setObjectName("calendarTaskListWidget")
 
     def set_allowed_areas(self):
+        """Set the allowed areas where the dock widget can be placed."""
         self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
-        self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
-                         QDockWidget.DockWidgetFeature.DockWidgetFloatable |
-                         QDockWidget.DockWidgetFeature.DockWidgetClosable)
+        self.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
 
     def setup_ui(self):
+        """Set up the UI components of the CalendarDock."""
         self.widget = QWidget()
         self.setWidget(self.widget)
         self.layout = QVBoxLayout(self.widget)
+        self.layout.setContentsMargins(10, 10, 10, 10)
+        self.layout.setSpacing(10)
 
-        # Calendar widget
+        # Filter Layout
+        self.filter_layout = QHBoxLayout()
+        self.filter_label = QLabel("Filter by Priority:")
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem("All")
+        self.filter_combo.addItems([str(i) for i in range(1, 11)])  # Priorities 1 to 10
+        self.filter_combo.currentIndexChanged.connect(self.on_filter_changed)
+        self.filter_layout.addWidget(self.filter_label)
+        self.filter_layout.addWidget(self.filter_combo)
+        self.filter_layout.addStretch()
+        self.layout.addLayout(self.filter_layout)
+
+        # Calendar Widget
         self.calendar = QCalendarWidget()
         self.calendar.clicked.connect(self.on_date_clicked)
         self.layout.addWidget(self.calendar)
 
-        # Task list for the selected date
+        # Task List Widget
         self.task_list_widget = QListWidget()
+        self.task_list_widget.itemDoubleClicked.connect(self.on_task_double_clicked)
         self.layout.addWidget(self.task_list_widget)
 
-        # Customize the calendar
+        # Initial Highlight and Task Loading
         self.highlight_tasks_on_calendar()
+        self.load_tasks_for_selected_date()
 
     def highlight_tasks_on_calendar(self):
-        # Fetch all tasks with due dates
+        """Highlight dates on the calendar that have tasks."""
         tasks_by_date = self.get_tasks_grouped_by_date()
 
+        # Clear existing formats
+        self.calendar.setDateTextFormat(QDate(), QTextCharFormat())
+
         # Create a QTextCharFormat for highlighting
-        format = QTextCharFormat()
-        format.setBackground(QBrush(QColor("lightblue")))
+        highlight_format = QTextCharFormat()
+        highlight_format.setBackground(QBrush(QColor("lightblue")))
+        highlight_format.setFontWeight(QFont.Weight.Bold)
 
         # Highlight dates with tasks
         for date_str in tasks_by_date.keys():
             date = QDate.fromString(date_str, "yyyy-MM-dd")
-            self.calendar.setDateTextFormat(date, format)
+            self.calendar.setDateTextFormat(date, highlight_format)
 
     def get_tasks_grouped_by_date(self):
+        """
+        Retrieve tasks grouped by their due dates.
+
+        Returns:
+            dict: A dictionary where keys are date strings in 'yyyy-MM-dd' format
+                  and values are lists of Task objects due on that date.
+        """
         tasks_by_date = {}
         for task_list_info in self.task_manager.get_task_lists():
             task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
                                  task_list_info["queue"], task_list_info["stack"])
             for task in task_list.tasks:
-                if task.due_date and task.due_date != "2000-01-01":
-                    if not task.completed:
-                        date_str = task.due_date
-                        if date_str not in tasks_by_date:
-                            tasks_by_date[date_str] = []
-                        tasks_by_date[date_str].append(task)
+                if task.due_date and task.due_date != "2000-01-01" and not task.completed:
+                    if self.filter_combo.currentText() != "All" and str(
+                            task.priority) != self.filter_combo.currentText():
+                        continue  # Skip tasks that don't match the selected priority filter
+                    date_str = task.due_date
+                    if date_str not in tasks_by_date:
+                        tasks_by_date[date_str] = []
+                    tasks_by_date[date_str].append(task)
         return tasks_by_date
 
     def on_date_clicked(self, date):
-        date_str = date.toString("yyyy-MM-dd")
+        """Handle the event when a date is clicked on the calendar."""
+        self.load_tasks_for_selected_date()
+
+    def load_tasks_for_selected_date(self):
+        """Load and display tasks for the currently selected date."""
+        selected_date = self.calendar.selectedDate()
+        date_str = selected_date.toString("yyyy-MM-dd")
         tasks_by_date = self.get_tasks_grouped_by_date()
         self.task_list_widget.clear()
 
         if date_str in tasks_by_date:
             tasks = tasks_by_date[date_str]
+            # Sort tasks by priority descending
+            tasks.sort(key=lambda x: x.priority, reverse=True)
             for task in tasks:
-                item = QListWidgetItem(f"{task.title} (Priority: {task.priority})")
-                item.setData(Qt.ItemDataRole.UserRole, task)
+                item = QListWidgetItem()
+                # Create a widget to display task details
+                task_widget = self.create_task_item_widget(task)
+                item.setSizeHint(task_widget.sizeHint())
                 self.task_list_widget.addItem(item)
+                self.task_list_widget.setItemWidget(item, task_widget)
         else:
             self.task_list_widget.addItem("No tasks due on this date.")
 
-    def update_calendar(self):
-        # Clear existing highlights
-        self.calendar.setDateTextFormat(self.calendar.minimumDate(), QTextCharFormat())
-        self.calendar.setDateTextFormat(self.calendar.maximumDate(), QTextCharFormat())
+    def create_task_item_widget(self, task):
+        """
+        Create a custom widget to display task details.
 
-        # Re-highlight dates
+        Args:
+            task (Task): The task to display.
+
+        Returns:
+            QWidget: The custom widget containing task details.
+        """
+        widget = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(10)
+
+        # Priority Icon
+        priority_icon = QLabel()
+        icon_size = QSize(16, 16)
+        # Assign different icons/colors based on priority
+        if task.priority >= 8:
+            icon_color = "red"
+        elif task.priority >= 5:
+            icon_color = "orange"
+        else:
+            icon_color = "green"
+        # Create a colored circle as an icon
+        pixmap = QIcon.fromTheme("dialog-ok-apply").pixmap(icon_size)
+        priority_icon.setPixmap(self.create_colored_pixmap(icon_color, icon_size))
+        layout.addWidget(priority_icon)
+
+        # Task Title
+        title_label = QLabel(task.title)
+        title_font = QFont()
+        title_font.setPointSize(10)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        layout.addWidget(title_label)
+
+        # Spacer
+        layout.addStretch()
+
+        # Due Time (optional)
+        if task.due_time and task.due_time != "00:00":
+            due_time_label = QLabel(f"{task.due_time}")
+            due_time_label.setStyleSheet("color: gray; font-size: 9px;")
+            layout.addWidget(due_time_label)
+
+        widget.setLayout(layout)
+        widget.setCursor(Qt.CursorShape.PointingHandCursor)
+        widget.mousePressEvent = lambda event, t=task: self.open_task_detail(t)
+        return widget
+
+    def create_colored_pixmap(self, color, size):
+        """
+        Create a colored circle pixmap.
+
+        Args:
+            color (str): The color name.
+            size (QSize): The size of the pixmap.
+
+        Returns:
+            QPixmap: The colored pixmap.
+        """
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setBrush(QBrush(QColor(color)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(0, 0, size.width(), size.height())
+        painter.end()
+        return pixmap
+
+    def open_task_detail(self, task):
+        """
+        Open the TaskDetailDialog for the selected task.
+
+        Args:
+            task (Task): The task to view/edit.
+        """
+        # Retrieve the shared TaskList instance
+        if task.list_name in self.parent.task_lists:
+            print("not new")
+            task_list = self.parent.task_lists[task.list_name]
+        else:
+            print("new")
+            task_list = TaskList(task.list_name, self.task_manager, False, False, False)
+            self.parent.task_lists[task.list_name] = task_list
+
+        # Use the shared TaskList instance to create TaskListWidget
+        self.task_list_widget = TaskListWidget(task_list, self.parent)
+
+        # Set the parent to self or another existing widget instead of creating a new TaskWidget
+        dialog = TaskDetailDialog(task, self.task_list_widget, parent=self)
+        global_signals.task_list_updated.emit()
+        dock_widget = self.task_list_widget
+        if dock_widget:
+            dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
+            dock_size = dock_widget.size()
+
+            # Adjust to make it slightly narrower and aligned to the right of the dock
+            offset = int(0.2 * dock_size.width())
+            dialog_width = dock_size.width() - offset
+            dialog_height = dock_size.height()
+            dialog_x = dock_pos.x() + offset
+            dialog_y = dock_pos.y()
+
+            dialog.resize(dialog_width, dialog_height)
+            dialog.move(dialog_x, dialog_y)
+
+            # Set fixed size to prevent resizing
+            dialog.setFixedSize(dialog_width, dialog_height)
+        else:
+            # Default positioning if dock widget not found
+            dialog.adjustSize()
+            dialog.move(self.mapToGlobal(QPoint(0, 0)))
+        dialog.exec()
+
+    def on_task_double_clicked(self, item):
+        """
+        Handle the event when a task item is double-clicked.
+
+        Args:
+            item (QListWidgetItem): The clicked item.
+        """
+        task_widget = self.task_list_widget.itemWidget(item)
+        if task_widget:
+            task = task_widget.task  # Assuming the widget has a 'task' attribute
+            self.open_task_detail(task)
+
+    def on_filter_changed(self, index):
+        """Handle changes in the priority filter dropdown."""
         self.highlight_tasks_on_calendar()
+        self.load_tasks_for_selected_date()
 
-        # Update the task list if the selected date has changed
-        selected_date = self.calendar.selectedDate()
-        self.on_date_clicked(selected_date)
+    def update_calendar(self):
+        """Update the calendar highlights and task list when tasks are updated."""
+        self.highlight_tasks_on_calendar()
+        self.load_tasks_for_selected_date()

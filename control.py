@@ -1368,7 +1368,6 @@ class TaskDetailDialog(QDialog):
         self.task.set_attribute(attribute, value)
         self.task_list_widget.task_list.update_task(self.task)
         global_signals.task_list_updated.emit()
-        print(f"Updated {attribute}: {self.task.get_attribute(attribute)}")
 
     def edit_task_name(self, event):
         # Replace QLabel with QLineEdit for editing

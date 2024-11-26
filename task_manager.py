@@ -171,6 +171,9 @@ class TaskList:
                         self.task_categories.append(category)
         return tasks
 
+    def refresh_tasks(self):
+        self.tasks = self.load_tasks()
+
     def add_task(self, task):
         self.manager.add_task(task, self.list_name)
         self.tasks.append(task)
@@ -249,6 +252,13 @@ class TaskList:
 
 
 class TaskListManager:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(TaskListManager, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
@@ -665,44 +675,50 @@ class TaskListManager:
             self.add_subtask(subtask)
 
     def update_task(self, task):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE tasks
-            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
-                status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?
-            WHERE id=?
-        """, (
-            task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
-            int(task.is_important), ','.join(task.categories), int(task.recurring),
-            json.dumps(task.recur_every),
-            task.last_completed_date.isoformat() if task.last_completed_date else None,
-            task.status, task.estimate, task.count_required, task.count_completed,
-            json.dumps(task.dependencies) if task.dependencies else None,
-            task.deadline_flexibility, task.effort_level,
-            json.dumps(task.resources) if task.resources else None,
-            task.notes, task.time_logged,
-            json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
-            task.id)
-                       )
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                UPDATE tasks
+                SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
+                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?
+                WHERE id=?
+            """, (
+                task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
+                int(task.is_important), ','.join(task.categories), int(task.recurring),
+                json.dumps(task.recur_every),
+                task.last_completed_date.isoformat() if task.last_completed_date else None,
+                task.status, task.estimate, task.count_required, task.count_completed,
+                json.dumps(task.dependencies) if task.dependencies else None,
+                task.deadline_flexibility, task.effort_level,
+                json.dumps(task.resources) if task.resources else None,
+                task.notes, task.time_logged,
+                json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
+                task.id)
+                           )
+            self.conn.commit()
 
-        # Update subtasks
-        existing_subtask_ids = [subtask.id for subtask in task.subtasks if subtask.id]
-        cursor.execute("SELECT id FROM subtasks WHERE task_id=?", (task.id,))
-        db_subtask_ids = [row['id'] for row in cursor.fetchall()]
+            # Update subtasks
+            existing_subtask_ids = [subtask.id for subtask in task.subtasks if subtask.id]
+            cursor.execute("SELECT id FROM subtasks WHERE task_id=?", (task.id,))
+            db_subtask_ids = [row['id'] for row in cursor.fetchall()]
 
-        # Remove subtasks that are no longer in the task's subtasks list
-        for db_subtask_id in db_subtask_ids:
-            if db_subtask_id not in existing_subtask_ids:
-                self.remove_subtask(Subtask(subtask_id=db_subtask_id))
+            # Remove subtasks that are no longer in the task's subtasks list
+            for db_subtask_id in db_subtask_ids:
+                if db_subtask_id not in existing_subtask_ids:
+                    self.remove_subtask(Subtask(subtask_id=db_subtask_id))
 
-        # Add or update subtasks
-        for subtask in task.subtasks:
-            if subtask.id:
-                self.update_subtask(subtask)
-            else:
-                subtask.task_id = task.id
-                self.add_subtask(subtask)
+            # Add or update subtasks
+            for subtask in task.subtasks:
+                if subtask.id:
+                    self.update_subtask(subtask)
+                else:
+                    subtask.task_id = task.id
+                    self.add_subtask(subtask)
+
+            print(f"Task (id:{task.id}) updated successfully in the database.")
+
+        except Exception as e:
+            print(f"Failed to update task: {e}")
 
     def remove_task(self, task):
         cursor = self.conn.cursor()
