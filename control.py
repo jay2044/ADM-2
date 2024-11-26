@@ -586,6 +586,7 @@ class SubtaskItemWidget(QWidget):
 
         self.checkbox = QCheckBox(self.subtask.title)
         self.checkbox.setChecked(self.subtask.completed)
+        print(self.subtask.completed)
         self.checkbox.stateChanged.connect(self.on_state_changed)
         layout.addWidget(self.checkbox)
 
@@ -717,8 +718,12 @@ class SubtaskWindow(QWidget):
         """
         Toggle the completion status of a subtask.
         """
-        subtask.completed = (state == Qt.CheckState.Checked)
+        if state == 2:
+            subtask.completed = True
+        elif state == 0:
+            subtask.completed = False
         self.task_list.update_subtask(subtask)
+        global_signals.task_list_updated.emit()
 
     def show_context_menu(self, position):
         """

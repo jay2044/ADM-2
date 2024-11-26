@@ -530,6 +530,7 @@ class TaskListManager:
             subtask.id
         ))
         self.conn.commit()
+        print(f"subtask updated {subtask.completed}")
 
     def remove_subtask(self, subtask):
         cursor = self.conn.cursor()
