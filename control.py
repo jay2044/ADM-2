@@ -405,29 +405,29 @@ class TaskDropdownsWidget(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(20)  # Add spacing between dropdowns
 
-        # Add labeled dropdowns
+        # Add labeled dropdowns with an empty option
         self.status_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Status",
-            ["Not Started", "In Progress", "Completed", "Failed", "On Hold"],
+            [""] + ["Not Started", "In Progress", "Completed", "Failed", "On Hold"],
             self.task.status,
-            lambda value: setattr(self.task, 'status', value)
+            lambda value: self.update_task_attribute('status', value)
         )
 
         self.flexibility_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Deadline Flexibility",
-            ["Strict", "Flexible"],
+            [""] + ["Strict", "Flexible"],
             self.task.deadline_flexibility,
-            lambda value: setattr(self.task, 'deadline_flexibility', value)
+            lambda value: self.update_task_attribute('deadline_flexibility', value)
         )
 
         self.effort_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Effort Level",
-            ["Easy", "Medium", "Hard"],
+            [""] + ["Easy", "Medium", "Hard"],
             self.task.effort_level,
-            lambda value: setattr(self.task, 'effort_level', value)
+            lambda value: self.update_task_attribute('effort_level', value)
         )
 
         # Set the layout
@@ -459,7 +459,8 @@ class TaskDropdownsWidget(QWidget):
         # Create and configure the dropdown
         dropdown = QComboBox()
         dropdown.addItems(items)
-        dropdown.setCurrentIndex(-1 if current_value is None else dropdown.findText(current_value))
+        index = dropdown.findText(current_value) if current_value else 0
+        dropdown.setCurrentIndex(index)
         dropdown.currentTextChanged.connect(on_change_callback)
         dropdown_layout.addWidget(dropdown)
 
@@ -467,6 +468,13 @@ class TaskDropdownsWidget(QWidget):
         layout.addLayout(dropdown_layout)
 
         return dropdown
+
+    def update_task_attribute(self, attribute, value):
+        """Update the task attribute, setting it to None if the value is empty."""
+        if value == "":
+            setattr(self.task, attribute, None)
+        else:
+            setattr(self.task, attribute, value)
 
     def connect_dropdown_signals(self, status_callback, flexibility_callback, effort_callback):
         """
@@ -1606,7 +1614,7 @@ class TaskDetailDialog(QDialog):
         self.count_required_spinbox.setValue(self.task.count_required)
         self.add_labeled_widget("Count Required:", self.count_required_spinbox)
 
-        # Count Completed
+        # Count Completed (Initialized with current count)
         self.count_completed_spinbox = QSpinBox()
         self.count_completed_spinbox.setRange(0, 1000)
         self.count_completed_spinbox.setValue(self.task.count_completed)
@@ -1615,6 +1623,10 @@ class TaskDetailDialog(QDialog):
         # Notes
         self.notes_edit = QTextEdit(self.task.notes)
         self.add_labeled_widget("Notes:", self.notes_edit)
+
+        # Subtasks (Editable in edit mode)
+        self.subtask_editor = SubtaskWindow(self.task, self.task_list_widget.task_list)
+        self.details_layout.addWidget(self.subtask_editor)
 
         # Show Save and Cancel buttons
         self.save_button.show()
@@ -1627,59 +1639,36 @@ class TaskDetailDialog(QDialog):
             if not title:
                 QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
                 return
-            # Update task attributes and log each
+            # Update task attributes
             self.task.title = title
         except Exception as e:
             print(e)
 
-        # Logging example
-        print("Saving task edits...")
-
+        # Update other task attributes
         self.task.description = self.description_edit.toPlainText()
-        print("Description:", self.task.description)
-
         self.task.priority = self.priority_spinbox.value()
-        print("Priority:", self.task.priority)
-
         self.task.categories = self.categories_input.get_tags()
-        print("Categories:", self.categories_input.get_tags())
-
         self.task.recurring = self.recurring_checkbox.isChecked()
-        print("Recurring:", self.task.recurring)
 
+        # Recur Every
         recur_every_text = self.recur_every_edit.text().strip()
         if recur_every_text:
             try:
                 self.task.recur_every = [int(item) for item in recur_every_text.split(',') if item.strip().isdigit()]
-                print("Recur Every:", self.task.recur_every)
             except ValueError:
                 QMessageBox.warning(self, "Input Error", "Recur Every must be a list of integers separated by commas.")
                 return
         else:
             self.task.recur_every = []
 
-        # Remaining attributes with logging
         self.task.estimate = self.estimate_spinbox.value()
-        print("Estimate:", self.task.estimate)
-
         self.task.time_logged = self.time_logged_spinbox.value()
-        print("Time Logged:", self.task.time_logged)
-
         self.task.count_required = self.count_required_spinbox.value()
-        print("Count Required:", self.task.count_required)
-
         self.task.count_completed = self.count_completed_spinbox.value()
-        print("Count Completed:", self.task.count_completed)
-
         self.task.notes = self.notes_edit.toPlainText()
-        print("Notes:", self.task.notes)
 
-        # Subtasks
-        if hasattr(self, 'subtask_edits'):
-            for subtask, checkbox, title_edit in self.subtask_edits:
-                subtask.completed = checkbox.isChecked()
-                subtask.title = title_edit.text()
-                print("Subtask:", subtask.title, "Completed:", subtask.completed)
+        # Update subtasks
+        self.subtask_editor.save_subtasks()
 
         # Update task and refresh UI
         self.task_list_widget.task_list.update_task(self.task)
@@ -1708,7 +1697,6 @@ class TaskDetailDialog(QDialog):
         # Refresh the task details view
         self.display_task_details()
 
-    # Functions to update time_logged
     def increment_time_logged(self):
         """Increment the time logged by one hour."""
         if self.task.time_logged < self.task.estimate:
@@ -1726,6 +1714,7 @@ class TaskDetailDialog(QDialog):
             global_signals.task_list_updated.emit()
 
     def increment_count(self):
+        """Increment the count completed by one."""
         if self.task.count_completed < self.task.count_required:
             self.task.count_completed += 1
             self.task_list_widget.task_list.update_task(self.task)
@@ -1733,6 +1722,7 @@ class TaskDetailDialog(QDialog):
             global_signals.task_list_updated.emit()
 
     def decrement_count(self):
+        """Decrement the count completed by one, ensuring it doesn't go below zero."""
         if self.task.count_completed > 0:
             self.task.count_completed -= 1
             self.task_list_widget.task_list.update_task(self.task)

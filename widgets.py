@@ -1192,7 +1192,9 @@ class HistoryDock(QDockWidget):
             self.open_task_detail(task)
 
     def open_task_detail(self, task):
-        """Open the TaskDetailDialog for the selected task."""
+        """
+        Open the TaskDetailDialog for the selected task.
+        """
         # Retrieve the shared TaskList instance
         if task.list_name in self.parent.task_lists:
             task_list = self.parent.task_lists[task.list_name]
@@ -1206,7 +1208,32 @@ class HistoryDock(QDockWidget):
             task_list_widget = TaskListWidget(task_list, self.parent)
             self.parent.hash_to_widget[task.list_name] = task_list_widget
 
+        # Create the TaskDetailDialog
         dialog = TaskDetailDialog(task, task_list_widget, parent=self)
+
+        # Position the dialog to appear near the HistoryDock
+        dock_widget = self
+        if dock_widget:
+            dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
+            dock_size = dock_widget.size()
+
+            # Adjust position and size to align with the dock
+            offset = int(0.2 * dock_size.width())
+            dialog_width = dock_size.width() - offset
+            dialog_height = dock_size.height()
+            dialog_x = dock_pos.x() + offset
+            dialog_y = dock_pos.y()
+
+            dialog.resize(dialog_width, dialog_height)
+            dialog.move(dialog_x, dialog_y)
+
+            # Set fixed size to prevent resizing
+            dialog.setFixedSize(dialog_width, dialog_height)
+        else:
+            # Default positioning if dock widget not found
+            dialog.adjustSize()
+            dialog.move(self.mapToGlobal(QPoint(0, 0)))
+
         dialog.exec()
 
     def restore_task(self, task):
@@ -1468,23 +1495,38 @@ class CalendarDock(QDockWidget):
             task_list = TaskList(task.list_name, self.task_manager, False, False, False)
             self.parent.task_lists[task.list_name] = task_list
 
-        # Use the shared TaskList instance to create TaskListWidget
+        # Use the shared TaskListWidget instance
         task_list_widget = self.parent.hash_to_widget.get(task.list_name)
         if not task_list_widget:
             task_list_widget = TaskListWidget(task_list, self.parent)
             self.parent.hash_to_widget[task.list_name] = task_list_widget
 
-        # Set the parent to self or another existing widget instead of creating a new TaskWidget
+        # Create the TaskDetailDialog
         dialog = TaskDetailDialog(task, task_list_widget, parent=self)
         global_signals.task_list_updated.emit()
 
-        # Position the dialog near the main window center
-        main_window_center = self.parent.geometry().center()
-        dialog_width = 400
-        dialog_height = 600
-        dialog_x = main_window_center.x() - dialog_width // 2
-        dialog_y = main_window_center.y() - dialog_height // 2
-        dialog.setGeometry(dialog_x, dialog_y, dialog_width, dialog_height)
+        # Position the dialog to appear over the dock containing the task
+        dock_widget = self
+        if dock_widget:
+            dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
+            dock_size = dock_widget.size()
+
+            # Adjust to make it slightly narrower and aligned to the right of the dock
+            offset = int(0.2 * dock_size.width())
+            dialog_width = dock_size.width() - offset
+            dialog_height = dock_size.height()
+            dialog_x = dock_pos.x() + offset
+            dialog_y = dock_pos.y()
+
+            dialog.resize(dialog_width, dialog_height)
+            dialog.move(dialog_x, dialog_y)
+
+            # Set fixed size to prevent resizing
+            dialog.setFixedSize(dialog_width, dialog_height)
+        else:
+            # Default positioning if dock widget not found
+            dialog.adjustSize()
+            dialog.move(self.mapToGlobal(QPoint(0, 0)))
 
         dialog.exec()
 
