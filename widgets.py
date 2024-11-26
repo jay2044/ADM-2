@@ -1093,14 +1093,18 @@ class HistoryDock(QDockWidget):
         self.history_layout.addWidget(self.history_tree)
         self.setWidget(self.history_widget)
 
-        self.update_history()
-
         self.setObjectName("historyDock")
         self.search_bar.setObjectName("historySearchBar")
         self.history_tree.setObjectName("historyTree")
 
+        # Connect to the global signal
+        global_signals.task_list_updated.connect(self.update_history)
+
+        # Initial update
+        self.update_history()
+
     def set_allowed_areas(self):
-        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
                          QDockWidget.DockWidgetFeature.DockWidgetFloatable |
                          QDockWidget.DockWidgetFeature.DockWidgetClosable)
@@ -1115,8 +1119,10 @@ class HistoryDock(QDockWidget):
         search_text = self.search_bar.text().lower()
 
         for task_list_info in self.parent.task_manager.get_task_lists():
+            # Refresh the task list
             task_list = TaskList(task_list_info["list_name"], self.parent.task_manager, task_list_info["pin"],
                                  task_list_info["queue"], task_list_info["stack"])
+            task_list.refresh_tasks()  # Ensure tasks are up-to-date
             completed_tasks = task_list.get_completed_tasks()
 
             # Filter tasks based on search text
@@ -1182,13 +1188,26 @@ class HistoryDock(QDockWidget):
     def view_task_details(self, item):
         task = item.data(0, Qt.ItemDataRole.UserRole)
         if task:
-            details = (f"Title: {task.title}\n"
-                       f"Description: {task.description}\n"
-                       f"Due Date: {task.due_date}\n"
-                       f"Due Time: {task.due_time}\n"
-                       f"Priority: {task.priority}\n"
-                       f"Completed On: {task.last_completed_date.strftime('%Y-%m-%d %H:%M') if task.last_completed_date else ''}")
-            QMessageBox.information(self, "Task Details", details)
+            # Open the TaskDetailDialog
+            self.open_task_detail(task)
+
+    def open_task_detail(self, task):
+        """Open the TaskDetailDialog for the selected task."""
+        # Retrieve the shared TaskList instance
+        if task.list_name in self.parent.task_lists:
+            task_list = self.parent.task_lists[task.list_name]
+        else:
+            task_list = TaskList(task.list_name, self.parent.task_manager)
+            self.parent.task_lists[task.list_name] = task_list
+
+        # Use the shared TaskListWidget instance
+        task_list_widget = self.parent.hash_to_widget.get(task.list_name)
+        if not task_list_widget:
+            task_list_widget = TaskListWidget(task_list, self.parent)
+            self.parent.hash_to_widget[task.list_name] = task_list_widget
+
+        dialog = TaskDetailDialog(task, task_list_widget, parent=self)
+        dialog.exec()
 
     def restore_task(self, task):
         reply = QMessageBox.question(self, 'Restore Task', 'Are you sure you want to restore this task?',
@@ -1198,14 +1217,8 @@ class HistoryDock(QDockWidget):
             task.completed = False
             task.last_completed_date = None
             self.parent.task_manager.update_task(task)
-            self.update_history()
-            # Reload tasks in the task list widget
-            for i in range(self.parent.task_list_collection.count()):
-                list_widget_item = self.parent.task_list_collection.item(i)
-                if list_widget_item.text() == task.list_name:
-                    task_list_widget = self.parent.hash_to_widget[hash(task.list_name)]
-                    global_signals.task_list_updated.emit()
-                    break
+            # Emit global signal to update all views
+            global_signals.task_list_updated.emit()
 
 
 class CalendarDock(QDockWidget):
@@ -1221,6 +1234,8 @@ class CalendarDock(QDockWidget):
         self.setObjectName("calendarDock")
         self.calendar.setObjectName("calendarWidget")
         self.task_list_widget.setObjectName("calendarTaskListWidget")
+
+        global_signals.task_list_updated.connect(self.update_calendar)
 
     def set_allowed_areas(self):
         """Set the allowed areas where the dock widget can be placed."""
@@ -1240,15 +1255,7 @@ class CalendarDock(QDockWidget):
         self.layout.setSpacing(10)
 
         # Filter Layout
-        self.filter_layout = QHBoxLayout()
-        self.filter_label = QLabel("Filter by Priority:")
-        self.filter_combo = QComboBox()
-        self.filter_combo.addItem("All")
-        self.filter_combo.addItems([str(i) for i in range(1, 11)])  # Priorities 1 to 10
-        self.filter_combo.currentIndexChanged.connect(self.on_filter_changed)
-        self.filter_layout.addWidget(self.filter_label)
-        self.filter_layout.addWidget(self.filter_combo)
-        self.filter_layout.addStretch()
+        self.setup_filters()
         self.layout.addLayout(self.filter_layout)
 
         # Calendar Widget
@@ -1258,12 +1265,57 @@ class CalendarDock(QDockWidget):
 
         # Task List Widget
         self.task_list_widget = QListWidget()
-        self.task_list_widget.itemDoubleClicked.connect(self.on_task_double_clicked)
+        self.task_list_widget.itemClicked.connect(self.on_task_clicked)
         self.layout.addWidget(self.task_list_widget)
 
         # Initial Highlight and Task Loading
         self.highlight_tasks_on_calendar()
         self.load_tasks_for_selected_date()
+
+    def setup_filters(self):
+        """Set up the filter widgets."""
+        self.filter_layout = QHBoxLayout()
+
+        # Priority Filter
+        self.filter_label = QLabel("Priority:")
+        self.filter_priority_combo = QComboBox()
+        self.filter_priority_combo.addItem("All")
+        self.filter_priority_combo.addItems([str(i) for i in range(1, 11)])  # Priorities 1 to 10
+        self.filter_priority_combo.currentIndexChanged.connect(self.on_filter_changed)
+        self.filter_layout.addWidget(self.filter_label)
+        self.filter_layout.addWidget(self.filter_priority_combo)
+
+        # Status Filter
+        self.status_filter_label = QLabel("Status:")
+        self.filter_status_combo = QComboBox()
+        self.filter_status_combo.addItem("All")
+        self.filter_status_combo.addItem("Completed")
+        self.filter_status_combo.addItem("Not Completed")
+        self.filter_status_combo.currentIndexChanged.connect(self.on_filter_changed)
+        self.filter_layout.addWidget(self.status_filter_label)
+        self.filter_layout.addWidget(self.filter_status_combo)
+
+        # Category Filter
+        self.category_filter_label = QLabel("Category:")
+        self.filter_category_combo = QComboBox()
+        self.filter_category_combo.addItem("All")
+        self.categories = self.get_all_categories()
+        self.filter_category_combo.addItems(self.categories)
+        self.filter_category_combo.currentIndexChanged.connect(self.on_filter_changed)
+        self.filter_layout.addWidget(self.category_filter_label)
+        self.filter_layout.addWidget(self.filter_category_combo)
+
+        self.filter_layout.addStretch()
+
+    def get_all_categories(self):
+        """Retrieve all unique categories from tasks."""
+        categories = set()
+        for task_list_info in self.task_manager.get_task_lists():
+            task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
+                                 task_list_info["queue"], task_list_info["stack"])
+            for task in task_list.tasks:
+                categories.update(task.categories)
+        return sorted(categories)
 
     def highlight_tasks_on_calendar(self):
         """Highlight dates on the calendar that have tasks."""
@@ -1274,12 +1326,13 @@ class CalendarDock(QDockWidget):
 
         # Create a QTextCharFormat for highlighting
         highlight_format = QTextCharFormat()
-        highlight_format.setBackground(QBrush(QColor("lightblue")))
         highlight_format.setFontWeight(QFont.Weight.Bold)
 
         # Highlight dates with tasks
-        for date_str in tasks_by_date.keys():
+        for date_str, tasks in tasks_by_date.items():
             date = QDate.fromString(date_str, "yyyy-MM-dd")
+            # Display number of tasks on the date
+            highlight_format.setToolTip(f"{len(tasks)} tasks due")
             self.calendar.setDateTextFormat(date, highlight_format)
 
     def get_tasks_grouped_by_date(self):
@@ -1295,15 +1348,36 @@ class CalendarDock(QDockWidget):
             task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
                                  task_list_info["queue"], task_list_info["stack"])
             for task in task_list.tasks:
-                if task.due_date and task.due_date != "2000-01-01" and not task.completed:
-                    if self.filter_combo.currentText() != "All" and str(
-                            task.priority) != self.filter_combo.currentText():
-                        continue  # Skip tasks that don't match the selected priority filter
+                if task.due_date and task.due_date != "2000-01-01":
+                    # Apply filters
+                    if not self.apply_filters(task):
+                        continue
+
                     date_str = task.due_date
                     if date_str not in tasks_by_date:
                         tasks_by_date[date_str] = []
                     tasks_by_date[date_str].append(task)
         return tasks_by_date
+
+    def apply_filters(self, task):
+        """Apply the selected filters to a task."""
+        # Priority Filter
+        if self.filter_priority_combo.currentText() != "All":
+            if str(task.priority) != self.filter_priority_combo.currentText():
+                return False
+
+        # Status Filter
+        if self.filter_status_combo.currentText() == "Completed" and not task.completed:
+            return False
+        if self.filter_status_combo.currentText() == "Not Completed" and task.completed:
+            return False
+
+        # Category Filter
+        if self.filter_category_combo.currentText() != "All":
+            if self.filter_category_combo.currentText() not in task.categories:
+                return False
+
+        return True
 
     def on_date_clicked(self, date):
         """Handle the event when a date is clicked on the calendar."""
@@ -1345,26 +1419,12 @@ class CalendarDock(QDockWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
 
-        # Priority Icon
-        priority_icon = QLabel()
-        icon_size = QSize(16, 16)
-        # Assign different icons/colors based on priority
-        if task.priority >= 8:
-            icon_color = "red"
-        elif task.priority >= 5:
-            icon_color = "orange"
-        else:
-            icon_color = "green"
-        # Create a colored circle as an icon
-        pixmap = QIcon.fromTheme("dialog-ok-apply").pixmap(icon_size)
-        priority_icon.setPixmap(self.create_colored_pixmap(icon_color, icon_size))
-        layout.addWidget(priority_icon)
-
         # Task Title
         title_label = QLabel(task.title)
         title_font = QFont()
         title_font.setPointSize(10)
-        title_font.setBold(True)
+        if task.completed:
+            title_font.setStrikeOut(True)
         title_label.setFont(title_font)
         layout.addWidget(title_label)
 
@@ -1377,30 +1437,22 @@ class CalendarDock(QDockWidget):
             due_time_label.setStyleSheet("color: gray; font-size: 9px;")
             layout.addWidget(due_time_label)
 
+        # Checkbox for completion
+        self.checkbox = QCheckBox()
+        self.checkbox.setChecked(task.completed)
+        self.checkbox.stateChanged.connect(lambda state, t=task: self.mark_task_completed(t, state))
+        layout.addWidget(self.checkbox)
+
         widget.setLayout(layout)
         widget.setCursor(Qt.CursorShape.PointingHandCursor)
         widget.mousePressEvent = lambda event, t=task: self.open_task_detail(t)
         return widget
 
-    def create_colored_pixmap(self, color, size):
-        """
-        Create a colored circle pixmap.
-
-        Args:
-            color (str): The color name.
-            size (QSize): The size of the pixmap.
-
-        Returns:
-            QPixmap: The colored pixmap.
-        """
-        pixmap = QPixmap(size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setBrush(QBrush(QColor(color)))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(0, 0, size.width(), size.height())
-        painter.end()
-        return pixmap
+    def mark_task_completed(self, task, state):
+        """Mark the task as completed or not completed."""
+        task.completed = bool(state)
+        self.task_manager.update_task(task)
+        global_signals.task_list_updated.emit()
 
     def open_task_detail(self, task):
         """
@@ -1411,56 +1463,43 @@ class CalendarDock(QDockWidget):
         """
         # Retrieve the shared TaskList instance
         if task.list_name in self.parent.task_lists:
-            print("not new")
             task_list = self.parent.task_lists[task.list_name]
         else:
-            print("new")
             task_list = TaskList(task.list_name, self.task_manager, False, False, False)
             self.parent.task_lists[task.list_name] = task_list
 
         # Use the shared TaskList instance to create TaskListWidget
-        self.task_list_widget = TaskListWidget(task_list, self.parent)
+        task_list_widget = self.parent.hash_to_widget.get(task.list_name)
+        if not task_list_widget:
+            task_list_widget = TaskListWidget(task_list, self.parent)
+            self.parent.hash_to_widget[task.list_name] = task_list_widget
 
         # Set the parent to self or another existing widget instead of creating a new TaskWidget
-        dialog = TaskDetailDialog(task, self.task_list_widget, parent=self)
+        dialog = TaskDetailDialog(task, task_list_widget, parent=self)
         global_signals.task_list_updated.emit()
-        dock_widget = self.task_list_widget
-        if dock_widget:
-            dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
-            dock_size = dock_widget.size()
 
-            # Adjust to make it slightly narrower and aligned to the right of the dock
-            offset = int(0.2 * dock_size.width())
-            dialog_width = dock_size.width() - offset
-            dialog_height = dock_size.height()
-            dialog_x = dock_pos.x() + offset
-            dialog_y = dock_pos.y()
+        # Position the dialog near the main window center
+        main_window_center = self.parent.geometry().center()
+        dialog_width = 400
+        dialog_height = 600
+        dialog_x = main_window_center.x() - dialog_width // 2
+        dialog_y = main_window_center.y() - dialog_height // 2
+        dialog.setGeometry(dialog_x, dialog_y, dialog_width, dialog_height)
 
-            dialog.resize(dialog_width, dialog_height)
-            dialog.move(dialog_x, dialog_y)
-
-            # Set fixed size to prevent resizing
-            dialog.setFixedSize(dialog_width, dialog_height)
-        else:
-            # Default positioning if dock widget not found
-            dialog.adjustSize()
-            dialog.move(self.mapToGlobal(QPoint(0, 0)))
         dialog.exec()
 
-    def on_task_double_clicked(self, item):
+    def on_task_clicked(self, item):
         """
-        Handle the event when a task item is double-clicked.
+        Handle the event when a task item is clicked.
 
         Args:
             item (QListWidgetItem): The clicked item.
         """
-        task_widget = self.task_list_widget.itemWidget(item)
-        if task_widget:
-            task = task_widget.task  # Assuming the widget has a 'task' attribute
-            self.open_task_detail(task)
+        # The checkbox state change is already handled; do nothing here
+        pass
 
     def on_filter_changed(self, index):
-        """Handle changes in the priority filter dropdown."""
+        """Handle changes in the filters."""
         self.highlight_tasks_on_calendar()
         self.load_tasks_for_selected_date()
 
