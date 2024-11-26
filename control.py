@@ -13,16 +13,18 @@ class ResourcesWidget(QWidget):
     horizontal scrolling.
     """
 
-    def __init__(self, task, parent=None):
+    def __init__(self, task, task_list_widget, parent=None):
         """
         Initializes the ResourcesWidget with a scrollable area, an add button, and an input box.
 
-        @param task The task object to associate with this widget.
-        @param parent The parent widget, if any.
+        @param task: The task object to associate with this widget.
+        @param task_list_widget: The task list widget to update the task.
+        @param parent: The parent widget, if any.
         """
         super().__init__(parent)
         self.parent = parent
         self.task = task
+        self.task_list_widget = task_list_widget
         self.setFixedHeight(60)
         self.main_layout = QHBoxLayout()
         self.main_layout.setContentsMargins(5, 5, 5, 5)
@@ -199,10 +201,10 @@ class ResourcesWidget(QWidget):
 
     def task_list_updated(self):
         """
-        Emits a signal or performs an action when the task's resource list is updated.
-        This method should be connected to update other parts of the application as needed.
+        Updates the task in the database and emits a global signal.
         """
-        self.parent.task_list_widget.manager.update_task(self.task)
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
 
 
 class CountProgressWidget(QWidget):
@@ -211,18 +213,20 @@ class CountProgressWidget(QWidget):
     including increment and decrement buttons, and percentage completed.
     """
 
-    def __init__(self, count_required: int, count_completed: int = 0, parent=None):
+    def __init__(self, task, task_list_widget, parent=None):
         """
         Initializes the CountProgressWidget.
 
-        :param count_required: Total count required to complete the progress.
-        :param count_completed: Initial completed count.
+        :param task: The task object associated with this widget.
+        :param task_list_widget: The task list widget to update the task.
         :param parent: Optional parent widget.
         """
         super().__init__(parent)
 
-        self.count_required = count_required
-        self.count_completed = count_completed
+        self.task = task
+        self.task_list_widget = task_list_widget
+        self.count_required = self.task.count_required
+        self.count_completed = self.task.count_completed
 
         # Main layout
         self.progress_layout = QHBoxLayout(self)
@@ -272,12 +276,16 @@ class CountProgressWidget(QWidget):
         """Increments the completed count and updates the progress bar and labels."""
         if self.count_completed < self.count_required:
             self.count_completed += 1
+            self.task.count_completed = self.count_completed
+            self.update_task()
             self.update_progress()
 
     def decrement_count(self):
         """Decrements the completed count and updates the progress bar and labels."""
         if self.count_completed > 0:
             self.count_completed -= 1
+            self.task.count_completed = self.count_completed
+            self.update_task()
             self.update_progress()
 
     def update_progress(self):
@@ -287,6 +295,11 @@ class CountProgressWidget(QWidget):
         self.progress_bar.setFormat(f"{percentage:.0f}%")
         self.count_label.setText(f"{self.count_completed}/{self.count_required}")
 
+    def update_task(self):
+        """Updates the task in the database and emits a global signal."""
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
+
 
 class TimeProgressWidget(QWidget):
     """
@@ -294,18 +307,20 @@ class TimeProgressWidget(QWidget):
     including increment, decrement, and record buttons.
     """
 
-    def __init__(self, estimate: float, time_logged: float = 0.0, parent=None):
+    def __init__(self, task, task_list_widget, parent=None):
         """
         Initializes the TimeProgressWidget.
 
-        :param estimate: Total estimated hours to complete the task.
-        :param time_logged: Initial hours logged.
+        :param task: The task object associated with this widget.
+        :param task_list_widget: The task list widget to update the task.
         :param parent: Optional parent widget.
         """
         super().__init__(parent)
 
-        self.estimate = estimate
-        self.time_logged = time_logged
+        self.task = task
+        self.task_list_widget = task_list_widget
+        self.estimate = self.task.estimate
+        self.time_logged = self.task.time_logged
 
         # Main layout
         self.time_layout = QHBoxLayout(self)
@@ -361,16 +376,21 @@ class TimeProgressWidget(QWidget):
         """Increments the time logged and updates the progress bar and labels."""
         if self.time_logged < self.estimate:
             self.time_logged += 1
+            self.task.time_logged = self.time_logged
+            self.update_task()
             self.update_progress()
 
     def decrement_time_logged(self):
         """Decrements the time logged and updates the progress bar and labels."""
         if self.time_logged > 0:
             self.time_logged -= 1
+            self.task.time_logged = self.time_logged
+            self.update_task()
             self.update_progress()
 
     def record_time(self):
         """Records an additional hour of work (or other logic)."""
+        # Implement recording logic here
         pass
 
     def update_progress(self):
@@ -381,6 +401,11 @@ class TimeProgressWidget(QWidget):
         time_logged_display = f"{self.time_logged:.2f}".rstrip("0").rstrip(".")
         estimate_display = f"{self.estimate:.2f}".rstrip("0").rstrip(".")
         self.time_label.setText(f"Hr: {time_logged_display}/{estimate_display}")
+
+    def update_task(self):
+        """Updates the task in the database and emits a global signal."""
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
 
 
 class TaskDropdownsWidget(QWidget):
@@ -1309,19 +1334,18 @@ class TaskDetailDialog(QDialog):
         self.details_layout.addWidget(sub_task_window)
 
         # Resources
-        self.resources_widget = ResourcesWidget(self.task, parent=self)
+        self.resources_widget = ResourcesWidget(self.task, self.task_list_widget, parent=self)
         self.details_layout.addWidget(self.resources_widget)
 
         # Progress Bar for Count
+        # Progress Bar for Count
         if self.task.count_required > 0:
-            progress_bar = CountProgressWidget(count_required=self.task.count_required,
-                                               count_completed=self.task.count_completed, parent=self)
+            progress_bar = CountProgressWidget(task=self.task, task_list_widget=self.task_list_widget, parent=self)
             self.details_layout.addWidget(progress_bar)
 
         # Progress Bar for Time Logged
         if self.task.estimate > 0:
-            time_bar = TimeProgressWidget(estimate=self.task.estimate, time_logged=self.task.time_logged,
-                                          parent=self)
+            time_bar = TimeProgressWidget(task=self.task, task_list_widget=self.task_list_widget, parent=self)
             self.details_layout.addWidget(time_bar)
 
         # Notes
