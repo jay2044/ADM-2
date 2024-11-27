@@ -1653,10 +1653,6 @@ class TaskDetailDialog(QDialog):
         self.notes_edit = QTextEdit(self.task.notes)
         self.add_labeled_widget("Notes:", self.notes_edit)
 
-        # Subtasks (Editable in edit mode)
-        self.subtask_editor = SubtaskWindow(self.task, self.task_list_widget.task_list)
-        self.details_layout.addWidget(self.subtask_editor)
-
         # Show Save and Cancel buttons
         self.save_button.show()
         self.cancel_button.show()
@@ -1695,9 +1691,6 @@ class TaskDetailDialog(QDialog):
         self.task.count_required = self.count_required_spinbox.value()
         self.task.count_completed = self.count_completed_spinbox.value()
         self.task.notes = self.notes_edit.toPlainText()
-
-        # Update subtasks
-        self.subtask_editor.save_subtasks()
 
         # Update task and refresh UI
         self.task_list_widget.task_list.update_task(self.task)
