@@ -10,7 +10,7 @@ from task_manager import *
 
 
 class GlobalSignals(QObject):
-    task_list_updated = pyqtSignal()  # Define a global signal
+    task_list_updated = pyqtSignal()
 
 
 global_signals = GlobalSignals()
@@ -54,8 +54,8 @@ class MainWindow(QMainWindow):
         setup_font(app)
         self.setup_main_window()
         self.setup_layouts()
-        self.setup_right_widgets()  # Initialize stacked_task_list first
-        self.setup_left_widgets()  # Initialize task_list_collection after stacked_task_list
+        self.setup_right_widgets()
+        self.setup_left_widgets()
         self.setup_history_dock()
         self.setup_calendar_dock()
 
@@ -67,12 +67,23 @@ class MainWindow(QMainWindow):
         self.resize(window_width, window_height)
         top_left_point = center_point - QPoint(window_width // 2, window_height // 2)
         self.move(top_left_point)
-        self.central_widget = QWidget()
-        self.central_widget.setObjectName("centralWidget")  # Set objectName for the central widget
-        self.setCentralWidget(self.central_widget)
-        self.main_layout = QHBoxLayout()
-        self.main_layout.setObjectName("mainLayout")  # Set objectName for main layout
-        self.central_widget.setLayout(self.main_layout)
+
+        # Create central dock widget
+        self.central_dock_widget = QDockWidget("Central Dock", self)
+        self.central_dock_widget.setObjectName("centralDockWidget")
+        self.central_dock_widget.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
+
+        central_content = QWidget()
+        central_layout = QVBoxLayout()
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_content.setLayout(central_layout)
+
+        self.central_dock_widget.setWidget(central_content)
+        self.central_dock_widget.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
+
+
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.central_dock_widget)
+        self.central_dock_widget.setFixedWidth(200)
 
     def options(self):
         self.setDockOptions(QMainWindow.DockOption.AllowTabbedDocks |
@@ -81,27 +92,32 @@ class MainWindow(QMainWindow):
 
     def setup_layouts(self):
         self.left_widget = QWidget()
-        self.left_widget.setObjectName("leftWidget")  # Set objectName for the left widget
+        self.left_widget.setObjectName("leftWidget")
         self.left_layout = QVBoxLayout()
-        self.left_layout.setObjectName("leftLayout")  # Set objectName for the left layout
+        self.left_layout.setObjectName("leftLayout")
         self.left_widget.setLayout(self.left_layout)
-        self.main_layout.addWidget(self.left_widget)
+
+        self.central_dock_widget.widget().layout().addWidget(self.left_widget)
+
+        self.left_widget.setFixedWidth(200)
 
     def setup_left_widgets(self):
-        self.hash_to_widget = {}  # List of task list widgets.
+        self.hash_to_widget = {}
         self.task_list_collection = TaskListCollection(self)
-        self.task_list_collection.setObjectName("taskListCollection")  # Set objectName for task list collection
+        self.task_list_collection.setObjectName("taskListCollection")
         self.left_top_toolbar = TaskListManagerToolbar(self)
-        self.left_top_toolbar.setObjectName("leftTopToolbar")  # Set objectName for toolbar
+        self.left_top_toolbar.setObjectName("leftTopToolbar")
         self.left_layout.addWidget(self.left_top_toolbar)
         self.left_layout.addWidget(self.task_list_collection)
         self.info_bar = InfoBar(self)
-        self.info_bar.setObjectName("infoBar")  # Set objectName for info bar
+        self.info_bar.setObjectName("infoBar")
         self.left_layout.addWidget(self.info_bar)
+        self.left_layout.setContentsMargins(0, 0, 0, 0)
 
     def setup_right_widgets(self):
         self.stacked_task_list = TaskListDockStacked(self)
         self.stacked_task_list.setObjectName("stackedTaskListDock")
+        self.stacked_task_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
 
     def setup_history_dock(self):
@@ -122,7 +138,6 @@ class MainWindow(QMainWindow):
         settings = QSettings("YourApp", "ADM")
         settings.setValue("mainWindowState", self.saveState())
 
-        # Save list of dynamically added dock widgets
         open_dock_widgets = []
         for dock in self.findChildren(TaskListDock):
             dock_info = {
@@ -135,7 +150,6 @@ class MainWindow(QMainWindow):
     def load_settings(self):
         settings = QSettings("YourApp", "ADM")
 
-        # Recreate dynamically added dock widgets
         open_dock_widgets = json.loads(settings.value("openDockWidgets", "[]"))
         for dock_info in open_dock_widgets:
             dock = TaskListDock(dock_info['task_list_name'], self)
@@ -143,7 +157,6 @@ class MainWindow(QMainWindow):
             dock.setWindowTitle(dock_info['task_list_name'])
             self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
-        # Restore the main window state
         self.restoreState(settings.value("mainWindowState"))
 
     def toggle_stacked_task_list(self):
@@ -173,14 +186,12 @@ class MainWindow(QMainWindow):
                 if task_list_item and task_list_item.parent():
                     task_list_name = task_list_item.text(0)
 
-                    # Generate a random identifier for the object name
-                    unique_id = random.randint(1000, 9999)  # Generates a random 4-digit number
+                    unique_id = random.randint(1000, 9999)
                     dock = TaskListDock(task_list_name, self)
                     dock.setObjectName(f"TaskListDock_{task_list_name}_{unique_id}")
 
                     drop_pos = event.position().toPoint()
 
-                    # Determine the dock area based on the drop position
                     if drop_pos.x() < self.width() // 3:
                         area = Qt.DockWidgetArea.LeftDockWidgetArea
                     elif drop_pos.x() > (2 * self.width()) // 3:
@@ -201,20 +212,16 @@ class MainWindow(QMainWindow):
             print(f"Error in dropEvent: {e}")
 
     def handle_task_list_update(self):
-        # Refresh all task lists
         for task_list in self.task_lists.values():
             task_list.refresh_tasks()
 
-        # Update all open TaskListDocks
         for dock_widget in self.findChildren(TaskListDock):
             dock_widget.task_list_widget.load_tasks()
 
-        # Update the current widget in the stacked task list
         current_widget = self.stacked_task_list.get_current_task_list_widget()
         if current_widget:
             current_widget.load_tasks()
 
-        # Update other components if necessary
         self.history_dock.update_history()
         self.calendar_dock.update_calendar()
 

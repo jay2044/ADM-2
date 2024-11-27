@@ -253,6 +253,8 @@ class TaskListCollection(QWidget):
         self.setup_ui()
         self.load_task_lists()
 
+        # self.setFixedWidth(200)
+
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
         self.search_bar = QLineEdit()
@@ -777,11 +779,11 @@ class TaskListDockStacked(QDockWidget):
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
-                         QDockWidget.DockWidgetFeature.DockWidgetFloatable |
                          QDockWidget.DockWidgetFeature.DockWidgetClosable)
 
     def setup_ui(self):
         self.widget = QWidget()
+        self.widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setWidget(self.widget)
         self.layout = QVBoxLayout()
         self.widget.setLayout(self.layout)
