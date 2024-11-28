@@ -27,7 +27,7 @@ class Task:
                  completed=False, categories=None, recurring=False, recur_every=None, last_completed_date=None,
                  list_name=None, status=None, estimate=0.0, count_required=0, count_completed=0,
                  subtasks=None, dependencies=None, deadline_flexibility=None, effort_level=None,
-                 resources=None, notes=None, time_logged=0.0, recurring_subtasks=None):
+                 resources=None, notes=None, time_logged=0.0, recurring_subtasks=None, order=0):
         self.id = task_id
         self.title = title
         self.description = description
@@ -39,6 +39,7 @@ class Task:
         self.added_date_time = datetime.now()
         self.categories = categories if categories else []
         self.recurring = recurring
+        self.order = order
         # Allow recur_every to be either an int or a list
         if isinstance(recur_every, int):
             self.recur_every = [recur_every]
@@ -340,7 +341,14 @@ class TaskListManager:
             cursor.execute(create_task_lists_table)
             cursor.execute(create_tasks_table)
             cursor.execute(create_subtasks_table)
-            # Check and add missing columns to subtasks table
+
+            cursor.execute("PRAGMA table_info(tasks)")
+            existing_columns = [column[1] for column in cursor.fetchall()]
+
+            if "order" not in existing_columns:
+                cursor.execute("ALTER TABLE tasks ADD COLUMN \"order\" INTEGER")
+            self.conn.commit()
+
             cursor.execute("PRAGMA table_info(subtasks)")
             existing_columns = [column[1] for column in cursor.fetchall()]
             if "order" not in existing_columns:
@@ -363,6 +371,7 @@ class TaskListManager:
                 ('notes', 'TEXT'),
                 ('time_logged', 'REAL'),
                 ('recurring_subtasks', 'TEXT'),
+                ('order', 'INTEGER')
             ]
 
             for column_name, column_def in required_columns:
@@ -477,6 +486,7 @@ class TaskListManager:
                 notes=row['notes'] if 'notes' in row.keys() else "",
                 time_logged=row['time_logged'] if 'time_logged' in row.keys() else 0.0,
                 recurring_subtasks=json.loads(row['recurring_subtasks']) if row['recurring_subtasks'] else [],
+                order=row['order'] if 'order' in row.keys() else 0
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
             # Load subtasks for this task
@@ -645,14 +655,22 @@ class TaskListManager:
 
     def add_task(self, task, list_name):
         cursor = self.conn.cursor()
+        cursor.execute("SELECT MAX(\"order\") FROM tasks WHERE list_name=?", (list_name,))
+        max_order = cursor.fetchone()[0]
+        if max_order is None:
+            max_order = 0
+        else:
+            max_order += 1
+        task.order = max_order
         cursor.execute(
             """
             INSERT INTO tasks (
                 list_name, title, description, due_date, due_time, completed, priority, is_important,
                 added_date_time, categories, recurring, recur_every, last_completed_date,
                 status, estimate, count_required, count_completed, dependencies,
-                deadline_flexibility, effort_level, resources, notes, time_logged, recurring_subtasks
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                deadline_flexibility, effort_level, resources, notes, time_logged, recurring_subtasks,
+                "order"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed),
@@ -664,7 +682,8 @@ class TaskListManager:
                 task.deadline_flexibility, task.effort_level,
                 json.dumps(task.resources) if task.resources else None,
                 task.notes, task.time_logged,
-                json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None
+                json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
+                task.order  # Include the 'order' value
             )
         )
         self.conn.commit()
@@ -681,7 +700,7 @@ class TaskListManager:
             cursor.execute("""
                 UPDATE tasks
                 SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
-                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?
+                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?, "order"=?
                 WHERE id=?
             """, (
                 task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
@@ -694,6 +713,7 @@ class TaskListManager:
                 json.dumps(task.resources) if task.resources else None,
                 task.notes, task.time_logged,
                 json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
+                task.order,
                 task.id)
                            )
             self.conn.commit()

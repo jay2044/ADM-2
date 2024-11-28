@@ -155,6 +155,21 @@ class TaskListWidget(QListWidget):
         self.load_tasks()
 
         global_signals.task_list_updated.connect(self.load_tasks)
+        self.model().rowsMoved.connect(self.on_rows_moved)
+
+    def on_rows_moved(self, parent, start, end, destination, row):
+        self.update_task_order()
+
+    def update_task_order(self):
+        for index in range(self.count()):
+            item = self.item(index)
+            task_widget = self.itemWidget(item)
+            task = task_widget.task
+            task.order = index
+            print(f"order of {task.title} in update_task_order set to: {index}")
+            self.task_list.update_task(task)
+        # Optionally emit a signal or refresh the list
+        # global_signals.task_list_updated.emit()
 
     def setup_ui(self):
         self.setDragEnabled(True)
@@ -162,12 +177,19 @@ class TaskListWidget(QListWidget):
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
 
-    def load_tasks(self, priority_filter=False):
+    def load_tasks(self, priority_filter=False, filtered=False):
         try:
-            # Refresh the tasks from the database
             self.task_list.tasks = self.task_list.load_tasks()
             self.clear()
-            tasks = self.task_list.get_tasks_filter_priority() if priority_filter else self.task_list.get_tasks()
+
+            if not filtered:
+                tasks = sorted(self.task_list.get_tasks(), key=lambda task: task.order)
+            else:
+                tasks = self.task_list.get_tasks()
+
+            if priority_filter:
+                tasks = sorted(tasks, key=lambda task: task.priority, reverse=True)
+
             for task in tasks:
                 task_widget = TaskWidget(self, task)
                 item = QListWidgetItem()
@@ -862,9 +884,10 @@ class TaskListDockStacked(QDockWidget):
                 self.toolbar.actions()[2].setCheckable(False)
                 self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
+                current_task_list_widget.load_tasks(filtered=True)
             else:
                 self.toolbar.actions()[1].setCheckable(False)
-            current_task_list_widget.load_tasks()
+                current_task_list_widget.load_tasks(filtered=False)
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
             print(f"Error in set_queue: {e}")
@@ -884,10 +907,10 @@ class TaskListDockStacked(QDockWidget):
                 self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
                 current_task_list.queue = False
-
+                current_task_list_widget.load_tasks(filtered=True)
             else:
                 self.toolbar.actions()[2].setCheckable(False)
-            current_task_list_widget.load_tasks()
+                current_task_list_widget.load_tasks(filtered=False)
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
             print(f"Error in set_stack: {e}")
@@ -913,7 +936,7 @@ class TaskListDockStacked(QDockWidget):
                 current_task_list.queue = False
                 current_task_list.stack = False
                 self.priority_filter = True
-            current_task_list_widget.load_tasks(True)
+                current_task_list_widget.load_tasks(True, filtered=True)
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
             print(f"Error in priority_sort: {e}")
@@ -1017,9 +1040,10 @@ class TaskListDock(QDockWidget):
                 self.toolbar.actions()[2].setCheckable(False)
                 self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
+                self.task_list_widget.load_tasks(filtered=True)
             else:
                 self.toolbar.actions()[1].setCheckable(False)
-            self.task_list_widget.load_tasks()
+                self.task_list_widget.load_tasks(filtered=False)
             self.task_manager.update_task_list(task_list)
         except Exception as e:
             print(f"Error in set_queue: {e}")
@@ -1035,10 +1059,10 @@ class TaskListDock(QDockWidget):
                 self.toolbar.actions()[3].setCheckable(False)
                 self.priority_filter = False
                 task_list.queue = False
-
+                self.task_list_widget.load_tasks(filtered=True)
             else:
                 self.toolbar.actions()[2].setCheckable(False)
-            self.task_list_widget.load_tasks()
+                self.task_list_widget.load_tasks(filtered=False)
             self.task_manager.update_task_list(task_list)
         except Exception as e:
             print(f"Error in set_stack: {e}")
@@ -1060,7 +1084,7 @@ class TaskListDock(QDockWidget):
                 task_list.queue = False
                 task_list.stack = False
                 self.priority_filter = True
-            self.task_list_widget.load_tasks(True)
+            self.task_list_widget.load_tasks(True, filtered=True)
             self.task_manager.update_task_list(task_list)
         except Exception as e:
             print(f"Error in priority_sort: {e}")
