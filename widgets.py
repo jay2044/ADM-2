@@ -168,8 +168,10 @@ class TaskListWidget(QListWidget):
             task.order = index
             print(f"order of {task.title} in update_task_order set to: {index}")
             self.task_list.update_task(task)
-        # Optionally emit a signal or refresh the list
-        # global_signals.task_list_updated.emit()
+            self.task_list.stack = False
+            self.task_list.queue = False
+            self.task_list.priority = False
+            self.manager.update_task_list(self.task_list)
 
     def setup_ui(self):
         self.setDragEnabled(True)
