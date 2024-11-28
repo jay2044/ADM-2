@@ -180,7 +180,6 @@ class TaskListWidget(QListWidget):
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
 
     def load_tasks(self):
-        print(f"current task list {self.task_list.list_name} priority status: {self.task_list.priority}")
         filtered = False
         if self.task_list.queue or self.task_list.stack or self.task_list.priority:
             filtered = True
@@ -910,7 +909,6 @@ class TaskListDockStacked(QDockWidget):
                 self.toolbar.actions()[1].setCheckable(False)
                 current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
-            print(f"updated task list {current_task_list.list_name} queue status to: {current_task_list.queue}")
         except Exception as e:
             print(f"Error in set_queue: {e}")
 
