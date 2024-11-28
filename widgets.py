@@ -450,6 +450,7 @@ class TaskListCollection(QWidget):
             hash_key = hash(task_list_name)
             if hash_key in self.parent.hash_to_widget:
                 self.parent.stacked_task_list.stack_widget.setCurrentWidget(self.parent.hash_to_widget[hash_key])
+                self.parent.stacked_task_list.update_toolbar()
 
     def task_list_collection_context_menu(self, position):
         try:
@@ -822,6 +823,18 @@ class TaskListDockStacked(QDockWidget):
         self.toolbar = TaskListToolbar(self)
         self.layout.addWidget(self.toolbar)
 
+    def update_toolbar(self):
+        current_task_list_widget = self.stack_widget.currentWidget()
+        current_task_list = current_task_list_widget.task_list
+        self.toolbar.actions()[1].setCheckable(True)
+        self.toolbar.actions()[1].setChecked(current_task_list.queue)
+
+        self.toolbar.actions()[2].setCheckable(True)
+        self.toolbar.actions()[2].setChecked(current_task_list.stack)
+
+        self.toolbar.actions()[3].setCheckable(True)
+        self.toolbar.actions()[3].setChecked(current_task_list.priority)
+
     def setup_stack_widget(self):
         self.stack_widget = QStackedWidget()
         self.layout.addWidget(self.stack_widget)
@@ -946,7 +959,6 @@ class TaskListDockStacked(QDockWidget):
                 self.priority_filter = True
                 current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
-            print(f"updated task list {current_task_list.list_name} priority status to: {current_task_list.priority}")
         except Exception as e:
             print(f"Error in priority_sort: {e}")
 

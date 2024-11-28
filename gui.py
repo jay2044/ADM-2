@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         self.setup_left_widgets()
         self.setup_history_dock()
         self.setup_calendar_dock()
+        self.stacked_task_list.update_toolbar()
 
     def setup_main_window(self):
         self.setWindowTitle('ADM')
