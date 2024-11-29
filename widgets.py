@@ -286,7 +286,25 @@ class CustomTreeWidget(QTreeWidget):
             print("saved")
 
     def dropEvent(self, event):
+        dragged_item = self.currentItem()
+        drop_position = event.position().toPoint()
+        target_item = self.itemAt(drop_position)
+
+        top_level_items = [self.topLevelItem(i) for i in range(self.topLevelItemCount())]
+
+        if dragged_item in top_level_items:
+            if target_item is not None and target_item not in top_level_items:
+                event.ignore()
+                return
+
         super().dropEvent(event)
+
+        if dragged_item in top_level_items:
+            dragged_item_parent = dragged_item.parent()
+            if dragged_item_parent is not None:
+                dragged_item_parent.takeChild(dragged_item_parent.indexOfChild(dragged_item))
+                self.addTopLevelItem(dragged_item)
+
         self.print_structure()
 
     def print_structure(self):
