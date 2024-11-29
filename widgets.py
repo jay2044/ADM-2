@@ -341,10 +341,8 @@ class TaskListWidget(QListWidget):
             task_widget = self.itemWidget(item)
             task = task_widget.task
             match_found = False
-            # Check task title and description
             if text.lower() in task.title.lower() or text.lower() in task.description.lower():
                 match_found = True
-            # Check subtasks
             for subtask in task.subtasks:
                 if text.lower() in subtask.title.lower():
                     match_found = True
@@ -355,7 +353,7 @@ class TaskListWidget(QListWidget):
         if first_visible_item:
             self.scrollToItem(first_visible_item)
 
-    def on_rows_moved(self, parent, start, end, destination, row):
+    def on_rows_moved(self):
         self.update_task_order()
 
     def update_task_order(self):
@@ -552,6 +550,7 @@ class TaskListCollection(QWidget):
         self.search_bar.setPlaceholderText("Search...")
         self.layout.addWidget(self.search_bar)
         self.search_bar.textChanged.connect(self.filter_items)
+        self.task_list_widget_in_focus_before_search = None
 
         self.tree_widget = CustomTreeWidget(self.parent)
         self.tree_widget.setHeaderHidden(True)
@@ -565,9 +564,11 @@ class TaskListCollection(QWidget):
         self.layout.addWidget(self.tree_widget)
 
     def filter_items(self, text):
-        # Clear the selection
         self.tree_widget.clearSelection()
-        first_match_task_list_name = None  # To keep track of the first matching task list
+        first_match_task_list_name = None
+
+        if not self.task_list_widget_in_focus_before_search:
+            self.task_list_widget_in_focus_before_search = self.parent.stacked_task_list.stack_widget.currentWidget()
 
         if not text:
             # Show all items when the search bar is empty
@@ -577,6 +578,9 @@ class TaskListCollection(QWidget):
                 for j in range(category_item.childCount()):
                     task_list_item = category_item.child(j)
                     task_list_item.setHidden(False)
+            if self.task_list_widget_in_focus_before_search:
+                self.parent.stacked_task_list.stack_widget.setCurrentWidget(self.task_list_widget_in_focus_before_search)
+                self.task_list_widget_in_focus_before_search = None
             return
 
         # Iterate over categories and task lists to match the search term
@@ -593,13 +597,21 @@ class TaskListCollection(QWidget):
                 # Check if the task list name matches the search term
                 if text.lower() in task_list_item.text(0).lower():
                     task_list_visible = True
-                # Load tasks and check if any task matches the search term
+                # Load tasks and check if any task or its subtasks match the search term
                 task_list_name = task_list_item.text(0)
                 task_list = self.parent.task_lists[task_list_name]
                 tasks = task_list.load_tasks()
                 for task in tasks:
+                    # Check task title, description, and subtasks
                     if text.lower() in task.title.lower() or text.lower() in task.description.lower():
                         task_list_visible = True
+                        break
+                    # Check subtasks
+                    for subtask in task.subtasks:
+                        if text.lower() in subtask.title.lower() or text.lower():
+                            task_list_visible = True
+                            break
+                    if task_list_visible:
                         break
                 # Show or hide the task list item based on the search result
                 task_list_item.setHidden(not task_list_visible)
