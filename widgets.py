@@ -21,54 +21,50 @@ class TaskWidget(QWidget):
         self.task_list_widget = task_list_widget
         self.task = task
         self.is_dragging = False
-
         self.setup_ui()
         self.setup_timer()
-
         self.checkbox.setObjectName("taskCheckbox")
         self.radio_button.setObjectName("importantRadioButton")
-
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
     def setup_ui(self):
         self.layout = QHBoxLayout()
         self.setLayout(self.layout)
-
-        self.checkbox = QCheckBox(self.task.title)
+        self.checkbox = QCheckBox()
         self.checkbox.setChecked(self.task.completed)
         self.checkbox.stateChanged.connect(self.task_checked)
         self.layout.addWidget(self.checkbox)
-
+        self.task_label = QLabel(self.task.title)
+        self.task_label.setStyleSheet("font-size: 14px; text-decoration: none;")
+        self.task_label.mousePressEvent = self.on_task_label_click
+        self.layout.addWidget(self.task_label)
         self.layout.addStretch()
-
         self.due_label = QLabel()
         self.due_label.setStyleSheet("font-size: 14px;")
+        self.due_label.mousePressEvent = self.pick_due_date
         self.layout.addWidget(self.due_label)
-
         self.radio_button = QRadioButton()
         self.radio_button.setChecked(self.task.is_important)
         self.radio_button.toggled.connect(self.mark_important)
         self.layout.addWidget(self.radio_button)
-
         self.update_due_label()
+
+    def on_task_label_click(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.edit_task()
 
     def show_context_menu(self, position):
         menu = QMenu(self)
-
-        # Add context menu actions
         due_today_action = QAction("Due Today", self)
         due_today_action.triggered.connect(self.set_due_today)
         menu.addAction(due_today_action)
-
         due_tomorrow_action = QAction("Due Tomorrow", self)
         due_tomorrow_action.triggered.connect(self.set_due_tomorrow)
         menu.addAction(due_tomorrow_action)
-
         pick_date_action = QAction("Pick a Date", self)
         pick_date_action.triggered.connect(self.pick_due_date)
         menu.addAction(pick_date_action)
-
         remove_due_date_action = QAction("Remove Due Date", self)
         remove_due_date_action.triggered.connect(self.remove_due_date)
         menu.addAction(remove_due_date_action)
@@ -94,7 +90,7 @@ class TaskWidget(QWidget):
         self.task.due_date = tomorrow.strftime("%Y-%m-%d")
         self.update_due_label()
 
-    def pick_due_date(self):
+    def pick_due_date(self, event):
         dialog = QDialog(self)
         dialog.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         layout = QVBoxLayout(dialog)
