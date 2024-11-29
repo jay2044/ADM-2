@@ -350,7 +350,6 @@ class CustomTreeWidget(QTreeWidget):
                 self.task_manager.update_task_list_order(self.topLevelItem(i).child(j).text(0), j)
 
 
-
 class TaskListCollection(QWidget):
     def __init__(self, parent):
         super().__init__()
@@ -395,39 +394,41 @@ class TaskListCollection(QWidget):
                 category_item.setFlags(category_item.flags())
                 category_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'category', 'name': category_name})
 
-                # Sort task lists by their order
-                sorted_task_lists = sorted(
-                    category_info['task_lists'],
-                    key=lambda task_list: task_list['order']
-                )
+                # Ensure that empty categories are still shown
+                if category_info.get('task_lists'):  # If the category has task lists
+                    # Sort task lists by their order
+                    sorted_task_lists = sorted(
+                        category_info['task_lists'],
+                        key=lambda task_list: task_list['order']
+                    )
 
-                for task_list_info in sorted_task_lists:
-                    task_list_name = task_list_info["list_name"]
+                    for task_list_info in sorted_task_lists:
+                        task_list_name = task_list_info["list_name"]
 
-                    task_list_item = QTreeWidgetItem(category_item)
-                    task_list_item.setFlags(task_list_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
-                    task_list_item.setText(0, task_list_name)
-                    task_list_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'task_list', 'info': task_list_info})
-                    task_list_item.setFlags(task_list_item.flags())
+                        task_list_item = QTreeWidgetItem(category_item)
+                        task_list_item.setFlags(task_list_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
+                        task_list_item.setText(0, task_list_name)
+                        task_list_item.setData(0, Qt.ItemDataRole.UserRole,
+                                               {'type': 'task_list', 'info': task_list_info})
+                        task_list_item.setFlags(task_list_item.flags())
 
-                    if task_list_name in self.parent.task_lists:
-                        task_list = self.parent.task_lists[task_list_name]
-                    else:
-                        task_list = TaskList(
-                            task_list_name,
-                            self.task_manager,
-                            task_list_info["queue"],
-                            task_list_info["stack"],
-                            task_list_info["priority"]
-                        )
-                        self.parent.task_lists[task_list_name] = task_list
+                        if task_list_name in self.parent.task_lists:
+                            task_list = self.parent.task_lists[task_list_name]
+                        else:
+                            task_list = TaskList(
+                                task_list_name,
+                                self.task_manager,
+                                task_list_info["queue"],
+                                task_list_info["stack"],
+                                task_list_info["priority"]
+                            )
+                            self.parent.task_lists[task_list_name] = task_list
 
-                    hash_key = hash(task_list_name)
-                    if hash_key not in self.parent.hash_to_widget:
-                        task_list_widget = TaskListWidget(task_list, self.parent)
-                        self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
-                        self.parent.hash_to_widget[hash_key] = task_list_widget
-
+                        hash_key = hash(task_list_name)
+                        if hash_key not in self.parent.hash_to_widget:
+                            task_list_widget = TaskListWidget(task_list, self.parent)
+                            self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
+                            self.parent.hash_to_widget[hash_key] = task_list_widget
             self.tree_widget.expandAll()
         except Exception as e:
             QMessageBox.critical(self, "Error Loading Task Lists", f"An error occurred: {e}")
