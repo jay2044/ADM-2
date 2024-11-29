@@ -327,8 +327,6 @@ class CustomTreeWidget(QTreeWidget):
             print_item(self.topLevelItem(i))
 
 
-
-
 class TaskListCollection(QWidget):
     def __init__(self, parent):
         super().__init__()
