@@ -334,12 +334,22 @@ class TaskListManager:
             );
             """
 
+        create_tree = """CREATE TABLE tree_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    parent_id INTEGER,
+                    position INTEGER,
+                    text TEXT,
+                    FOREIGN KEY(parent_id) REFERENCES tree_items(id)
+                );
+            """
+
         try:
             cursor = self.conn.cursor()
             cursor.execute(create_categories_table)
             cursor.execute(create_task_lists_table)
             cursor.execute(create_tasks_table)
             cursor.execute(create_subtasks_table)
+            cursor.execute(create_tree)
 
             cursor.execute("PRAGMA table_info(tasks)")
             existing_columns = [column[1] for column in cursor.fetchall()]
@@ -380,6 +390,63 @@ class TaskListManager:
         except sqlite3.Error as e:
             print(f"Error creating tables: {e}")
 
+    def save_tree_to_db(self, tree_data):
+        """
+        Save hierarchical tree data to the database.
+
+        :param tree_data: A list of dictionaries representing the tree structure.
+                          Each dictionary should have 'text', 'children', and 'position' keys.
+        """
+
+        def insert_item(cursor, item, parent_id, position):
+            cursor.execute(
+                "INSERT INTO tree_items (parent_id, position, text) VALUES (?, ?, ?)",
+                (parent_id, position, item['text'])
+            )
+            item_id = cursor.lastrowid
+            for idx, child in enumerate(item.get('children', [])):
+                insert_item(cursor, child, item_id, idx)
+
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM tree_items")  # Clear existing data
+        for position, root_item in enumerate(tree_data):
+            insert_item(cursor, root_item, None, position)
+        self.conn.commit()
+
+    def load_tree_from_db(self):
+        """
+        Load hierarchical tree data from the database.
+
+        :return: A list of dictionaries representing the tree structure.
+        """
+
+        def fetch_children(cursor, parent_id):
+            cursor.execute(
+                "SELECT id, text, position FROM tree_items WHERE parent_id = ? ORDER BY position",
+                (parent_id,)
+            )
+            children = []
+            for item_id, text, position in cursor.fetchall():
+                children.append({
+                    'text': text,
+                    'position': position,
+                    'children': fetch_children(cursor, item_id)
+                })
+            return children
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT id, text, position FROM tree_items WHERE parent_id IS NULL ORDER BY position"
+        )
+        tree_data = []
+        for item_id, text, position in cursor.fetchall():
+            tree_data.append({
+                'text': text,
+                'position': position,
+                'children': fetch_children(cursor, item_id)
+            })
+        return tree_data
+
     def load_categories(self):
         categories = {}
         cursor = self.conn.cursor()
@@ -403,12 +470,10 @@ class TaskListManager:
                     "task_categories": task_list_row["task_categories"]
                 })
 
-        # Always include "Uncategorized" category
         categories["Uncategorized"] = {
             "task_lists": []
         }
 
-        # Handle uncategorized task lists
         cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL")
         uncategorized_task_lists = cursor.fetchall()
         for task_list_row in uncategorized_task_lists:

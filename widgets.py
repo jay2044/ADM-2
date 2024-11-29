@@ -272,6 +272,63 @@ class TaskListManagerToolbar(QToolBar):
         self.addAction(action)
 
 
+class CustomTreeWidget(QTreeWidget):
+    def __init__(self, task_manager, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.task_manager = task_manager
+
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        tree_data = self.get_tree_data()  # Get the updated tree data
+        self.task_manager.save_tree_to_db(tree_data)  # Save data to the database
+        self.print_structure()
+
+    def get_tree_data(self):
+        def get_item_data(item):
+            return {
+                'text': item.text(0),
+                'position': item.parent().indexOfChild(item) if item.parent() else self.indexOfTopLevelItem(item),
+                'children': [get_item_data(item.child(i)) for i in range(item.childCount())]
+            }
+
+        tree_data = [
+            get_item_data(self.topLevelItem(i)) for i in range(self.topLevelItemCount())
+        ]
+        return tree_data
+
+    def load_tree_data(self):
+        """
+        Rebuild the tree to match the given data structure.
+
+        :param tree_data: List of dictionaries representing the tree structure.
+        """
+        tree_data = self.task_manager.load_tree_from_db()
+        self.clear()
+
+        def add_item(parent, item_data):
+            if parent is None:
+                item = QTreeWidgetItem(self)
+            else:
+                item = QTreeWidgetItem(parent)
+            item.setText(0, item_data['text'])
+            for child_data in item_data.get('children', []):
+                add_item(item, child_data)
+
+        for root_data in tree_data:
+            add_item(None, root_data)
+
+    def print_structure(self):
+        def print_item(item, indent=0):
+            print(' ' * indent + f"- {item.text(0)}")
+            for i in range(item.childCount()):
+                print_item(item.child(i), indent + 2)
+
+        for i in range(self.topLevelItemCount()):
+            print_item(self.topLevelItem(i))
+
+
+
+
 class TaskListCollection(QWidget):
     def __init__(self, parent):
         super().__init__()
@@ -281,7 +338,7 @@ class TaskListCollection(QWidget):
         self.setup_ui()
         self.load_task_lists()
 
-        # self.setFixedWidth(200)
+        self.tree_widget.load_tree_data()
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
@@ -291,7 +348,7 @@ class TaskListCollection(QWidget):
         self.layout.addWidget(self.search_bar)
 
         # Use QTreeWidget instead of QListWidget
-        self.tree_widget = QTreeWidget()
+        self.tree_widget = CustomTreeWidget(self.task_manager)
         self.tree_widget.setHeaderHidden(True)
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self.task_list_collection_context_menu)
