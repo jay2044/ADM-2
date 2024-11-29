@@ -361,9 +361,6 @@ class TaskListCollection(QWidget):
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
-        self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search task lists...")
-        self.layout.addWidget(self.search_bar)
 
         self.tree_widget = CustomTreeWidget(self.task_manager)
         self.tree_widget.setHeaderHidden(True)
@@ -491,6 +488,31 @@ class TaskListCollection(QWidget):
             QMessageBox.critical(self, "Error Adding Task List", f"An error occurred: {e}")
             print(f"Error in add_task_list: {e}")
 
+    def add_task_list_to_category(self, category_item):
+        # Get the category name
+        category_name = category_item.text(0)
+
+        # Ask for a task list name
+        task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter task list name:")
+        if ok and task_list_name.strip():
+            task_list_name = task_list_name.strip()
+
+            # Check if the task list already exists in the category
+            if any(task_list_name == task_list["list_name"] for task_list in
+                   self.categories[category_name]['task_lists']):
+                QMessageBox.warning(self, "Duplicate Task List",
+                                    "A task list with this name already exists in this category.")
+                return
+
+            # Add the task list to the category
+            self.task_manager.add_task_list(task_list_name, queue=False, stack=False, category=category_name)
+
+            # Reload the task lists and update the UI
+            self.categories = self.task_manager.get_categories()
+            self.load_task_lists()
+        else:
+            QMessageBox.warning(self, "Invalid Name", "Task list name cannot be empty.")
+
     def select_task_list_in_tree(self, task_list_name):
         iterator = QTreeWidgetItemIterator(self.tree_widget)
         while iterator.value():
@@ -512,49 +534,58 @@ class TaskListCollection(QWidget):
     def task_list_collection_context_menu(self, position):
         try:
             item = self.tree_widget.itemAt(position)
-            if not item:
-                return
-
             menu = QMenu()
 
-            data = item.data(0, Qt.ItemDataRole.UserRole)
-            if data is None:
-                QMessageBox.warning(self, "Error", "No data associated with this item.")
-                return
-
-            item_type = data.get('type')
-
-            if item_type == 'task_list':
-                # Task list item
-                task_list_info = data['info']
-                task_list_name = task_list_info["list_name"]
-
-                rename_action = QAction('Rename Task List', self)
-                delete_action = QAction('Delete Task List', self)
-
-                rename_action.triggered.connect(lambda: self.rename_task_list(item))
-                delete_action.triggered.connect(lambda: self.delete_task_list(item))
-
-                menu.addAction(rename_action)
-                menu.addAction(delete_action)
-
-            elif item_type == 'category':
-                # Category item
-                category_name = data['name']
-                category_info = self.categories[category_name]
-
-                rename_action = QAction('Rename Category', self)
-                delete_action = QAction('Delete Category', self)
-
-                rename_action.triggered.connect(lambda: self.rename_category(item))
-                delete_action.triggered.connect(lambda: self.delete_category(item))
-
-                menu.addAction(rename_action)
-                menu.addAction(delete_action)
+            if not item:
+                # Right-clicked outside the tree widget, add "Add Category" option
+                add_category_action = QAction("Add Category", self)
+                add_category_action.triggered.connect(self.add_category)
+                menu.addAction(add_category_action)
             else:
-                QMessageBox.warning(self, "Error", "Unknown item type.")
+                # Item is clicked, check if it's a category
+                data = item.data(0, Qt.ItemDataRole.UserRole)
+                if data is None:
+                    return
+
+                item_type = data.get('type')
+
+                if item_type == 'task_list':
+                    # Task list item
+                    task_list_info = data['info']
+                    task_list_name = task_list_info["list_name"]
+
+                    rename_action = QAction('Rename Task List', self)
+                    delete_action = QAction('Delete Task List', self)
+
+                    rename_action.triggered.connect(lambda: self.rename_task_list(item))
+                    delete_action.triggered.connect(lambda: self.delete_task_list(item))
+
+                    menu.addAction(rename_action)
+                    menu.addAction(delete_action)
+
+                elif item_type == 'category':
+                    # Category item
+                    category_name = data['name']
+
+                    # Option to add a task list to this category
+                    add_task_list_action = QAction('Add Task List', self)
+                    add_task_list_action.triggered.connect(lambda: self.add_task_list_to_category(item))
+
+                    rename_action = QAction('Rename Category', self)
+                    delete_action = QAction('Delete Category', self)
+
+                    rename_action.triggered.connect(lambda: self.rename_category(item))
+                    delete_action.triggered.connect(lambda: self.delete_category(item))
+
+                    menu.addAction(add_task_list_action)
+                    menu.addAction(rename_action)
+                    menu.addAction(delete_action)
+
+                else:
+                    QMessageBox.warning(self, "Error", "Unknown item type.")
 
             menu.exec(self.tree_widget.viewport().mapToGlobal(position))
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred in context menu: {e}")
             print(f"Error in task_list_collection_context_menu: {e}")
