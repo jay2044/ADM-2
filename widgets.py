@@ -317,7 +317,11 @@ class TaskListWidget(QListWidget):
         self.task_list_name = task_list.list_name
         self.parent = parent
         self.manager = self.parent.task_manager
-        self.setup_ui()
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        # self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.load_tasks()
 
         global_signals.task_list_updated.connect(self.load_tasks)
@@ -330,20 +334,15 @@ class TaskListWidget(QListWidget):
         for index in range(self.count()):
             item = self.item(index)
             task_widget = self.itemWidget(item)
-            task = task_widget.task
-            task.order = index
-            print(f"order of {task.title} in update_task_order set to: {index}")
-            self.task_list.update_task(task)
-            self.task_list.stack = False
-            self.task_list.queue = False
-            self.task_list.priority = False
-            self.manager.update_task_list(self.task_list)
-
-    def setup_ui(self):
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+            if task_widget:
+                task = task_widget.task
+                task.order = index
+                print(f"order of {task.title} in update_task_order set to: {index}")
+                self.task_list.update_task(task)
+                self.task_list.stack = False
+                self.task_list.queue = False
+                self.task_list.priority = False
+                self.manager.update_task_list(self.task_list)
 
     def load_tasks(self):
         filtered = False
@@ -384,41 +383,34 @@ class TaskListWidget(QListWidget):
             print(f"Error in delete_task: {e}")
 
     def startDrag(self, supportedActions):
-        try:
-            item = self.currentItem()
-            if item:
-                drag = QDrag(self)
-                mime_data = QMimeData()
-                drag.setMimeData(mime_data)
+        item = self.currentItem()
+        if item:
+            task_widget = self.itemWidget(item)
+            if task_widget:
+                self.dragged_task_widget = task_widget
+        super().startDrag(supportedActions)
 
-                pixmap = QPixmap(item.sizeHint().width(), item.sizeHint().height())
-                item_widget = self.itemWidget(item)
-                item_widget.render(pixmap)
-                drag.setPixmap(pixmap)
-
-                drag.exec(Qt.DropAction.MoveAction)
-        except Exception as e:
-            print(f"Error in startDrag: {e}")
-
-    def dragEnterEvent(self, event):
-        try:
-            if event.source() == self:
-                event.setDropAction(Qt.DropAction.MoveAction)
-                event.accept()
-            else:
-                event.ignore()
-        except Exception as e:
-            print(f"Error in dragEnterEvent: {e}")
-
-    def dragMoveEvent(self, event):
-        try:
-            if event.source() == self:
-                event.setDropAction(Qt.DropAction.MoveAction)
-                event.accept()
-            else:
-                event.ignore()
-        except Exception as e:
-            print(f"Error in dragMoveEvent: {e}")
+    def dropEvent(self, event):
+        if event.source() != self:
+            source_widget = event.source()
+            dragged_task_widget = getattr(source_widget, "dragged_task_widget", None)
+            if dragged_task_widget:
+                item = QListWidgetItem()
+                item.setSizeHint(dragged_task_widget.sizeHint())
+                self.addItem(item)
+                self.setItemWidget(item, dragged_task_widget)
+                dragged_task_widget.move_to_list(self.task_list_name)
+                print(
+                    f"Task '{dragged_task_widget.task.title}' moved from "
+                    f"{source_widget.objectName()} to {self.task_list_name}"
+                )
+            for i in range(source_widget.count()):
+                item = source_widget.item(i)
+                task_widget = source_widget.itemWidget(item)
+                if task_widget == dragged_task_widget:
+                    source_widget.takeItem(i)
+                    break
+        event.accept()
 
 
 class TaskListManagerToolbar(QToolBar):
