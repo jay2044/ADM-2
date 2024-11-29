@@ -21,6 +21,7 @@ class TaskWidget(QWidget):
         self.task_list_widget = task_list_widget
         self.task = task
         self.is_dragging = False
+        self.no_context = False
         self.setup_ui()
         self.setup_timer()
         self.checkbox.setObjectName("taskCheckbox")
@@ -55,43 +56,44 @@ class TaskWidget(QWidget):
             self.edit_task()
 
     def show_context_menu(self, position):
-        menu = QMenu(self)
-        due_today_action = QAction("Due Today", self)
-        due_today_action.triggered.connect(self.set_due_today)
-        menu.addAction(due_today_action)
-        due_tomorrow_action = QAction("Due Tomorrow", self)
-        due_tomorrow_action.triggered.connect(self.set_due_tomorrow)
-        menu.addAction(due_tomorrow_action)
-        pick_date_action = QAction("Pick a Date", self)
-        pick_date_action.triggered.connect(self.pick_due_date)
-        menu.addAction(pick_date_action)
-        remove_due_date_action = QAction("Remove Due Date", self)
-        remove_due_date_action.triggered.connect(self.remove_due_date)
-        menu.addAction(remove_due_date_action)
+        if not self.no_context:
+            menu = QMenu(self)
+            due_today_action = QAction("Due Today", self)
+            due_today_action.triggered.connect(self.set_due_today)
+            menu.addAction(due_today_action)
+            due_tomorrow_action = QAction("Due Tomorrow", self)
+            due_tomorrow_action.triggered.connect(self.set_due_tomorrow)
+            menu.addAction(due_tomorrow_action)
+            pick_date_action = QAction("Pick a Date", self)
+            pick_date_action.triggered.connect(self.pick_due_date)
+            menu.addAction(pick_date_action)
+            remove_due_date_action = QAction("Remove Due Date", self)
+            remove_due_date_action.triggered.connect(self.remove_due_date)
+            menu.addAction(remove_due_date_action)
 
-        menu.addSeparator()
+            menu.addSeparator()
 
-        move_to_menu = QMenu("Move To", self)
-        categories_tasklists = self.task_list_widget.manager.get_category_tasklist_names()
+            move_to_menu = QMenu("Move To", self)
+            categories_tasklists = self.task_list_widget.manager.get_category_tasklist_names()
 
-        for category, task_lists in categories_tasklists.items():
-            if task_lists:
-                category_menu = QMenu(category, self)
-                for list_name in task_lists:
-                    if list_name != self.task_list_widget.task_list_name:
-                        move_to_action = QAction(list_name, self)
-                        move_to_action.triggered.connect(lambda _, name=list_name: self.move_to_list(name))
-                        category_menu.addAction(move_to_action)
-                if not category_menu.isEmpty():
-                    move_to_menu.addMenu(category_menu)
+            for category, task_lists in categories_tasklists.items():
+                if task_lists:
+                    category_menu = QMenu(category, self)
+                    for list_name in task_lists:
+                        if list_name != self.task_list_widget.task_list_name:
+                            move_to_action = QAction(list_name, self)
+                            move_to_action.triggered.connect(lambda _, name=list_name: self.move_to_list(name))
+                            category_menu.addAction(move_to_action)
+                    if not category_menu.isEmpty():
+                        move_to_menu.addMenu(category_menu)
 
-        menu.addMenu(move_to_menu)
+            menu.addMenu(move_to_menu)
 
-        delete_action = QAction("Delete", self)
-        delete_action.triggered.connect(self.delete_task)
-        menu.addAction(delete_action)
+            delete_action = QAction("Delete", self)
+            delete_action.triggered.connect(self.delete_task)
+            menu.addAction(delete_action)
 
-        menu.exec(self.mapToGlobal(position))
+            menu.exec(self.mapToGlobal(position))
 
     def set_due_today(self):
         self.task.due_date = datetime.now().strftime("%Y-%m-%d")
@@ -239,9 +241,14 @@ class TaskWidget(QWidget):
             self.is_dragging = False
             self.timer.start(250)
             self.start_pos = event.pos()
+        if event.button() == Qt.MouseButton.RightButton:
+            self.no_context = False
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.RightButton:
+            self.no_context = True
+            return
         if not self.is_dragging and (event.pos() - self.start_pos).manhattanLength() > QApplication.startDragDistance():
             self.is_dragging = True
             self.timer.stop()
@@ -395,22 +402,13 @@ class TaskListWidget(QListWidget):
             source_widget = event.source()
             dragged_task_widget = getattr(source_widget, "dragged_task_widget", None)
             if dragged_task_widget:
-                item = QListWidgetItem()
-                item.setSizeHint(dragged_task_widget.sizeHint())
-                self.addItem(item)
-                self.setItemWidget(item, dragged_task_widget)
                 dragged_task_widget.move_to_list(self.task_list_name)
                 print(
                     f"Task '{dragged_task_widget.task.title}' moved from "
                     f"{source_widget.objectName()} to {self.task_list_name}"
                 )
-            for i in range(source_widget.count()):
-                item = source_widget.item(i)
-                task_widget = source_widget.itemWidget(item)
-                if task_widget == dragged_task_widget:
-                    source_widget.takeItem(i)
-                    break
-        event.accept()
+        super().dropEvent(event)
+        global_signals.task_list_updated.emit()
 
 
 class TaskListManagerToolbar(QToolBar):
