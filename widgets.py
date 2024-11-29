@@ -288,17 +288,16 @@ class CustomTreeWidget(QTreeWidget):
     def dropEvent(self, event):
         dragged_item = self.currentItem()
         drop_position = event.position().toPoint()
+        dragged_item_parent = dragged_item.parent()
         target_item = self.itemAt(drop_position)
 
         top_level_items = [self.topLevelItem(i) for i in range(self.topLevelItemCount())]
 
         # Prevent adding child items as children of another child item
         if dragged_item.parent() is not None:
-            if target_item is not None and target_item.parent() is not None:
-                # Allow reordering within the same parent
-                if dragged_item.parent() != target_item.parent():
-                    event.ignore()
-                    return
+            if target_item is None:
+                event.ignore()
+                return
 
         # Prevent adding top-level items as children
         if dragged_item in top_level_items:
@@ -323,10 +322,16 @@ class CustomTreeWidget(QTreeWidget):
 
         # Ensure top-level items remain at the top level
         if dragged_item in top_level_items:
-            dragged_item_parent = dragged_item.parent()
-            if dragged_item_parent is not None:
-                dragged_item_parent.takeChild(dragged_item_parent.indexOfChild(dragged_item))
+            dragged_item_parent_current = dragged_item.parent()
+            if dragged_item_parent_current is not None:
+                dragged_item_parent_current.takeChild(dragged_item_parent_current.indexOfChild(dragged_item))
                 self.addTopLevelItem(dragged_item)
+
+        if dragged_item not in top_level_items:
+            dragged_item_parent_current = dragged_item.parent()
+            if dragged_item_parent_current is None:
+                self.takeTopLevelItem(self.indexOfTopLevelItem(dragged_item))
+                dragged_item_parent.addChild(dragged_item)
 
         self.print_structure()
 
@@ -337,7 +342,7 @@ class CustomTreeWidget(QTreeWidget):
                 print_item(item.child(i), indent + 2)
 
         for i in range(self.topLevelItemCount()):
-            print_item(self.topLevelItem(i))
+            # print_item(self.topLevelItem(i))
             category_name = self.topLevelItem(i).text(0)
             new_order = i
             self.task_manager.update_category_order(category_name, new_order)
@@ -407,6 +412,7 @@ class TaskListCollection(QWidget):
 
                     # Create QTreeWidgetItem for the task list
                     task_list_item = QTreeWidgetItem(category_item)
+                    task_list_item.setFlags(task_list_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
                     task_list_item.setText(0, task_list_name)
                     task_list_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'task_list', 'info': task_list_info})
                     task_list_item.setFlags(task_list_item.flags())
