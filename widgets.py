@@ -275,7 +275,16 @@ class TaskListManagerToolbar(QToolBar):
 class CustomTreeWidget(QTreeWidget):
     def __init__(self, task_manager, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.loaded = False
         self.task_manager = task_manager
+        self.itemExpanded.connect(self.save_tree_data)
+        self.itemCollapsed.connect(self.save_tree_data)
+        self.itemChanged.connect(self.save_tree_data)
+
+    def save_tree_data(self):
+        if self.loaded:
+            print("saved")
+            self.task_manager.save_tree_to_db(self.get_tree_data())
 
     def dropEvent(self, event):
         super().dropEvent(event)
@@ -288,6 +297,7 @@ class CustomTreeWidget(QTreeWidget):
             return {
                 'text': item.text(0),
                 'position': item.parent().indexOfChild(item) if item.parent() else self.indexOfTopLevelItem(item),
+                'expanded': item.isExpanded(),
                 'children': [get_item_data(item.child(i)) for i in range(item.childCount())]
             }
 
@@ -311,6 +321,7 @@ class CustomTreeWidget(QTreeWidget):
             else:
                 item = QTreeWidgetItem(parent)
             item.setText(0, item_data['text'])
+            item.setExpanded(item_data.get('expanded', False))  # Restore expanded state
             for child_data in item_data.get('children', []):
                 add_item(item, child_data)
 
@@ -319,12 +330,13 @@ class CustomTreeWidget(QTreeWidget):
 
     def print_structure(self):
         def print_item(item, indent=0):
-            print(' ' * indent + f"- {item.text(0)}")
+            print(' ' * indent + f"- {item.text(0)} (Expanded: {item.isExpanded()})")
             for i in range(item.childCount()):
                 print_item(item.child(i), indent + 2)
 
         for i in range(self.topLevelItemCount()):
             print_item(self.topLevelItem(i))
+
 
 
 class TaskListCollection(QWidget):
@@ -337,6 +349,7 @@ class TaskListCollection(QWidget):
         self.load_task_lists()
 
         self.tree_widget.load_tree_data()
+        self.tree_widget.loaded = True
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)

@@ -334,14 +334,15 @@ class TaskListManager:
             );
             """
 
-        create_tree = """CREATE TABLE tree_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    parent_id INTEGER,
-                    position INTEGER,
-                    text TEXT,
-                    FOREIGN KEY(parent_id) REFERENCES tree_items(id)
-                );
-            """
+        create_tree = """CREATE TABLE IF NOT EXISTS tree_items (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            parent_id INTEGER,
+                            position INTEGER,
+                            text TEXT,
+                            expanded BOOLEAN DEFAULT 0,
+                            FOREIGN KEY(parent_id) REFERENCES tree_items(id)
+                        );
+                    """
 
         try:
             cursor = self.conn.cursor()
@@ -395,13 +396,13 @@ class TaskListManager:
         Save hierarchical tree data to the database.
 
         :param tree_data: A list of dictionaries representing the tree structure.
-                          Each dictionary should have 'text', 'children', and 'position' keys.
+                          Each dictionary should have 'text', 'children', 'position', and 'expanded' keys.
         """
 
         def insert_item(cursor, item, parent_id, position):
             cursor.execute(
-                "INSERT INTO tree_items (parent_id, position, text) VALUES (?, ?, ?)",
-                (parent_id, position, item['text'])
+                "INSERT INTO tree_items (parent_id, position, text, expanded) VALUES (?, ?, ?, ?)",
+                (parent_id, position, item['text'], item.get('expanded', False))
             )
             item_id = cursor.lastrowid
             for idx, child in enumerate(item.get('children', [])):
@@ -422,27 +423,29 @@ class TaskListManager:
 
         def fetch_children(cursor, parent_id):
             cursor.execute(
-                "SELECT id, text, position FROM tree_items WHERE parent_id = ? ORDER BY position",
+                "SELECT id, text, position, expanded FROM tree_items WHERE parent_id = ? ORDER BY position",
                 (parent_id,)
             )
             children = []
-            for item_id, text, position in cursor.fetchall():
+            for item_id, text, position, expanded in cursor.fetchall():
                 children.append({
                     'text': text,
                     'position': position,
+                    'expanded': bool(expanded),  # Convert to boolean
                     'children': fetch_children(cursor, item_id)
                 })
             return children
 
         cursor = self.conn.cursor()
         cursor.execute(
-            "SELECT id, text, position FROM tree_items WHERE parent_id IS NULL ORDER BY position"
+            "SELECT id, text, position, expanded FROM tree_items WHERE parent_id IS NULL ORDER BY position"
         )
         tree_data = []
-        for item_id, text, position in cursor.fetchall():
+        for item_id, text, position, expanded in cursor.fetchall():
             tree_data.append({
                 'text': text,
                 'position': position,
+                'expanded': bool(expanded),  # Convert to boolean
                 'children': fetch_children(cursor, item_id)
             })
         return tree_data
