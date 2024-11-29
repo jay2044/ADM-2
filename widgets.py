@@ -793,16 +793,19 @@ class TaskListDockStacked(QDockWidget):
         self.layout.addWidget(self.toolbar)
 
     def update_toolbar(self):
-        current_task_list_widget = self.stack_widget.currentWidget()
-        current_task_list = current_task_list_widget.task_list
-        self.toolbar.actions()[1].setCheckable(True)
-        self.toolbar.actions()[1].setChecked(current_task_list.queue)
+        try:
+            current_task_list_widget = self.stack_widget.currentWidget()
+            current_task_list = current_task_list_widget.task_list
+            self.toolbar.actions()[1].setCheckable(True)
+            self.toolbar.actions()[1].setChecked(current_task_list.queue)
 
-        self.toolbar.actions()[2].setCheckable(True)
-        self.toolbar.actions()[2].setChecked(current_task_list.stack)
+            self.toolbar.actions()[2].setCheckable(True)
+            self.toolbar.actions()[2].setChecked(current_task_list.stack)
 
-        self.toolbar.actions()[3].setCheckable(True)
-        self.toolbar.actions()[3].setChecked(current_task_list.priority)
+            self.toolbar.actions()[3].setCheckable(True)
+            self.toolbar.actions()[3].setChecked(current_task_list.priority)
+        except Exception as e:
+            print(e)
 
     def setup_stack_widget(self):
         self.stack_widget = QStackedWidget()

@@ -569,7 +569,7 @@ class TaskListManager:
                 if result:
                     category_id = result["id"]
             cursor.execute(
-                "INSERT INTO task_lists (list_name, category_id, queue, stack, priority) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO task_lists (list_name, category_id, queue, stack, priority) VALUES (?, ?, ?, ?, ?)",
                 (list_name, category_id, int(queue), int(stack), int(priority))
             )
             self.conn.commit()
