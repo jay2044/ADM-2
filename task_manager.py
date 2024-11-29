@@ -400,8 +400,8 @@ class TaskListManager:
                 "task_lists": []
             }
 
-            # Fetch task lists for the current category
-            cursor.execute("SELECT * FROM task_lists WHERE category_id=?", (category_id,))
+            # Fetch and sort task lists for the current category
+            cursor.execute("SELECT * FROM task_lists WHERE category_id=? ORDER BY `order`", (category_id,))
             task_list_rows = cursor.fetchall()
 
             for task_list_row in task_list_rows:
@@ -410,6 +410,7 @@ class TaskListManager:
                     "queue": bool(task_list_row["queue"]),
                     "stack": bool(task_list_row["stack"]),
                     "priority": bool(task_list_row["priority"]),
+                    "order": task_list_row["order"],
                     "category": category_name,
                     "task_categories": task_list_row["task_categories"]
                 })
@@ -419,7 +420,8 @@ class TaskListManager:
             "task_lists": []
         }
 
-        cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL")
+        # Fetch and sort uncategorized task lists by their order
+        cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL ORDER BY `order`")
         uncategorized_task_lists = cursor.fetchall()
 
         for task_list_row in uncategorized_task_lists:
@@ -428,6 +430,7 @@ class TaskListManager:
                 "queue": bool(task_list_row["queue"]),
                 "stack": bool(task_list_row["stack"]),
                 "priority": bool(task_list_row["priority"]),
+                "order": task_list_row["order"],
                 "category": None,
                 "task_categories": task_list_row["task_categories"]
             })
@@ -570,42 +573,14 @@ class TaskListManager:
         if category_name in self.categories:
             self.categories[category_name]["order"] = new_order
 
-    # def update_task_list_category(conn, task_list_name, new_category_name):
-    #     """
-    #     Updates the category of a given task list.
-    #
-    #     :param conn: SQLite connection object
-    #     :param task_list_name: Name of the task list to update
-    #     :param new_category_name: Name of the new category to associate with the task list
-    #     """
-    #     try:
-    #         cursor = conn.cursor()
-    #
-    #         # Ensure the new category exists, or create it
-    #         cursor.execute("SELECT id FROM categories WHERE name = ?", (new_category_name,))
-    #         category = cursor.fetchone()
-    #
-    #         if category is None:
-    #             # Create the new category
-    #             cursor.execute(
-    #                 "INSERT INTO categories (name, `order`) VALUES (?, ?)",
-    #                 (new_category_name, 0)  # Default order can be updated as needed
-    #             )
-    #             conn.commit()
-    #             category_id = cursor.lastrowid
-    #         else:
-    #             category_id = category["id"]
-    #
-    #         # Update the task list to point to the new category
-    #         cursor.execute(
-    #             "UPDATE task_lists SET category_id = ? WHERE list_name = ?",
-    #             (category_id, task_list_name)
-    #         )
-    #         conn.commit()
-    #
-    #         print(f"Task list '{task_list_name}' successfully updated to category '{new_category_name}'.")
-    #     except sqlite3.Error as e:
-    #         print(f"Error updating task list category: {e}")
+    def update_task_list_order(self, task_list_name, new_order):
+        cursor = self.conn.cursor()
+        cursor.execute("UPDATE task_lists SET `order` = ? WHERE list_name = ?", (new_order, task_list_name))
+        self.conn.commit()
+        for category in self.categories.values():
+            for task_list in category["task_lists"]:
+                if task_list["list_name"] == task_list_name:
+                    task_list["order"] = new_order
 
     def update_task_list_category(self, task_list_name, new_category_name):
         cursor = self.conn.cursor()
@@ -674,6 +649,22 @@ class TaskListManager:
                 (list_name, category_id, int(queue), int(stack), int(priority))
             )
             self.conn.commit()
+
+            # Update orders for task lists under the same category
+            if category_id is not None:
+                cursor.execute("SELECT list_name FROM task_lists WHERE category_id = ? ORDER BY `order`, list_name",
+                               (category_id,))
+                task_lists = cursor.fetchall()
+                for idx, task_list in enumerate(task_lists):
+                    cursor.execute("UPDATE task_lists SET `order` = ? WHERE list_name = ?", (idx, task_list[0]))
+            elif category is None:
+                cursor.execute("SELECT list_name FROM task_lists WHERE category_id IS NULL ORDER BY `order`, list_name")
+                task_lists = cursor.fetchall()
+                for idx, task_list in enumerate(task_lists):
+                    cursor.execute("UPDATE task_lists SET `order` = ? WHERE list_name = ?", (idx, task_list[0]))
+
+            self.conn.commit()
+
             # Reload task lists and categories
             self.task_lists = self.load_task_lists()
             self.categories = self.load_categories()

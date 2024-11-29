@@ -295,8 +295,10 @@ class CustomTreeWidget(QTreeWidget):
         # Prevent adding child items as children of another child item
         if dragged_item.parent() is not None:
             if target_item is not None and target_item.parent() is not None:
-                event.ignore()
-                return
+                # Allow reordering within the same parent
+                if dragged_item.parent() != target_item.parent():
+                    event.ignore()
+                    return
 
         # Prevent adding top-level items as children
         if dragged_item in top_level_items:
@@ -339,6 +341,8 @@ class CustomTreeWidget(QTreeWidget):
             category_name = self.topLevelItem(i).text(0)
             new_order = i
             self.task_manager.update_category_order(category_name, new_order)
+            for j in range(self.topLevelItem(i).childCount()):
+                self.task_manager.update_task_list_order(self.topLevelItem(i).child(j).text(0), j)
 
 
 
@@ -392,10 +396,10 @@ class TaskListCollection(QWidget):
                 category_item.setFlags(category_item.flags())
                 category_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'category', 'name': category_name})
 
-                # Sort task lists by their name
+                # Sort task lists by their order
                 sorted_task_lists = sorted(
                     category_info['task_lists'],
-                    key=lambda task_list: task_list['list_name']
+                    key=lambda task_list: task_list['order']
                 )
 
                 for task_list_info in sorted_task_lists:
