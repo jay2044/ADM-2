@@ -141,10 +141,9 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name, manager, pin=False, queue=False, stack=False, priority=False, category=None, task_categories=None):
+    def __init__(self, list_name, manager, queue=False, stack=False, priority=False, category=None, task_categories=None):
         self.list_name = list_name
         self.manager = manager
-        self.pin = pin
         self.queue = queue
         self.stack = stack
         self.priority = priority
@@ -276,8 +275,7 @@ class TaskListManager:
         create_categories_table = """
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                pin BOOLEAN NOT NULL DEFAULT 0
+                name TEXT NOT NULL UNIQUE
             );
             """
 
@@ -287,7 +285,6 @@ class TaskListManager:
             list_name TEXT NOT NULL UNIQUE,
             category_id INTEGER,
             task_categories TEXT,
-            pin BOOLEAN NOT NULL DEFAULT 0,
             queue BOOLEAN NOT NULL DEFAULT 0,
             stack BOOLEAN NOT NULL DEFAULT 0,
             priority BOOLEAN NOT NULL DEFAULT 0,
@@ -383,13 +380,6 @@ class TaskListManager:
         except sqlite3.Error as e:
             print(f"Error creating tables: {e}")
 
-    def pin_category(self, category_name):
-        cursor = self.conn.cursor()
-        cursor.execute("UPDATE categories SET pin = NOT pin WHERE name = ?", (category_name,))
-        self.conn.commit()
-        # Update in-memory data
-        self.categories = self.load_categories()
-
     def load_categories(self):
         categories = {}
         cursor = self.conn.cursor()
@@ -398,9 +388,7 @@ class TaskListManager:
         for category_row in category_rows:
             category_id = category_row["id"]
             category_name = category_row["name"]
-            category_pin = bool(category_row["pin"]) if "pin" in category_row.keys() else False  # Get the 'pin' value
             categories[category_name] = {
-                "pin": category_pin,
                 "task_lists": []
             }
             cursor.execute("SELECT * FROM task_lists WHERE category_id=?", (category_id,))
@@ -408,7 +396,6 @@ class TaskListManager:
             for task_list_row in task_list_rows:
                 categories[category_name]["task_lists"].append({
                     "list_name": task_list_row["list_name"],
-                    "pin": bool(task_list_row["pin"]),
                     "queue": bool(task_list_row["queue"]),
                     "stack": bool(task_list_row["stack"]),
                     "priority": bool(task_list_row["priority"]),
@@ -418,7 +405,6 @@ class TaskListManager:
 
         # Always include "Uncategorized" category
         categories["Uncategorized"] = {
-            "pin": False,
             "task_lists": []
         }
 
@@ -428,7 +414,6 @@ class TaskListManager:
         for task_list_row in uncategorized_task_lists:
             categories["Uncategorized"]["task_lists"].append({
                 "list_name": task_list_row["list_name"],
-                "pin": bool(task_list_row["pin"]),
                 "queue": bool(task_list_row["queue"]),
                 "stack": bool(task_list_row["stack"]),
                 "priority": bool(task_list_row["priority"]),
@@ -450,7 +435,6 @@ class TaskListManager:
         for row in rows:
             task_lists.append({
                 "list_name": row["list_name"],
-                "pin": bool(row["pin"]),
                 "queue": bool(row["queue"]),
                 "stack": bool(row["stack"]),
                 "priority": bool(row["priority"]),
@@ -575,7 +559,7 @@ class TaskListManager:
         self.categories = self.load_categories()
         return self.categories
 
-    def add_task_list(self, list_name, pin=False, queue=False, stack=False, priority=False, category=None):
+    def add_task_list(self, list_name, queue=False, stack=False, priority=False, category=None):
         if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
             category_id = None
@@ -585,8 +569,8 @@ class TaskListManager:
                 if result:
                     category_id = result["id"]
             cursor.execute(
-                "INSERT INTO task_lists (list_name, category_id, pin, queue, stack, priority) VALUES (?, ?, ?, ?, ?, ?)",
-                (list_name, category_id, int(pin), int(queue), int(stack), int(priority))
+                "INSERT INTO task_lists (list_name, category_id, queue, stack, priority) VALUES (?, ?, ?, ?, ?, ?)",
+                (list_name, category_id, int(queue), int(stack), int(priority))
             )
             self.conn.commit()
             # Reload task lists and categories
@@ -756,19 +740,12 @@ class TaskListManager:
             cursor = self.conn.cursor()
             cursor.execute("""
                 UPDATE task_lists
-                SET pin = ?, queue = ?, stack = ?, priority = ?
+                SET queue = ?, stack = ?, priority = ?
                 WHERE list_name = ?
-            """, (int(task_list.pin), int(task_list.queue), int(task_list.stack), int(task_list.priority), task_list.list_name))
+            """, (int(task_list.queue), int(task_list.stack), int(task_list.priority), task_list.list_name))
             self.conn.commit()
         except Exception as e:
             print(f"Error in update_task_list: {e}")
-
-    def pin_task_list(self, list_name):
-        for task_list in self.task_lists:
-            if task_list["list_name"] == list_name:
-                task_list["pin"] = not task_list["pin"]
-                self.update_task_list(task_list)
-                break
 
     def get_task_lists(self):
         # Returns all task lists, you can modify this method if needed

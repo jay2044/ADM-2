@@ -307,10 +307,8 @@ class TaskListCollection(QWidget):
             self.tree_widget.clear()
             self.categories = self.task_manager.get_categories()
 
-            # Sort categories based on 'pin' attribute and alphabetically
             sorted_categories = sorted(
                 self.categories.items(),
-                key=lambda x: (not x[1]['pin'], x[0].lower())
             )
 
             for category_name, category_info in sorted_categories:
@@ -321,10 +319,8 @@ class TaskListCollection(QWidget):
                 category_item.setFlags(category_item.flags())
                 category_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'category', 'name': category_name})
 
-                # Sort task lists based on 'pin' attribute and alphabetically
                 sorted_task_lists = sorted(
-                    category_info['task_lists'],
-                    key=lambda x: (not x['pin'], x['list_name'].lower())
+                    category_info['task_lists']
                 )
 
                 for task_list_info in sorted_task_lists:
@@ -343,7 +339,6 @@ class TaskListCollection(QWidget):
                         task_list = TaskList(
                             task_list_name,
                             self.task_manager,
-                            task_list_info["pin"],
                             task_list_info["queue"],
                             task_list_info["stack"],
                             task_list_info["priority"]
@@ -420,7 +415,7 @@ class TaskListCollection(QWidget):
                     if not ok:
                         category_name = None  # User canceled category selection
                 # Add the task list
-                self.task_manager.add_task_list(task_list_name, pin=False, queue=False, stack=False,
+                self.task_manager.add_task_list(task_list_name, queue=False, stack=False,
                                                 category=category_name)
                 # Update self.categories
                 self.categories = self.task_manager.get_categories()
@@ -474,19 +469,16 @@ class TaskListCollection(QWidget):
                 task_list_name = task_list_info["list_name"]
 
                 rename_action = QAction('Rename Task List', self)
-                pin_action = QAction('Pin' if not task_list_info["pin"] else 'Unpin', self)
                 duplicate_action = QAction('Duplicate Task List', self)
                 delete_action = QAction('Delete Task List', self)
                 move_action = QAction('Move to Category', self)
 
                 rename_action.triggered.connect(lambda: self.rename_task_list(item))
-                pin_action.triggered.connect(lambda: self.pin_task_list(item))
                 duplicate_action.triggered.connect(lambda: self.duplicate_task_list(item))
                 delete_action.triggered.connect(lambda: self.delete_task_list(item))
                 move_action.triggered.connect(lambda: self.move_task_list(item))
 
                 menu.addAction(rename_action)
-                menu.addAction(pin_action)
                 menu.addAction(duplicate_action)
                 menu.addAction(move_action)
                 menu.addAction(delete_action)
@@ -497,15 +489,12 @@ class TaskListCollection(QWidget):
                 category_info = self.categories[category_name]
 
                 rename_action = QAction('Rename Category', self)
-                pin_action = QAction('Pin' if not category_info["pin"] else 'Unpin', self)
                 delete_action = QAction('Delete Category', self)
 
                 rename_action.triggered.connect(lambda: self.rename_category(item))
-                pin_action.triggered.connect(lambda: self.pin_category(item))
                 delete_action.triggered.connect(lambda: self.delete_category(item))
 
                 menu.addAction(rename_action)
-                menu.addAction(pin_action)
                 menu.addAction(delete_action)
             else:
                 QMessageBox.warning(self, "Error", "Unknown item type.")
@@ -514,17 +503,6 @@ class TaskListCollection(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred in context menu: {e}")
             print(f"Error in task_list_collection_context_menu: {e}")
-
-    def pin_category(self, item):
-        try:
-            category_name = item.text(0)
-            category_info = self.categories[category_name]
-            category_info['pin'] = not category_info['pin']
-            self.task_manager.pin_category(category_name)
-            self.load_task_lists()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"An error occurred while pinning the category: {e}")
-            print(f"Error in pin_category: {e}")
 
     def move_task_list(self, item):
         task_list_name = item.text(0)
@@ -600,16 +578,6 @@ class TaskListCollection(QWidget):
             self.load_task_lists()
             self.select_task_list_in_tree(new_name)
 
-    def pin_task_list(self, item):
-        try:
-            task_list_info = item.data(0, Qt.ItemDataRole.UserRole)['info']
-            task_list_info["pin"] = not task_list_info["pin"]
-            self.task_manager.pin_task_list(task_list_info["list_name"])
-            self.load_task_lists()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"An error occurred while pinning the task list: {e}")
-            print(f"Error in pin_task_list: {e}")
-
     def duplicate_task_list(self, item):
         task_list_name = item.text(0)
         new_name, ok = QInputDialog.getText(self, "Duplicate Task List", "Enter new name:")
@@ -621,7 +589,7 @@ class TaskListCollection(QWidget):
                 return
             # Duplicate the task list
             category_name = item.parent().text(0)
-            self.task_manager.add_task_list(new_name, pin=False, queue=False, stack=False, category=category_name)
+            self.task_manager.add_task_list(new_name, queue=False, stack=False, category=category_name)
             # Copy tasks
             original_task_list = TaskList(task_list_name, self.task_manager)
             for task in original_task_list.tasks:
@@ -640,7 +608,7 @@ class TaskListCollection(QWidget):
                 self.task_manager.add_task(new_task, new_name)
             # Add to categories
             self.categories[category_name]['task_lists'].append(
-                {"list_name": new_name, "pin": False, "queue": False, "stack": False})
+                {"list_name": new_name, "queue": False, "stack": False})
             self.load_task_lists()
             # Add to the stack widget
             task_list_widget = TaskListWidget(self.parent.task_lists[task_list_name], self.parent)
@@ -1167,7 +1135,7 @@ class HistoryDock(QDockWidget):
 
         for task_list_info in self.parent.task_manager.get_task_lists():
             # Refresh the task list
-            task_list = TaskList(task_list_info["list_name"], self.parent.task_manager, task_list_info["pin"],
+            task_list = TaskList(task_list_info["list_name"], self.parent.task_manager,
                                  task_list_info["queue"], task_list_info["stack"])
             task_list.refresh_tasks()  # Ensure tasks are up-to-date
             completed_tasks = task_list.get_completed_tasks()
@@ -1385,7 +1353,7 @@ class CalendarDock(QDockWidget):
         """Retrieve all unique categories from tasks."""
         categories = set()
         for task_list_info in self.task_manager.get_task_lists():
-            task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
+            task_list = TaskList(task_list_info["list_name"], self.task_manager,
                                  task_list_info["queue"], task_list_info["stack"])
             for task in task_list.tasks:
                 categories.update(task.categories)
@@ -1419,7 +1387,7 @@ class CalendarDock(QDockWidget):
         """
         tasks_by_date = {}
         for task_list_info in self.task_manager.get_task_lists():
-            task_list = TaskList(task_list_info["list_name"], self.task_manager, task_list_info["pin"],
+            task_list = TaskList(task_list_info["list_name"], self.task_manager,
                                  task_list_info["queue"], task_list_info["stack"])
             for task in task_list.tasks:
                 if task.due_date and task.due_date != "2000-01-01":
