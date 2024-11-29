@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def save_settings(self):
-        settings = QSettings("YourApp", "ADM")
+        settings = QSettings("YourAppz", "ADM")
         settings.setValue("mainWindowState", self.saveState())
 
         open_dock_widgets = []
@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
         settings.setValue("openDockWidgets", json.dumps(open_dock_widgets))
 
     def load_settings(self):
-        settings = QSettings("YourApp", "ADM")
+        settings = QSettings("YourAppz", "ADM")
 
         open_dock_widgets = json.loads(settings.value("openDockWidgets", "[]"))
         for dock_info in open_dock_widgets:
@@ -180,37 +180,37 @@ class MainWindow(QMainWindow):
     def dragMoveEvent(self, event):
         event.acceptProposedAction()
 
-    def dropEvent(self, event):
-        try:
-            if event.source() == self.task_list_collection.tree_widget:
-                task_list_item = self.task_list_collection.tree_widget.currentItem()
-                if task_list_item and task_list_item.parent():
-                    task_list_name = task_list_item.text(0)
-
-                    unique_id = random.randint(1000, 9999)
-                    dock = TaskListDock(task_list_name, self)
-                    dock.setObjectName(f"TaskListDock_{task_list_name}_{unique_id}")
-
-                    drop_pos = event.position().toPoint()
-
-                    if drop_pos.x() < self.width() // 3:
-                        area = Qt.DockWidgetArea.LeftDockWidgetArea
-                    elif drop_pos.x() > (2 * self.width()) // 3:
-                        area = Qt.DockWidgetArea.RightDockWidgetArea
-                    elif drop_pos.y() < self.height() // 3:
-                        area = Qt.DockWidgetArea.TopDockWidgetArea
-                    else:
-                        area = Qt.DockWidgetArea.BottomDockWidgetArea
-
-                    self.addDockWidget(area, dock)
-                    dock.show()
-                    event.accept()
-                else:
-                    event.ignore()
-            else:
-                event.ignore()
-        except Exception as e:
-            print(f"Error in dropEvent: {e}")
+    # def dropEvent(self, event):
+    #     try:
+    #         if event.source() == self.task_list_collection.tree_widget:
+    #             task_list_item = self.task_list_collection.tree_widget.currentItem()
+    #             if task_list_item and task_list_item.parent():
+    #                 task_list_name = task_list_item.text(0)
+    #
+    #                 unique_id = random.randint(1000, 9999)
+    #                 dock = TaskListDock(task_list_name, self)
+    #                 dock.setObjectName(f"TaskListDock_{task_list_name}_{unique_id}")
+    #
+    #                 drop_pos = event.position().toPoint()
+    #
+    #                 if drop_pos.x() < self.width() // 3:
+    #                     area = Qt.DockWidgetArea.LeftDockWidgetArea
+    #                 elif drop_pos.x() > (2 * self.width()) // 3:
+    #                     area = Qt.DockWidgetArea.RightDockWidgetArea
+    #                 elif drop_pos.y() < self.height() // 3:
+    #                     area = Qt.DockWidgetArea.TopDockWidgetArea
+    #                 else:
+    #                     area = Qt.DockWidgetArea.BottomDockWidgetArea
+    #
+    #                 self.addDockWidget(area, dock)
+    #                 dock.show()
+    #                 event.accept()
+    #             else:
+    #                 event.ignore()
+    #         else:
+    #             event.ignore()
+    #     except Exception as e:
+    #         print(f"Error in dropEvent: {e}")
 
     def handle_task_list_update(self):
         for task_list in self.task_lists.values():

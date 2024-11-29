@@ -259,7 +259,6 @@ class TaskListManagerToolbar(QToolBar):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add_action("+", parent, parent.task_list_collection.add_task_list)
-        self.add_action("+C", parent, parent.task_list_collection.add_category)
         self.add_action("T", parent, parent.toggle_stacked_task_list)
         self.add_action("H", parent, parent.toggle_history)
         self.add_action("C", parent, parent.toggle_calendar)
@@ -271,15 +270,45 @@ class TaskListManagerToolbar(QToolBar):
         action.triggered.connect(function)
         self.addAction(action)
 
+class FloatingDockWidget(QDockWidget):
+    def __init__(self, title, parent=None):
+        super().__init__(title, parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFloating(True)
+        self.setMouseTracking(True)
+        self.dragging = False
+
+    def start_drag(self):
+        self.dragging = True
+        self.grabMouse()
+
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            self.move(event.globalPosition().toPoint() - QPoint(self.width() // 2, self.height() // 2))
+
+    def mouseReleaseEvent(self, event):
+        if self.dragging:
+            self.dragging = False
+            self.releaseMouse()
+
+
 
 class CustomTreeWidget(QTreeWidget):
-    def __init__(self, task_manager, *args, **kwargs):
+    def __init__(self, parent, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.loaded = False
-        self.task_manager = task_manager
+        self.parent = parent
+        self.task_manager = self.parent.task_manager
         self.itemExpanded.connect(self.save_tree_data)
         self.itemCollapsed.connect(self.save_tree_data)
         self.itemChanged.connect(self.save_tree_data)
+
+    def startDrag(self, supportedActions):
+        item = self.currentItem()
+        if item:
+            self.dock_widget = TaskListDock(item.text(0), self.parent)
+            self.dock_widget.show()
+            self.dock_widget.start_drag()
 
     def save_tree_data(self):
         if self.loaded:
@@ -362,7 +391,7 @@ class TaskListCollection(QWidget):
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
 
-        self.tree_widget = CustomTreeWidget(self.task_manager)
+        self.tree_widget = CustomTreeWidget(self.parent)
         self.tree_widget.setHeaderHidden(True)
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self.task_list_collection_context_menu)
@@ -426,7 +455,6 @@ class TaskListCollection(QWidget):
                             task_list_widget = TaskListWidget(task_list, self.parent)
                             self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
                             self.parent.hash_to_widget[hash_key] = task_list_widget
-            self.tree_widget.expandAll()
         except Exception as e:
             QMessageBox.critical(self, "Error Loading Task Lists", f"An error occurred: {e}")
             print(f"Error loading task lists: {e}")
@@ -952,6 +980,11 @@ class TaskListDock(QDockWidget):
         self.task_list_name = task_list_name
         self.setWindowTitle(task_list_name)
 
+        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFloating(True)
+        self.setMouseTracking(True)
+        self.dragging = False
+
         # Retrieve the shared TaskList instance
         if task_list_name in self.parent.task_lists:
             task_list = self.parent.task_lists[task_list_name]
@@ -1085,6 +1118,19 @@ class TaskListDock(QDockWidget):
             self.task_manager.update_task_list(task_list)
         except Exception as e:
             print(f"Error in priority_sort: {e}")
+
+    def start_drag(self):
+        self.dragging = True
+        self.grabMouse()
+
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            self.move(event.globalPosition().toPoint() - QPoint(self.width() // 2, self.height() // 2))
+
+    def mouseReleaseEvent(self, event):
+        if self.dragging:
+            self.dragging = False
+            self.releaseMouse()
 
 
 class HistoryDock(QDockWidget):
