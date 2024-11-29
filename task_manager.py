@@ -9,10 +9,25 @@ def sanitize_name(name):
     return re.sub(r'\W+', '_', name)
 
 
+class Subtask:
+    def __init__(self, title, description='', due_date=None, due_time=None,
+                 completed=False, subtask_id=None, task_id=None, order=0):
+        self.id = subtask_id
+        self.task_id = task_id
+        self.title = title
+        self.completed = completed
+        self.order = order
+
+    def __str__(self):
+        return f"Subtask: {self.title}, Completed: {self.completed}"
+
+
 class Task:
     def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
                  completed=False, categories=None, recurring=False, recur_every=None, last_completed_date=None,
-                 list_name=None):
+                 list_name=None, status=None, estimate=0.0, count_required=0, count_completed=0,
+                 subtasks=None, dependencies=None, deadline_flexibility=None, effort_level=None,
+                 resources=None, notes=None, time_logged=0.0, recurring_subtasks=None, order=0):
         self.id = task_id
         self.title = title
         self.description = description
@@ -24,9 +39,42 @@ class Task:
         self.added_date_time = datetime.now()
         self.categories = categories if categories else []
         self.recurring = recurring
-        self.recur_every = recur_every if isinstance(recur_every, list) else []
+        self.order = order
+        # Allow recur_every to be either an int or a list
+        if isinstance(recur_every, int):
+            self.recur_every = [recur_every]
+        elif isinstance(recur_every, list):
+            self.recur_every = recur_every
+        else:
+            self.recur_every = []
         self.last_completed_date = last_completed_date  # Datetime object
         self.list_name = list_name  # Added to keep track of the task's list name
+
+        # Advanced attributes
+        self.status = status  # e.g., 'Not Started', 'In Progress', etc.
+        self.estimate = estimate  # float, in hours or days
+        self.count_required = count_required  # int
+        self.count_completed = count_completed  # int
+        self.subtasks = subtasks if subtasks else []  # List of Subtask objects
+        self.dependencies = dependencies if dependencies else []
+        self.deadline_flexibility = deadline_flexibility  # 'Strict' or 'Flexible'
+        self.effort_level = effort_level  # 'Easy', 'Medium', 'Hard'
+        self.resources = resources if resources else []
+        self.notes = notes
+        self.time_logged = time_logged  # float, in hours
+        self.recurring_subtasks = recurring_subtasks if recurring_subtasks else []
+
+    def set_attribute(self, attribute_name, value):
+        if hasattr(self, attribute_name):
+            setattr(self, attribute_name, value)
+        else:
+            raise AttributeError(f"{attribute_name} is not a valid attribute of Task")
+
+    def get_attribute(self, attribute_name):
+        if hasattr(self, attribute_name):
+            return getattr(self, attribute_name)
+        else:
+            raise AttributeError(f"{attribute_name} is not a valid attribute of Task")
 
     def mark_as_important(self):
         self.is_important = True
@@ -40,6 +88,8 @@ class Task:
     def set_completed(self):
         self.completed = True
         self.last_completed_date = datetime.now()
+        print(f"set completed on {self.last_completed_date}")
+        self.status = "Completed"
 
     def add_category(self, category):
         if category not in self.categories:
@@ -55,26 +105,84 @@ class Task:
     def get_unique_identifier(self):
         return f"{self.title}_{self.due_date}_{self.due_time}"
 
+    @property
+    def progress(self):
+        if self.count_required > 0:
+            return (self.count_completed / self.count_required) * 100
+        elif self.subtasks:
+            if len(self.subtasks) == 0:
+                return 0.0
+            completed_subtasks = sum(1 for subtask in self.subtasks if subtask.completed)
+            return (completed_subtasks / len(self.subtasks)) * 100
+        else:
+            return 0.0
+
+    def calculate_priority_weighting(self):
+        # Example implementation; you can adjust the weighting factors
+        priority_score = self.priority
+        if self.is_important:
+            priority_score += 2
+        if self.due_date:
+            days_until_due = (datetime.strptime(self.due_date, '%Y-%m-%d') - datetime.now()).days
+            if days_until_due <= 0:
+                priority_score += 5  # Overdue tasks get higher priority
+            elif days_until_due <= 3:
+                priority_score += 3
+            elif days_until_due <= 7:
+                priority_score += 1
+        if self.dependencies:
+            priority_score -= len(self.dependencies)  # Tasks with dependencies might have lower priority
+        if self.estimate:
+            priority_score += self.estimate / 10  # Longer tasks might be given slightly higher priority
+        return priority_score
+
     def __str__(self):
         return f"Task: {self.title}\nDue: {self.due_date} at {self.due_time}\nAdded on: {self.added_date_time}\nPriority: {self.priority}\nImportant: {self.is_important}\nCompleted: {self.completed}"
 
 
 class TaskList:
-    def __init__(self, list_name, manager, pin=False, queue=False, stack=False, category=None):
+    def __init__(self, list_name, manager, queue=False, stack=False, priority=False, category=None, task_categories=None):
         self.list_name = list_name
         self.manager = manager
-        self.tasks = self.load_tasks()
-        self.pin = pin
         self.queue = queue
         self.stack = stack
+        self.priority = priority
+        self.category = category
+        self.task_categories = task_categories or []
+        self.tasks = self.load_tasks()
+
+    def set_category(self, category):
         self.category = category
 
+    def add_task_category(self, task_categories):
+        self.task_categories.append(task_categories)
+
+    def remove_task_category(self, task_categories):
+        self.task_categories.remove(task_categories)
+
+    def get_task_categories(self):
+        return self.task_categories
+
     def load_tasks(self):
-        return self.manager.load_tasks(self.list_name)
+        tasks = self.manager.load_tasks(self.list_name)
+        for task in tasks:
+            if isinstance(task.categories, list):
+                for category in task.categories:
+                    if category not in self.task_categories:
+                        self.task_categories.append(category)
+        return tasks
+
+    def refresh_tasks(self):
+        self.tasks = self.load_tasks()
 
     def add_task(self, task):
         self.manager.add_task(task, self.list_name)
         self.tasks.append(task)
+        # Check if task has categories and update task_categories if new ones are found
+        if hasattr(task, 'categories') and isinstance(task.categories, list):
+            for category in task.categories:
+                if category not in self.task_categories:
+                    self.task_categories.append(category)
 
     def remove_task(self, task):
         self.manager.remove_task(task)
@@ -82,6 +190,19 @@ class TaskList:
 
     def update_task(self, task):
         self.manager.update_task(task)
+
+    # Subtask management methods
+    def add_subtask(self, task, subtask):
+        subtask.task_id = task.id
+        self.manager.add_subtask(subtask)
+        task.subtasks.append(subtask)
+
+    def remove_subtask(self, task, subtask):
+        self.manager.remove_subtask(subtask)
+        task.subtasks = [st for st in task.subtasks if st.id != subtask.id]
+
+    def update_subtask(self, subtask):
+        self.manager.update_subtask(subtask)
 
     def get_tasks(self):
         important_tasks = [task for task in self.tasks if task.is_important and not task.completed]
@@ -125,13 +246,20 @@ class TaskList:
 
     def get_tasks_filter_priority(self):
         filtered_tasks = [task for task in self.tasks if not task.completed]
-        return sorted(filtered_tasks, key=lambda task: task.priority, reverse=True)
+        return sorted(filtered_tasks, key=lambda task: task.calculate_priority_weighting(), reverse=True)
 
     def __str__(self):
         return '\n'.join(str(task) for task in self.tasks if not task.completed)
 
 
 class TaskListManager:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(TaskListManager, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
@@ -148,7 +276,7 @@ class TaskListManager:
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
-                pin BOOLEAN NOT NULL DEFAULT 0
+                "order" INTEGER
             );
             """
 
@@ -157,12 +285,15 @@ class TaskListManager:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             list_name TEXT NOT NULL UNIQUE,
             category_id INTEGER,
-            pin BOOLEAN NOT NULL DEFAULT 0,
+            task_categories TEXT,
             queue BOOLEAN NOT NULL DEFAULT 0,
             stack BOOLEAN NOT NULL DEFAULT 0,
+            priority BOOLEAN NOT NULL DEFAULT 0,
+            "order" INTEGER,
             FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
         );
         """
+
         create_tasks_table = """
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,72 +310,129 @@ class TaskListManager:
             recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)),
             recur_every TEXT,
             last_completed_date TEXT,
+            status TEXT,
+            estimate REAL,
+            count_required INTEGER,
+            count_completed INTEGER,
+            dependencies TEXT,
+            deadline_flexibility TEXT,
+            effort_level TEXT,
+            resources TEXT,
+            notes TEXT,
+            time_logged REAL,
+            recurring_subtasks TEXT,
             FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
         );
         """
+
+        create_subtasks_table = """
+            CREATE TABLE IF NOT EXISTS subtasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                completed BOOLEAN NOT NULL CHECK (completed IN (0,1)),
+                "order" INTEGER,
+                FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            );
+            """
+
         try:
             cursor = self.conn.cursor()
             cursor.execute(create_categories_table)
             cursor.execute(create_task_lists_table)
             cursor.execute(create_tasks_table)
+            cursor.execute(create_subtasks_table)
+
+            cursor.execute("PRAGMA table_info(tasks)")
+            existing_columns = [column[1] for column in cursor.fetchall()]
+
+            if "order" not in existing_columns:
+                cursor.execute("ALTER TABLE tasks ADD COLUMN \"order\" INTEGER")
             self.conn.commit()
 
-            # Check if 'pin' column exists and add if necessary
-            cursor.execute("PRAGMA table_info(categories)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'pin' not in columns:
-                cursor.execute("ALTER TABLE categories ADD COLUMN pin BOOLEAN NOT NULL DEFAULT 0")
-                self.conn.commit()
+            cursor.execute("PRAGMA table_info(subtasks)")
+            existing_columns = [column[1] for column in cursor.fetchall()]
+            if "order" not in existing_columns:
+                cursor.execute("ALTER TABLE subtasks ADD COLUMN \"order\" INTEGER")
+            self.conn.commit()
+
+            # Check and add missing columns
+            cursor.execute("PRAGMA table_info(tasks)")
+            existing_columns = [column[1] for column in cursor.fetchall()]
+
+            required_columns = [
+                ('status', 'TEXT'),
+                ('estimate', 'REAL'),
+                ('count_required', 'INTEGER'),
+                ('count_completed', 'INTEGER'),
+                ('dependencies', 'TEXT'),
+                ('deadline_flexibility', 'TEXT'),
+                ('effort_level', 'TEXT'),
+                ('resources', 'TEXT'),
+                ('notes', 'TEXT'),
+                ('time_logged', 'REAL'),
+                ('recurring_subtasks', 'TEXT'),
+                ('order', 'INTEGER')
+            ]
+
+            for column_name, column_def in required_columns:
+                if column_name not in existing_columns:
+                    cursor.execute(f"ALTER TABLE tasks ADD COLUMN {column_name} {column_def}")
+            self.conn.commit()
         except sqlite3.Error as e:
             print(f"Error creating tables: {e}")
-
-    def pin_category(self, category_name):
-        cursor = self.conn.cursor()
-        cursor.execute("UPDATE categories SET pin = NOT pin WHERE name = ?", (category_name,))
-        self.conn.commit()
-        # Update in-memory data
-        self.categories = self.load_categories()
 
     def load_categories(self):
         categories = {}
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM categories")
+
+        cursor.execute("SELECT * FROM categories ORDER BY `order`")
         category_rows = cursor.fetchall()
+
         for category_row in category_rows:
             category_id = category_row["id"]
             category_name = category_row["name"]
-            category_pin = bool(category_row["pin"]) if "pin" in category_row.keys() else False  # Get the 'pin' value
+            category_order = category_row["order"]
+
+            # Add the category with its details, including order
             categories[category_name] = {
-                "pin": category_pin,
+                "order": category_order,
                 "task_lists": []
             }
-            cursor.execute("SELECT * FROM task_lists WHERE category_id=?", (category_id,))
+
+            # Fetch and sort task lists for the current category
+            cursor.execute("SELECT * FROM task_lists WHERE category_id=? ORDER BY `order`", (category_id,))
             task_list_rows = cursor.fetchall()
+
             for task_list_row in task_list_rows:
                 categories[category_name]["task_lists"].append({
                     "list_name": task_list_row["list_name"],
-                    "pin": bool(task_list_row["pin"]),
                     "queue": bool(task_list_row["queue"]),
                     "stack": bool(task_list_row["stack"]),
-                    "category": category_name
+                    "priority": bool(task_list_row["priority"]),
+                    "order": task_list_row["order"],
+                    "category": category_name,
+                    "task_categories": task_list_row["task_categories"]
                 })
 
-        # Always include "Uncategorized" category
         categories["Uncategorized"] = {
-            "pin": False,
+            "order": 0,
             "task_lists": []
         }
 
-        # Handle uncategorized task lists
-        cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL")
+        # Fetch and sort uncategorized task lists by their order
+        cursor.execute("SELECT * FROM task_lists WHERE category_id IS NULL ORDER BY `order`")
         uncategorized_task_lists = cursor.fetchall()
+
         for task_list_row in uncategorized_task_lists:
             categories["Uncategorized"]["task_lists"].append({
                 "list_name": task_list_row["list_name"],
-                "pin": bool(task_list_row["pin"]),
                 "queue": bool(task_list_row["queue"]),
                 "stack": bool(task_list_row["stack"]),
-                "category": None
+                "priority": bool(task_list_row["priority"]),
+                "order": task_list_row["order"],
+                "category": None,
+                "task_categories": task_list_row["task_categories"]
             })
 
         return categories
@@ -261,10 +449,11 @@ class TaskListManager:
         for row in rows:
             task_lists.append({
                 "list_name": row["list_name"],
-                "pin": bool(row["pin"]),
                 "queue": bool(row["queue"]),
                 "stack": bool(row["stack"]),
-                "category": row["category_name"]
+                "priority": bool(row["priority"]),
+                "category": row["category_name"],
+                "task_categories": row["task_categories"]
             })
         return task_lists
 
@@ -288,17 +477,146 @@ class TaskListManager:
                 recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
                 last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
                     'last_completed_date'] else None,
-                list_name=row['list_name']
+                list_name=row['list_name'],
+                status=row['status'] if 'status' in row.keys() else "Not Started",
+                estimate=row['estimate'] if 'estimate' in row.keys() else 0.0,
+                count_required=row['count_required'] if 'count_required' in row.keys() else 0,
+                count_completed=row['count_completed'] if 'count_completed' in row.keys() else 0,
+                dependencies=json.loads(row['dependencies']) if row['dependencies'] else [],
+                deadline_flexibility=row['deadline_flexibility'] if 'deadline_flexibility' in row.keys() else "Strict",
+                effort_level=row['effort_level'] if 'effort_level' in row.keys() else "Medium",
+                resources=json.loads(row['resources']) if row['resources'] else [],
+                notes=row['notes'] if 'notes' in row.keys() else "",
+                time_logged=row['time_logged'] if 'time_logged' in row.keys() else 0.0,
+                recurring_subtasks=json.loads(row['recurring_subtasks']) if row['recurring_subtasks'] else [],
+                order=row['order'] if 'order' in row.keys() else 0
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
+            # Load subtasks for this task
+            task.subtasks = self.load_subtasks(task.id)
             tasks.append(task)
         return tasks
 
+    def load_subtasks(self, task_id):
+        subtasks = []
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM subtasks WHERE task_id=? ORDER BY \"order\"", (task_id,))
+        rows = cursor.fetchall()
+        for row in rows:
+            subtask = Subtask(
+                title=row['title'],
+                completed=bool(row['completed']),
+                subtask_id=row['id'],
+                task_id=row['task_id'],
+                order=row['order'] if 'order' in row.keys() else 0
+            )
+            subtasks.append(subtask)
+        return subtasks
+
+    def add_subtask(self, subtask):
+        cursor = self.conn.cursor()
+        # Get the maximum order value
+        cursor.execute("SELECT MAX(\"order\") FROM subtasks WHERE task_id=?", (subtask.task_id,))
+        max_order = cursor.fetchone()[0]
+        if max_order is None:
+            max_order = 0
+        else:
+            max_order += 1
+        cursor.execute("""
+            INSERT INTO subtasks (task_id, title, completed, "order")
+            VALUES (?, ?, ?, ?)
+        """, (
+            subtask.task_id, subtask.title, int(subtask.completed), max_order
+        ))
+        self.conn.commit()
+        subtask.id = cursor.lastrowid
+        subtask.order = max_order
+
+    def update_subtask(self, subtask):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE subtasks
+            SET title=?, completed=?, "order"=?
+            WHERE id=?
+        """, (
+            subtask.title, int(subtask.completed), subtask.order,
+            subtask.id
+        ))
+        self.conn.commit()
+        print(f"subtask updated {subtask.completed}")
+
+    def remove_subtask(self, subtask):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM subtasks WHERE id=?", (subtask.id,))
+        self.conn.commit()
+
     def add_category(self, category_name):
         cursor = self.conn.cursor()
-        cursor.execute("INSERT INTO categories (name) VALUES (?)", (category_name,))
+        cursor.execute("SELECT MAX(`order`) FROM categories")
+        max_order = cursor.fetchone()[0]
+        new_order = max_order + 1 if max_order is not None else 1
+        cursor.execute("INSERT INTO categories (name, `order`) VALUES (?, ?)", (category_name, new_order))
         self.conn.commit()
-        self.categories[category_name] = []
+        self.categories[category_name] = {
+            "order": new_order,
+            "task_lists": []
+        }
+
+    def update_category_order(self, category_name, new_order):
+        cursor = self.conn.cursor()
+
+        # Update the order in the database
+        cursor.execute("UPDATE categories SET `order` = ? WHERE name = ?", (new_order, category_name))
+        self.conn.commit()
+
+        # Update the order in the in-memory representation
+        if category_name in self.categories:
+            self.categories[category_name]["order"] = new_order
+
+    def update_task_list_order(self, task_list_name, new_order):
+        cursor = self.conn.cursor()
+        cursor.execute("UPDATE task_lists SET `order` = ? WHERE list_name = ?", (new_order, task_list_name))
+        self.conn.commit()
+        for category in self.categories.values():
+            for task_list in category["task_lists"]:
+                if task_list["list_name"] == task_list_name:
+                    task_list["order"] = new_order
+
+    def update_task_list_category(self, task_list_name, new_category_name):
+        cursor = self.conn.cursor()
+
+        if new_category_name is None:
+            # Set category_id to NULL for uncategorized task lists
+            cursor.execute("UPDATE task_lists SET category_id = NULL WHERE list_name = ?", (task_list_name,))
+            self.conn.commit()
+
+            # Update the in-memory representation
+            for category in self.categories.values():
+                for task_list in category["task_lists"]:
+                    if task_list["list_name"] == task_list_name:
+                        task_list["category"] = None
+                        break
+            return
+
+        # Get the category ID for the new category
+        cursor.execute("SELECT id FROM categories WHERE name = ?", (new_category_name,))
+        category_row = cursor.fetchone()
+
+        if category_row is None:
+            raise ValueError(f"Category '{new_category_name}' does not exist.")
+
+        new_category_id = category_row[0]
+
+        # Update the category_id in the database
+        cursor.execute("UPDATE task_lists SET category_id = ? WHERE list_name = ?", (new_category_id, task_list_name))
+        self.conn.commit()
+
+        # Update the in-memory representation
+        for category in self.categories.values():
+            for task_list in category["task_lists"]:
+                if task_list["list_name"] == task_list_name:
+                    task_list["category"] = new_category_name
+                    break
 
     def rename_category(self, old_name, new_name):
         cursor = self.conn.cursor()
@@ -317,7 +635,7 @@ class TaskListManager:
         self.categories = self.load_categories()
         return self.categories
 
-    def add_task_list(self, list_name, pin=False, queue=False, stack=False, category=None):
+    def add_task_list(self, list_name, queue=False, stack=False, priority=False, category=None):
         if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
             category_id = None
@@ -327,10 +645,26 @@ class TaskListManager:
                 if result:
                     category_id = result["id"]
             cursor.execute(
-                "INSERT INTO task_lists (list_name, category_id, pin, queue, stack) VALUES (?, ?, ?, ?, ?)",
-                (list_name, category_id, int(pin), int(queue), int(stack))
+                "INSERT INTO task_lists (list_name, category_id, queue, stack, priority) VALUES (?, ?, ?, ?, ?)",
+                (list_name, category_id, int(queue), int(stack), int(priority))
             )
             self.conn.commit()
+
+            # Update orders for task lists under the same category
+            if category_id is not None:
+                cursor.execute("SELECT list_name FROM task_lists WHERE category_id = ? ORDER BY `order`, list_name",
+                               (category_id,))
+                task_lists = cursor.fetchall()
+                for idx, task_list in enumerate(task_lists):
+                    cursor.execute("UPDATE task_lists SET `order` = ? WHERE list_name = ?", (idx, task_list[0]))
+            elif category is None:
+                cursor.execute("SELECT list_name FROM task_lists WHERE category_id IS NULL ORDER BY `order`, list_name")
+                task_lists = cursor.fetchall()
+                for idx, task_list in enumerate(task_lists):
+                    cursor.execute("UPDATE task_lists SET `order` = ? WHERE list_name = ?", (idx, task_list[0]))
+
+            self.conn.commit()
+
             # Reload task lists and categories
             self.task_lists = self.load_task_lists()
             self.categories = self.load_categories()
@@ -402,29 +736,91 @@ class TaskListManager:
 
     def add_task(self, task, list_name):
         cursor = self.conn.cursor()
+        cursor.execute("SELECT MAX(\"order\") FROM tasks WHERE list_name=?", (list_name,))
+        max_order = cursor.fetchone()[0]
+        if max_order is None:
+            max_order = 0
+        else:
+            max_order += 1
+        task.order = max_order
         cursor.execute(
-            "INSERT INTO tasks (list_name, title, description, due_date, due_time, completed, priority, is_important, added_date_time, categories, recurring, recur_every, last_completed_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
-             int(task.is_important), task.added_date_time.isoformat(), ','.join(task.categories), int(task.recurring),
-             json.dumps(task.recur_every),
-             task.last_completed_date.isoformat() if task.last_completed_date else None)
+            """
+            INSERT INTO tasks (
+                list_name, title, description, due_date, due_time, completed, priority, is_important,
+                added_date_time, categories, recurring, recur_every, last_completed_date,
+                status, estimate, count_required, count_completed, dependencies,
+                deadline_flexibility, effort_level, resources, notes, time_logged, recurring_subtasks,
+                "order"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                list_name, task.title, task.description, task.due_date, task.due_time, int(task.completed),
+                task.priority, int(task.is_important), task.added_date_time.isoformat(),
+                ','.join(task.categories), int(task.recurring), json.dumps(task.recur_every),
+                task.last_completed_date.isoformat() if task.last_completed_date else None,
+                task.status, task.estimate, task.count_required, task.count_completed,
+                json.dumps(task.dependencies) if task.dependencies else None,
+                task.deadline_flexibility, task.effort_level,
+                json.dumps(task.resources) if task.resources else None,
+                task.notes, task.time_logged,
+                json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
+                task.order  # Include the 'order' value
+            )
         )
         self.conn.commit()
         task.id = cursor.lastrowid
 
+        # Add subtasks if any
+        for subtask in task.subtasks:
+            subtask.task_id = task.id
+            self.add_subtask(subtask)
+
     def update_task(self, task):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            UPDATE tasks
-            SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?
-            WHERE id=?
-        """, (
-            task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
-            int(task.is_important), ','.join(task.categories), int(task.recurring),
-            json.dumps(task.recur_every),
-            task.last_completed_date.isoformat() if task.last_completed_date else None, task.id)
-                       )
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                UPDATE tasks
+                SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
+                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?, "order"=?
+                WHERE id=?
+            """, (
+                task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
+                int(task.is_important), ','.join(task.categories), int(task.recurring),
+                json.dumps(task.recur_every),
+                task.last_completed_date.isoformat() if task.last_completed_date else None,
+                task.status, task.estimate, task.count_required, task.count_completed,
+                json.dumps(task.dependencies) if task.dependencies else None,
+                task.deadline_flexibility, task.effort_level,
+                json.dumps(task.resources) if task.resources else None,
+                task.notes, task.time_logged,
+                json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
+                task.order,
+                task.id)
+                           )
+            self.conn.commit()
+
+            # Update subtasks
+            existing_subtask_ids = [subtask.id for subtask in task.subtasks if subtask.id]
+            cursor.execute("SELECT id FROM subtasks WHERE task_id=?", (task.id,))
+            db_subtask_ids = [row['id'] for row in cursor.fetchall()]
+
+            # Remove subtasks that are no longer in the task's subtasks list
+            for db_subtask_id in db_subtask_ids:
+                if db_subtask_id not in existing_subtask_ids:
+                    self.remove_subtask(Subtask(subtask_id=db_subtask_id))
+
+            # Add or update subtasks
+            for subtask in task.subtasks:
+                if subtask.id:
+                    self.update_subtask(subtask)
+                else:
+                    subtask.task_id = task.id
+                    self.add_subtask(subtask)
+
+            print(f"Task (id:{task.id}) updated successfully in the database.")
+
+        except Exception as e:
+            print(f"Failed to update task: {e}")
 
     def remove_task(self, task):
         cursor = self.conn.cursor()
@@ -436,19 +832,12 @@ class TaskListManager:
             cursor = self.conn.cursor()
             cursor.execute("""
                 UPDATE task_lists
-                SET pin = ?, queue = ?, stack = ?
+                SET queue = ?, stack = ?, priority = ?
                 WHERE list_name = ?
-            """, (int(task_list.pin), int(task_list.queue), int(task_list.stack), task_list.list_name))
+            """, (int(task_list.queue), int(task_list.stack), int(task_list.priority), task_list.list_name))
             self.conn.commit()
         except Exception as e:
             print(f"Error in update_task_list: {e}")
-
-    def pin_task_list(self, list_name):
-        for task_list in self.task_lists:
-            if task_list["list_name"] == list_name:
-                task_list["pin"] = not task_list["pin"]
-                self.update_task_list(task_list)
-                break
 
     def get_task_lists(self):
         # Returns all task lists, you can modify this method if needed
@@ -464,10 +853,28 @@ class TaskListManager:
 
     def manage_recurring_tasks(self):
         cursor = self.conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE recurring=1")
         rows = cursor.fetchall()
 
+        # Define weekday mapping for reference
+        weekday_mapping = {
+            "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4,
+            "Fri": 5, "Sat": 6, "Sun": 7
+        }
+
         for row in rows:
+            # Interpret recur_every as weekday names or integer days
+            recur_every_raw = json.loads(row['recur_every']) if row['recur_every'] else []
+            print(f"Processing task '{row['title']}' with recur_every: {recur_every_raw}")
+
+            if isinstance(recur_every_raw, int):
+                recur_every = [recur_every_raw]
+            elif isinstance(recur_every_raw, list):
+                recur_every = [day for day in recur_every_raw if day in weekday_mapping]
+            else:
+                recur_every = []
+
             task = Task(
                 title=row['title'],
                 description=row['description'],
@@ -479,33 +886,52 @@ class TaskListManager:
                 completed=bool(row['completed']),
                 categories=row['categories'].split(',') if row['categories'] else [],
                 recurring=bool(row['recurring']),
-                recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
+                recur_every=recur_every,
                 last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
                     'last_completed_date'] else None,
                 list_name=row['list_name']
             )
             task.added_date_time = datetime.fromisoformat(row['added_date_time'])
 
-            if task.completed:
-                if task.recur_every:
-                    if len(task.recur_every) == 1:
-                        # "Every N days" recurrence
-                        days_to_add = task.recur_every[0]
-                        new_due_date = datetime.strptime(task.due_date, '%Y-%m-%d') + timedelta(days=days_to_add)
-                    else:
-                        # "Specific weekdays" recurrence
-                        today = datetime.now()
-                        today_weekday = today.isoweekday()  # 1 (Monday) - 7 (Sunday)
-                        days_ahead_list = [((weekday - today_weekday) % 7 or 7) for weekday in task.recur_every]
-                        days_until_next = min(days_ahead_list)
-                        new_due_date = today + timedelta(days=days_until_next)
-                    # Update task with new due date and reset completion status
-                    task.due_date = new_due_date.strftime('%Y-%m-%d')
-                    task.completed = False
-                    self.update_task(task)
+            # Print last completed date
+            if task.last_completed_date:
+                print(f"Task '{task.title}' last completed on: {task.last_completed_date.date()}")
+
+            # Skip tasks completed today
+            if task.last_completed_date and task.last_completed_date.date() == datetime.now().date():
+                print(f"Skipping task '{task.title}' as it was completed today.")
+                continue
+
+            # Process recurring tasks based on recur_every
+            if task.completed and task.recur_every:
+                if len(task.recur_every) == 1 and isinstance(task.recur_every[0], int):
+                    days_to_add = task.recur_every[0]
+                    next_available_date = (task.last_completed_date + timedelta(days=days_to_add)
+                                           if task.last_completed_date else datetime.now() + timedelta(
+                        days=days_to_add))
+
+                    print(f"Task '{task.title}' calculated next available date: {next_available_date.date()}")
+
+                    if next_available_date <= datetime.now():
+                        print(f"Reopening task '{task.title}' as it has reached its recurrence date.")
+                        task.completed = False
+                        self.update_task(task)
+
                 else:
-                    # Handle the case where recur_every is empty
-                    pass
+                    # Handle weekday names in recur_every
+                    today = datetime.now()
+                    today_weekday = today.isoweekday()
+
+                    print(
+                        f"Today is weekday {today_weekday}. Task '{task.title}' checks against recur_every: {task.recur_every} it was last set complet on {task.last_completed_date}")
+
+                    # Check if today matches any specified weekday in recur_every
+                    if any(weekday_mapping[day] == today_weekday for day in task.recur_every):
+                        print(f"Reopening task '{task.title}' as today matches one of its specified recurrence days.")
+                        task.completed = False
+                        self.update_task(task)
+                    else:
+                        print(f"Task '{task.title}' does not recur today.")
 
     def __del__(self):
         self.conn.close()
