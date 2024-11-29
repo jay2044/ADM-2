@@ -610,6 +610,19 @@ class TaskListManager:
     def update_task_list_category(self, task_list_name, new_category_name):
         cursor = self.conn.cursor()
 
+        if new_category_name is None:
+            # Set category_id to NULL for uncategorized task lists
+            cursor.execute("UPDATE task_lists SET category_id = NULL WHERE list_name = ?", (task_list_name,))
+            self.conn.commit()
+
+            # Update the in-memory representation
+            for category in self.categories.values():
+                for task_list in category["task_lists"]:
+                    if task_list["list_name"] == task_list_name:
+                        task_list["category"] = None
+                        break
+            return
+
         # Get the category ID for the new category
         cursor.execute("SELECT id FROM categories WHERE name = ?", (new_category_name,))
         category_row = cursor.fetchone()
@@ -623,7 +636,7 @@ class TaskListManager:
         cursor.execute("UPDATE task_lists SET category_id = ? WHERE list_name = ?", (new_category_id, task_list_name))
         self.conn.commit()
 
-        # Update the in-memory representation if needed
+        # Update the in-memory representation
         for category in self.categories.values():
             for task_list in category["task_lists"]:
                 if task_list["list_name"] == task_list_name:

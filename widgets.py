@@ -292,13 +292,34 @@ class CustomTreeWidget(QTreeWidget):
 
         top_level_items = [self.topLevelItem(i) for i in range(self.topLevelItemCount())]
 
+        # Prevent adding child items as children of another child item
+        if dragged_item.parent() is not None:
+            if target_item is not None and target_item.parent() is not None:
+                event.ignore()
+                return
+
+        # Prevent adding top-level items as children
         if dragged_item in top_level_items:
             if target_item is not None and target_item not in top_level_items:
                 event.ignore()
                 return
 
+        # Check if the dragged item is a child and its parent is being changed
+        if dragged_item.parent() is not None and target_item is not None:
+            old_parent = dragged_item.parent()
+            new_parent = target_item if target_item in top_level_items else target_item.parent()
+
+            if old_parent != new_parent:
+                # Call the update function in task manager
+                task_list_name = dragged_item.text(0)  # Task list name
+                new_category_name = new_parent.text(0) if new_parent else None
+                if new_category_name == "Uncategorized":
+                    new_category_name = None
+                self.task_manager.update_task_list_category(task_list_name, new_category_name)
+
         super().dropEvent(event)
 
+        # Ensure top-level items remain at the top level
         if dragged_item in top_level_items:
             dragged_item_parent = dragged_item.parent()
             if dragged_item_parent is not None:
