@@ -357,9 +357,10 @@ class TaskListCollection(QWidget):
             self.tree_widget.clear()
             self.categories = self.task_manager.get_categories()
 
+            # Sort categories by their order or name as a fallback
             sorted_categories = sorted(
                 self.categories.items(),
-                key=lambda x: x[1]["order"] if x[1]["order"] is not None else float('inf')
+                key=lambda item: (item[1]['order'] if item[1]['order'] is not None else float('inf'), item[0])
             )
 
             for category_name, category_info in sorted_categories:
@@ -370,8 +371,10 @@ class TaskListCollection(QWidget):
                 category_item.setFlags(category_item.flags())
                 category_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'category', 'name': category_name})
 
+                # Sort task lists by their name
                 sorted_task_lists = sorted(
-                    category_info['task_lists']
+                    category_info['task_lists'],
+                    key=lambda task_list: task_list['list_name']
                 )
 
                 for task_list_info in sorted_task_lists:

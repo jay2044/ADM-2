@@ -289,6 +289,7 @@ class TaskListManager:
             queue BOOLEAN NOT NULL DEFAULT 0,
             stack BOOLEAN NOT NULL DEFAULT 0,
             priority BOOLEAN NOT NULL DEFAULT 0,
+            "order" INTEGER,
             FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
         );
         """
@@ -568,6 +569,66 @@ class TaskListManager:
         # Update the order in the in-memory representation
         if category_name in self.categories:
             self.categories[category_name]["order"] = new_order
+
+    # def update_task_list_category(conn, task_list_name, new_category_name):
+    #     """
+    #     Updates the category of a given task list.
+    #
+    #     :param conn: SQLite connection object
+    #     :param task_list_name: Name of the task list to update
+    #     :param new_category_name: Name of the new category to associate with the task list
+    #     """
+    #     try:
+    #         cursor = conn.cursor()
+    #
+    #         # Ensure the new category exists, or create it
+    #         cursor.execute("SELECT id FROM categories WHERE name = ?", (new_category_name,))
+    #         category = cursor.fetchone()
+    #
+    #         if category is None:
+    #             # Create the new category
+    #             cursor.execute(
+    #                 "INSERT INTO categories (name, `order`) VALUES (?, ?)",
+    #                 (new_category_name, 0)  # Default order can be updated as needed
+    #             )
+    #             conn.commit()
+    #             category_id = cursor.lastrowid
+    #         else:
+    #             category_id = category["id"]
+    #
+    #         # Update the task list to point to the new category
+    #         cursor.execute(
+    #             "UPDATE task_lists SET category_id = ? WHERE list_name = ?",
+    #             (category_id, task_list_name)
+    #         )
+    #         conn.commit()
+    #
+    #         print(f"Task list '{task_list_name}' successfully updated to category '{new_category_name}'.")
+    #     except sqlite3.Error as e:
+    #         print(f"Error updating task list category: {e}")
+
+    def update_task_list_category(self, task_list_name, new_category_name):
+        cursor = self.conn.cursor()
+
+        # Get the category ID for the new category
+        cursor.execute("SELECT id FROM categories WHERE name = ?", (new_category_name,))
+        category_row = cursor.fetchone()
+
+        if category_row is None:
+            raise ValueError(f"Category '{new_category_name}' does not exist.")
+
+        new_category_id = category_row[0]
+
+        # Update the category_id in the database
+        cursor.execute("UPDATE task_lists SET category_id = ? WHERE list_name = ?", (new_category_id, task_list_name))
+        self.conn.commit()
+
+        # Update the in-memory representation if needed
+        for category in self.categories.values():
+            for task_list in category["task_lists"]:
+                if task_list["list_name"] == task_list_name:
+                    task_list["category"] = new_category_name
+                    break
 
     def rename_category(self, old_name, new_name):
         cursor = self.conn.cursor()
