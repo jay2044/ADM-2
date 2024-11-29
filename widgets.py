@@ -8,6 +8,12 @@ from control import *
 from gui import global_signals
 import random
 
+DUE_TODAY_COLOR = "blue"
+DUE_TOMORROW_COLOR = "green"
+PAST_DUE_COLOR = "red"
+DUE_THIS_WEEK_COLOR = "orange"
+DEFAULT_COLOR = "white"
+
 
 class TaskWidget(QWidget):
     def __init__(self, task_list_widget, task):
@@ -36,30 +42,16 @@ class TaskWidget(QWidget):
 
         self.layout.addStretch()
 
-        due_label_text = ""
-
-        if self.task.due_date != "2000-01-01" or self.task.due_time != "00:00":
-            if self.task.due_date != "2000-01-01":
-                try:
-                    due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
-                    due_label_text = due_date_obj.strftime("%Y-%m-%d")
-                except ValueError:
-                    due_label_text = self.task.due_date
-
-            if self.task.due_time != "00:00":
-                try:
-                    due_time_obj = datetime.strptime(self.task.due_time, "%H:%M")
-                    due_label_text += f" {due_time_obj.strftime('%H:%M')}"
-                except ValueError:
-                    due_label_text += f" {self.task.due_time}"
-
-        self.due_label = QLabel(due_label_text)
+        self.due_label = QLabel()
+        self.due_label.setStyleSheet("font-size: 14px;")
         self.layout.addWidget(self.due_label)
 
         self.radio_button = QRadioButton()
         self.radio_button.setChecked(self.task.is_important)
         self.radio_button.toggled.connect(self.mark_important)
         self.layout.addWidget(self.radio_button)
+
+        self.update_due_label()
 
     def show_context_menu(self, position):
         menu = QMenu(self)
@@ -120,12 +112,54 @@ class TaskWidget(QWidget):
         print("Delete task")
 
     def update_due_label(self):
-        # Update the label displaying the due date
         if self.task.due_date != "2000-01-01":
             due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
-            self.due_label.setText(due_date_obj.strftime("%Y-%m-%d"))
+            today = datetime.now().date()
+            tomorrow = today + timedelta(days=1)
+            end_of_week = today + timedelta(days=(6 - today.weekday()))
+            is_this_year = due_date_obj.year == today.year
+
+            if due_date_obj.date() == today:
+                self.due_label.setText("Today")
+                self.due_label.setStyleSheet(f"color: {DUE_TODAY_COLOR}; font-size: 14px;")
+            elif due_date_obj.date() == tomorrow:
+                self.due_label.setText("Tomorrow")
+                self.due_label.setStyleSheet(f"color: {DUE_TOMORROW_COLOR}; font-size: 14px;")
+            elif due_date_obj.date() < today:
+                self.due_label.setText(due_date_obj.strftime("%-d %b"))
+                self.due_label.setStyleSheet(f"color: {PAST_DUE_COLOR}; font-size: 14px;")
+            elif today < due_date_obj.date() <= end_of_week:
+                short_weekday = due_date_obj.strftime("%a")
+                self.due_label.setText(short_weekday)
+                self.due_label.setStyleSheet(f"color: {DUE_THIS_WEEK_COLOR}; font-size: 14px;")
+            else:
+                day = due_date_obj.day
+                if 11 <= day <= 13:
+                    suffix = "th"
+                else:
+                    last_digit = day % 10
+                    if last_digit == 1:
+                        suffix = "st"
+                    elif last_digit == 2:
+                        suffix = "nd"
+                    elif last_digit == 3:
+                        suffix = "rd"
+                    else:
+                        suffix = "th"
+
+                month_abbr = due_date_obj.strftime("%b")
+                year = due_date_obj.year if not is_this_year else ""
+
+                if year:
+                    formatted_date = f"{day}{suffix} {month_abbr} {year}"
+                else:
+                    formatted_date = f"{day}{suffix} {month_abbr}"
+
+                self.due_label.setText(formatted_date)
+                self.due_label.setStyleSheet(f"color: {DEFAULT_COLOR}; font-size: 14px;")
         else:
             self.due_label.setText("")
+            self.due_label.setStyleSheet("")
 
         self.task_list_widget.task_list.update_task(self.task)
 
