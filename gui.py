@@ -60,6 +60,8 @@ class MainWindow(QMainWindow):
         self.setup_calendar_dock()
         self.stacked_task_list.update_toolbar()
 
+        self.task_list_collection.search_bar.textChanged.connect(self.stacked_task_list.filter_current_task_list)
+
     def setup_main_window(self):
         self.setWindowTitle('ADM')
         screen_geometry = QApplication.primaryScreen().geometry()

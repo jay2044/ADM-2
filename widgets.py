@@ -334,6 +334,27 @@ class TaskListWidget(QListWidget):
         global_signals.task_list_updated.connect(self.load_tasks)
         self.model().rowsMoved.connect(self.on_rows_moved)
 
+    def filter_tasks(self, text):
+        first_visible_item = None
+        for index in range(self.count()):
+            item = self.item(index)
+            task_widget = self.itemWidget(item)
+            task = task_widget.task
+            match_found = False
+            # Check task title and description
+            if text.lower() in task.title.lower() or text.lower() in task.description.lower():
+                match_found = True
+            # Check subtasks
+            for subtask in task.subtasks:
+                if text.lower() in subtask.title.lower():
+                    match_found = True
+                    break
+            item.setHidden(not match_found)
+            if match_found and first_visible_item is None:
+                first_visible_item = item
+        if first_visible_item:
+            self.scrollToItem(first_visible_item)
+
     def on_rows_moved(self, parent, start, end, destination, row):
         self.update_task_order()
 
@@ -527,6 +548,11 @@ class TaskListCollection(QWidget):
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
 
+        self.search_bar = QLineEdit(self)
+        self.search_bar.setPlaceholderText("Search...")
+        self.layout.addWidget(self.search_bar)
+        self.search_bar.textChanged.connect(self.filter_items)
+
         self.tree_widget = CustomTreeWidget(self.parent)
         self.tree_widget.setHeaderHidden(True)
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -537,6 +563,60 @@ class TaskListCollection(QWidget):
         self.tree_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree_widget.expandAll()
         self.layout.addWidget(self.tree_widget)
+
+    def filter_items(self, text):
+        # Clear the selection
+        self.tree_widget.clearSelection()
+        first_match_task_list_name = None  # To keep track of the first matching task list
+
+        if not text:
+            # Show all items when the search bar is empty
+            for i in range(self.tree_widget.topLevelItemCount()):
+                category_item = self.tree_widget.topLevelItem(i)
+                category_item.setHidden(False)
+                for j in range(category_item.childCount()):
+                    task_list_item = category_item.child(j)
+                    task_list_item.setHidden(False)
+            return
+
+        # Iterate over categories and task lists to match the search term
+        for i in range(self.tree_widget.topLevelItemCount()):
+            category_item = self.tree_widget.topLevelItem(i)
+            category_visible = False
+            # Check if the category name matches the search term
+            if text.lower() in category_item.text(0).lower():
+                category_visible = True
+            # Iterate over task lists in the category
+            for j in range(category_item.childCount()):
+                task_list_item = category_item.child(j)
+                task_list_visible = False
+                # Check if the task list name matches the search term
+                if text.lower() in task_list_item.text(0).lower():
+                    task_list_visible = True
+                # Load tasks and check if any task matches the search term
+                task_list_name = task_list_item.text(0)
+                task_list = self.parent.task_lists[task_list_name]
+                tasks = task_list.load_tasks()
+                for task in tasks:
+                    if text.lower() in task.title.lower() or text.lower() in task.description.lower():
+                        task_list_visible = True
+                        break
+                # Show or hide the task list item based on the search result
+                task_list_item.setHidden(not task_list_visible)
+                if task_list_visible:
+                    category_visible = True
+                    if first_match_task_list_name is None:
+                        first_match_task_list_name = task_list_name
+                else:
+                    # Hide task lists that don't match
+                    task_list_item.setHidden(True)
+            # Show or hide the category item based on whether any of its task lists are visible
+            category_item.setHidden(not category_visible)
+
+        # Bring the first matching task list into focus
+        if first_match_task_list_name:
+            self.select_task_list_in_tree(first_match_task_list_name)
+            self.parent.stacked_task_list.show_task_list(first_match_task_list_name)
 
     def load_task_lists(self):
         try:
@@ -942,6 +1022,21 @@ class TaskListDockStacked(QDockWidget):
         self.setObjectName("taskListDockStacked")
         self.toolbar.setObjectName("taskListToolbar")
         self.stack_widget.setObjectName("stackWidget")
+
+    def filter_current_task_list(self, text):
+        current_task_list_widget = self.get_current_task_list_widget()
+        if current_task_list_widget:
+            current_task_list_widget.filter_tasks(text)
+
+    def show_task_list(self, task_list_name):
+        hash_key = hash(task_list_name)
+        if hash_key in self.parent.hash_to_widget:
+            task_list_widget = self.parent.hash_to_widget[hash_key]
+            self.stack_widget.setCurrentWidget(task_list_widget)
+            self.update_toolbar()
+            # Filter tasks within the task list widget
+            search_text = self.parent.task_list_collection.search_bar.text()
+            task_list_widget.filter_tasks(search_text)
 
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
