@@ -71,9 +71,21 @@ class TaskWidget(QWidget):
 
         menu.addSeparator()
 
-        move_to_action = QAction("Move To", self)
-        move_to_action.triggered.connect(self.move_to)
-        menu.addAction(move_to_action)
+        move_to_menu = QMenu("Move To", self)
+        categories_tasklists = self.task_list_widget.manager.get_category_tasklist_names()
+
+        for category, task_lists in categories_tasklists.items():
+            if task_lists:
+                category_menu = QMenu(category, self)
+                for list_name in task_lists:
+                    if list_name != self.task_list_widget.task_list_name:
+                        move_to_action = QAction(list_name, self)
+                        move_to_action.triggered.connect(lambda _, name=list_name: self.move_to_list(name))
+                        category_menu.addAction(move_to_action)
+                if not category_menu.isEmpty():
+                    move_to_menu.addMenu(category_menu)
+
+        menu.addMenu(move_to_menu)
 
         delete_action = QAction("Delete", self)
         delete_action.triggered.connect(self.delete_task)
@@ -156,8 +168,10 @@ class TaskWidget(QWidget):
         self.task.due_time = "00:00"
         self.update_due_label()
 
-    def move_to(self):
-        print("Move task")
+    def move_to_list(self, name):
+        self.task.list_name = name
+        self.task_list_widget.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
 
     def delete_task(self):
         self.task_list_widget.delete_task(self.task)
