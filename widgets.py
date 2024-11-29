@@ -6,6 +6,7 @@ from datetime import datetime
 from task_manager import *
 from control import *
 from gui import global_signals
+import random
 
 
 class TaskWidget(QWidget):
@@ -270,28 +271,6 @@ class TaskListManagerToolbar(QToolBar):
         action.triggered.connect(function)
         self.addAction(action)
 
-class FloatingDockWidget(QDockWidget):
-    def __init__(self, title, parent=None):
-        super().__init__(title, parent)
-        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
-        self.setFloating(True)
-        self.setMouseTracking(True)
-        self.dragging = False
-
-    def start_drag(self):
-        self.dragging = True
-        self.grabMouse()
-
-    def mouseMoveEvent(self, event):
-        if self.dragging:
-            self.move(event.globalPosition().toPoint() - QPoint(self.width() // 2, self.height() // 2))
-
-    def mouseReleaseEvent(self, event):
-        if self.dragging:
-            self.dragging = False
-            self.releaseMouse()
-
-
 
 class CustomTreeWidget(QTreeWidget):
     def __init__(self, parent, *args, **kwargs):
@@ -303,12 +282,14 @@ class CustomTreeWidget(QTreeWidget):
         self.itemCollapsed.connect(self.save_tree_data)
         self.itemChanged.connect(self.save_tree_data)
 
-    def startDrag(self, supportedActions):
-        item = self.currentItem()
-        if item:
-            self.dock_widget = TaskListDock(item.text(0), self.parent)
-            self.dock_widget.show()
+    def dragLeaveEvent(self, event):
+        event.accept()
+        if self.currentItem().parent():
+            unique_id = random.randint(1000, 9999)
+            self.dock_widget = TaskListDock(self.currentItem().text(0), self.parent)
+            self.dock_widget.setObjectName(f"TaskListDock_{self.currentItem().text(0)}_{unique_id}")
             self.dock_widget.start_drag()
+            self.dock_widget.show()
 
     def save_tree_data(self):
         if self.loaded:
