@@ -1469,7 +1469,7 @@ class TaskDetailDialog(QDialog):
         due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
         due_time = QTime.fromString(self.task.due_time, "HH:mm")
 
-        if due_date != QDate(2000, 1, 1):  # Check if due date is set
+        if due_date != QDate(2000, 1, 1):
             today = QDate.currentDate()
             days_to_due = today.daysTo(due_date)
 
@@ -1488,52 +1488,32 @@ class TaskDetailDialog(QDialog):
         self.due_date_label.setText(due_date_text)
 
     def open_due_date_picker(self, event):
-        # Create a transparent popup dialog
         dialog = QDialog(self)
         dialog.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-
-        # Main vertical layout to hold the calendar, time, and buttons
         layout = QVBoxLayout(dialog)
         dialog.setLayout(layout)
-
-        # Calendar widget for due date
         calendar = QCalendarWidget(dialog)
-
-        # Check if the due date is the default placeholder; if so, set it to today
         default_due_date = "2000-01-01"
         current_due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
         if current_due_date.toString("yyyy-MM-dd") != default_due_date:
-            # Otherwise, use the existing due date
             calendar.setSelectedDate(current_due_date)
-
-        # Connect the calendar selection to update the due date
         calendar.selectionChanged.connect(lambda: self.update_due_date_from_calendar(calendar))
         layout.addWidget(calendar)
-
-        # Time Edit widget for due time
         time_edit = QTimeEdit(dialog)
         current_due_time = QTime.fromString(self.task.due_time, "HH:mm")
         time_edit.setTime(current_due_time)
         time_edit.setDisplayFormat("h:mm AP")
         time_edit.timeChanged.connect(lambda: self.update_due_time_from_time_edit(time_edit))
         layout.addWidget(time_edit)
-
-        # Button layout for delete options
         button_layout = QHBoxLayout()
-
-        # Button to clear due date
         clear_date_button = QPushButton("Clear Date", dialog)
         clear_date_button.clicked.connect(lambda: self.clear_due_date(calendar))
         button_layout.addWidget(clear_date_button)
-
-        # Button to clear due time
         clear_time_button = QPushButton("Clear Time", dialog)
         clear_time_button.clicked.connect(lambda: self.clear_due_time(time_edit))
         button_layout.addWidget(clear_time_button)
 
         layout.addLayout(button_layout)
-
-        # Position the dialog at the center of the due_date_label click
         label_pos = self.due_date_label.mapToGlobal(
             QPoint(self.due_date_label.width() // 2, self.due_date_label.height() // 2))
         dialog.move(label_pos - QPoint(dialog.width() // 2, dialog.height() // 2))

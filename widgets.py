@@ -95,8 +95,65 @@ class TaskWidget(QWidget):
         self.update_due_label()
 
     def pick_due_date(self):
-        # Implement a date picker dialog
-        print("Pick a date")
+        dialog = QDialog(self)
+        dialog.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        layout = QVBoxLayout(dialog)
+        dialog.setLayout(layout)
+        calendar = QCalendarWidget(dialog)
+        default_due_date = "2000-01-01"
+        current_due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
+        if current_due_date.toString("yyyy-MM-dd") != default_due_date:
+            calendar.setSelectedDate(current_due_date)
+        calendar.selectionChanged.connect(lambda: self.update_due_date_from_calendar(calendar))
+        layout.addWidget(calendar)
+        time_edit = QTimeEdit(dialog)
+        current_due_time = QTime.fromString(self.task.due_time, "HH:mm")
+        time_edit.setTime(current_due_time)
+        time_edit.setDisplayFormat("h:mm AP")
+        time_edit.timeChanged.connect(lambda: self.update_due_time_from_time_edit(time_edit))
+        layout.addWidget(time_edit)
+        button_layout = QHBoxLayout()
+        clear_date_button = QPushButton("Clear Date", dialog)
+        clear_date_button.clicked.connect(lambda: self.clear_due_date(calendar))
+        button_layout.addWidget(clear_date_button)
+        clear_time_button = QPushButton("Clear Time", dialog)
+        clear_time_button.clicked.connect(lambda: self.clear_due_time(time_edit))
+        button_layout.addWidget(clear_time_button)
+
+        layout.addLayout(button_layout)
+        label_pos = self.due_label.mapToGlobal(
+            QPoint(self.due_label.width() // 2, self.due_label.height() // 2))
+        dialog.move(label_pos - QPoint(dialog.width() // 2, dialog.height() // 2))
+        dialog.exec()
+
+    def update_task_due_date(self, due_date):
+        self.task.due_date = due_date
+        self.task_list_widget.task_list.update_task(self.task)
+
+    def update_task_due_time(self, due_time):
+        self.task.due_time = due_time
+        self.task_list_widget.task_list.update_task(self.task)
+
+    def update_due_date_from_calendar(self, calendar):
+        selected_date = calendar.selectedDate().toString("yyyy-MM-dd")
+        self.update_task_due_date(selected_date)
+        self.update_due_label()
+
+    def update_due_time_from_time_edit(self, time_edit):
+        print("test")
+        selected_time = time_edit.time().toString("HH:mm")
+        self.update_task_due_time(selected_time)
+        self.update_due_label()
+
+    def clear_due_date(self, calendar):
+        self.update_task_due_date("2000-01-01")
+        calendar.clearFocus()
+        self.update_due_label()
+
+    def clear_due_time(self, time_edit):
+        self.update_task_due_time("00:00")
+        time_edit.setTime(QTime(0, 0))
+        self.update_due_label()
 
     def remove_due_date(self):
         self.task.due_date = "2000-01-01"
@@ -104,34 +161,50 @@ class TaskWidget(QWidget):
         self.update_due_label()
 
     def move_to(self):
-        # Implement move-to functionality
         print("Move task")
 
     def delete_task(self):
-        # Implement delete functionality
         print("Delete task")
 
     def update_due_label(self):
-        if self.task.due_date != "2000-01-01":
+        due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
+        if due_date != QDate(2000, 1, 1):
             due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
             today = datetime.now().date()
             tomorrow = today + timedelta(days=1)
             end_of_week = today + timedelta(days=(6 - today.weekday()))
             is_this_year = due_date_obj.year == today.year
+            formatted_date = ""
+            color = DEFAULT_COLOR
 
             if due_date_obj.date() == today:
-                self.due_label.setText("Today")
-                self.due_label.setStyleSheet(f"color: {DUE_TODAY_COLOR}; font-size: 14px;")
+                formatted_date = "Today"
+                color = DUE_TODAY_COLOR
             elif due_date_obj.date() == tomorrow:
-                self.due_label.setText("Tomorrow")
-                self.due_label.setStyleSheet(f"color: {DUE_TOMORROW_COLOR}; font-size: 14px;")
+                formatted_date = "Tomorrow"
+                color = DUE_TOMORROW_COLOR
             elif due_date_obj.date() < today:
-                self.due_label.setText(due_date_obj.strftime("%-d %b"))
-                self.due_label.setStyleSheet(f"color: {PAST_DUE_COLOR}; font-size: 14px;")
+                day = due_date_obj.day
+                if 11 <= day <= 13:
+                    suffix = "th"
+                else:
+                    last_digit = day % 10
+                    if last_digit == 1:
+                        suffix = "st"
+                    elif last_digit == 2:
+                        suffix = "nd"
+                    elif last_digit == 3:
+                        suffix = "rd"
+                    else:
+                        suffix = "th"
+                month_abbr = due_date_obj.strftime("%b")
+                year = f" {due_date_obj.year}" if not is_this_year else ""
+                formatted_date = f"{day}{suffix} {month_abbr}{year}"
+                color = PAST_DUE_COLOR
             elif today < due_date_obj.date() <= end_of_week:
                 short_weekday = due_date_obj.strftime("%a")
-                self.due_label.setText(short_weekday)
-                self.due_label.setStyleSheet(f"color: {DUE_THIS_WEEK_COLOR}; font-size: 14px;")
+                formatted_date = short_weekday
+                color = DUE_THIS_WEEK_COLOR
             else:
                 day = due_date_obj.day
                 if 11 <= day <= 13:
@@ -146,17 +219,11 @@ class TaskWidget(QWidget):
                         suffix = "rd"
                     else:
                         suffix = "th"
-
                 month_abbr = due_date_obj.strftime("%b")
-                year = due_date_obj.year if not is_this_year else ""
-
-                if year:
-                    formatted_date = f"{day}{suffix} {month_abbr} {year}"
-                else:
-                    formatted_date = f"{day}{suffix} {month_abbr}"
-
-                self.due_label.setText(formatted_date)
-                self.due_label.setStyleSheet(f"color: {DEFAULT_COLOR}; font-size: 14px;")
+                year = f" {due_date_obj.year}" if not is_this_year else ""
+                formatted_date = f"{day}{suffix} {month_abbr}{year}"
+            self.due_label.setText(formatted_date)
+            self.due_label.setStyleSheet(f"color: {color}; font-size: 14px;")
         else:
             self.due_label.setText("")
             self.due_label.setStyleSheet("")
