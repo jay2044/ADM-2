@@ -8,9 +8,9 @@ from control import *
 from gui import global_signals
 import random
 
-DUE_TODAY_COLOR = "blue"
-DUE_TOMORROW_COLOR = "green"
-PAST_DUE_COLOR = "red"
+DUE_TODAY_COLOR = "#4fa7f2"
+DUE_TOMORROW_COLOR = "#648742"
+PAST_DUE_COLOR = "#ec4f4f"
 DUE_THIS_WEEK_COLOR = "orange"
 DEFAULT_COLOR = "white"
 
