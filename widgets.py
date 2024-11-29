@@ -164,7 +164,7 @@ class TaskWidget(QWidget):
         print("Move task")
 
     def delete_task(self):
-        print("Delete task")
+        self.task_list_widget.delete_task(self.task)
 
     def update_due_label(self):
         due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
@@ -177,6 +177,7 @@ class TaskWidget(QWidget):
             formatted_date = ""
             color = DEFAULT_COLOR
 
+            # Determine the formatted date
             if due_date_obj.date() == today:
                 formatted_date = "Today"
                 color = DUE_TODAY_COLOR
@@ -185,18 +186,8 @@ class TaskWidget(QWidget):
                 color = DUE_TOMORROW_COLOR
             elif due_date_obj.date() < today:
                 day = due_date_obj.day
-                if 11 <= day <= 13:
-                    suffix = "th"
-                else:
-                    last_digit = day % 10
-                    if last_digit == 1:
-                        suffix = "st"
-                    elif last_digit == 2:
-                        suffix = "nd"
-                    elif last_digit == 3:
-                        suffix = "rd"
-                    else:
-                        suffix = "th"
+                suffix = "th" if 11 <= day <= 13 else ["st", "nd", "rd"][day % 10 - 1] if day % 10 in [1, 2,
+                                                                                                       3] else "th"
                 month_abbr = due_date_obj.strftime("%b")
                 year = f" {due_date_obj.year}" if not is_this_year else ""
                 formatted_date = f"{day}{suffix} {month_abbr}{year}"
@@ -207,21 +198,19 @@ class TaskWidget(QWidget):
                 color = DUE_THIS_WEEK_COLOR
             else:
                 day = due_date_obj.day
-                if 11 <= day <= 13:
-                    suffix = "th"
-                else:
-                    last_digit = day % 10
-                    if last_digit == 1:
-                        suffix = "st"
-                    elif last_digit == 2:
-                        suffix = "nd"
-                    elif last_digit == 3:
-                        suffix = "rd"
-                    else:
-                        suffix = "th"
+                suffix = "th" if 11 <= day <= 13 else ["st", "nd", "rd"][day % 10 - 1] if day % 10 in [1, 2,
+                                                                                                       3] else "th"
                 month_abbr = due_date_obj.strftime("%b")
                 year = f" {due_date_obj.year}" if not is_this_year else ""
                 formatted_date = f"{day}{suffix} {month_abbr}{year}"
+
+            # Append due time if set
+            if self.task.due_time != "00:00":
+                due_time_obj = datetime.strptime(self.task.due_time, "%H:%M")
+                formatted_time = due_time_obj.strftime("%I:%M %p").lstrip("0")  # Remove leading zero from hours
+                formatted_date += f" at {formatted_time}"
+
+            # Update label text and style
             self.due_label.setText(formatted_date)
             self.due_label.setStyleSheet(f"color: {color}; font-size: 14px;")
         else:
