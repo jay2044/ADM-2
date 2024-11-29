@@ -22,6 +22,9 @@ class TaskWidget(QWidget):
         self.checkbox.setObjectName("taskCheckbox")
         self.radio_button.setObjectName("importantRadioButton")
 
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+
     def setup_ui(self):
         self.layout = QHBoxLayout()
         self.setLayout(self.layout)
@@ -33,30 +36,98 @@ class TaskWidget(QWidget):
 
         self.layout.addStretch()
 
-        # Show due date and time label if they are not default.
+        due_label_text = ""
+
         if self.task.due_date != "2000-01-01" or self.task.due_time != "00:00":
-            due_label_text = ""
             if self.task.due_date != "2000-01-01":
                 try:
                     due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
                     due_label_text = due_date_obj.strftime("%Y-%m-%d")
                 except ValueError:
-                    due_label_text = self.task.due_date  # If parsing fails, use the raw string
+                    due_label_text = self.task.due_date
 
             if self.task.due_time != "00:00":
                 try:
                     due_time_obj = datetime.strptime(self.task.due_time, "%H:%M")
                     due_label_text += f" {due_time_obj.strftime('%H:%M')}"
                 except ValueError:
-                    due_label_text += f" {self.task.due_time}"  # If parsing fails, use the raw string
+                    due_label_text += f" {self.task.due_time}"
 
-            self.due_label = QLabel(due_label_text)
-            self.layout.addWidget(self.due_label)
+        self.due_label = QLabel(due_label_text)
+        self.layout.addWidget(self.due_label)
 
         self.radio_button = QRadioButton()
         self.radio_button.setChecked(self.task.is_important)
         self.radio_button.toggled.connect(self.mark_important)
         self.layout.addWidget(self.radio_button)
+
+    def show_context_menu(self, position):
+        menu = QMenu(self)
+
+        # Add context menu actions
+        due_today_action = QAction("Due Today", self)
+        due_today_action.triggered.connect(self.set_due_today)
+        menu.addAction(due_today_action)
+
+        due_tomorrow_action = QAction("Due Tomorrow", self)
+        due_tomorrow_action.triggered.connect(self.set_due_tomorrow)
+        menu.addAction(due_tomorrow_action)
+
+        pick_date_action = QAction("Pick a Date", self)
+        pick_date_action.triggered.connect(self.pick_due_date)
+        menu.addAction(pick_date_action)
+
+        remove_due_date_action = QAction("Remove Due Date", self)
+        remove_due_date_action.triggered.connect(self.remove_due_date)
+        menu.addAction(remove_due_date_action)
+
+        menu.addSeparator()
+
+        move_to_action = QAction("Move To", self)
+        move_to_action.triggered.connect(self.move_to)
+        menu.addAction(move_to_action)
+
+        delete_action = QAction("Delete", self)
+        delete_action.triggered.connect(self.delete_task)
+        menu.addAction(delete_action)
+
+        menu.exec(self.mapToGlobal(position))
+
+    def set_due_today(self):
+        self.task.due_date = datetime.now().strftime("%Y-%m-%d")
+        self.update_due_label()
+
+    def set_due_tomorrow(self):
+        tomorrow = datetime.now() + timedelta(days=1)
+        self.task.due_date = tomorrow.strftime("%Y-%m-%d")
+        self.update_due_label()
+
+    def pick_due_date(self):
+        # Implement a date picker dialog
+        print("Pick a date")
+
+    def remove_due_date(self):
+        self.task.due_date = "2000-01-01"
+        self.task.due_time = "00:00"
+        self.update_due_label()
+
+    def move_to(self):
+        # Implement move-to functionality
+        print("Move task")
+
+    def delete_task(self):
+        # Implement delete functionality
+        print("Delete task")
+
+    def update_due_label(self):
+        # Update the label displaying the due date
+        if self.task.due_date != "2000-01-01":
+            due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
+            self.due_label.setText(due_date_obj.strftime("%Y-%m-%d"))
+        else:
+            self.due_label.setText("")
+
+        self.task_list_widget.task_list.update_task(self.task)
 
     def setup_timer(self):
         self.timer = QTimer(self)
@@ -88,17 +159,14 @@ class TaskWidget(QWidget):
 
     def edit_task(self):
         try:
-            # Set parent to None to avoid dependency on main_window
             dialog = TaskDetailDialog(self.task, self.task_list_widget, self)
             global_signals.task_list_updated.emit()
 
-            # Position the dialog to appear over the dock containing the task
             dock_widget = self.task_list_widget
             if dock_widget:
                 dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
                 dock_size = dock_widget.size()
 
-                # Adjust to make it slightly narrower and aligned to the right of the dock
                 offset = int(0.2 * dock_size.width())
                 dialog_width = dock_size.width() - offset
                 dialog_height = dock_size.height()
@@ -108,10 +176,8 @@ class TaskWidget(QWidget):
                 dialog.resize(dialog_width, dialog_height)
                 dialog.move(dialog_x, dialog_y)
 
-                # Set fixed size to prevent resizing
                 dialog.setFixedSize(dialog_width, dialog_height)
             else:
-                # Default positioning if dock widget not found
                 dialog.adjustSize()
                 dialog.move(self.mapToGlobal(QPoint(0, 0)))
 
@@ -126,7 +192,6 @@ class TaskWidget(QWidget):
             self.task_list_widget.task_list.update_task(self.task)
             global_signals.task_list_updated.emit()
 
-            # Update the history dock in the parent window
             self.task_list_widget.parent.history_dock.update_history()
         except Exception as e:
             print(f"Error in task_checked: {e}")
