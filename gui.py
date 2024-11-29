@@ -141,11 +141,12 @@ class MainWindow(QMainWindow):
 
         open_dock_widgets = []
         for dock in self.findChildren(TaskListDock):
-            dock_info = {
-                'objectName': dock.objectName(),
-                'task_list_name': dock.task_list_name
-            }
-            open_dock_widgets.append(dock_info)
+            if dock.isVisible():
+                dock_info = {
+                    'objectName': dock.objectName(),
+                    'task_list_name': dock.task_list_name
+                }
+                open_dock_widgets.append(dock_info)
         settings.setValue("openDockWidgets", json.dumps(open_dock_widgets))
 
     def load_settings(self):
