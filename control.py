@@ -640,10 +640,6 @@ class SubtaskItemWidget(QWidget):
         self.drag_handle.setStyleSheet("font-size: 16px;")
         layout.addWidget(self.drag_handle)
 
-        self.drag_handle.mousePressEvent = self.drag_handle_mouse_press_event
-        self.drag_handle.mouseMoveEvent = self.drag_handle_mouse_move_event
-        self.drag_handle.mouseReleaseEvent = self.drag_handle_mouse_release_event
-
         self.drag_start_position = None
 
     def on_state_changed(self, state):
@@ -653,55 +649,15 @@ class SubtaskItemWidget(QWidget):
         self.subtask.completed = (state == Qt.CheckState.Checked)
         self.parent.toggle_subtask_completion(self.subtask, state)
 
-    def drag_handle_mouse_press_event(self, event):
-        """
-        Handle mouse press event for drag functionality.
-        """
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_start_position = event.pos()
-            self.drag_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-
-    def drag_handle_mouse_move_event(self, event):
-        """
-        Handle mouse movement to initiate drag if beyond drag threshold.
-        """
-        if event.buttons() & Qt.MouseButton.LeftButton:
-            if (event.pos() - self.drag_start_position).manhattanLength() > QApplication.startDragDistance():
-                self.start_drag()
-                event.accept()
-
-    def drag_handle_mouse_release_event(self, event):
-        """
-        Reset cursor when mouse button is released.
-        """
-        self.drag_handle.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.clearFocus()
-        event.accept()
-
-    def start_drag(self):
-        """
-        Initiate a drag-and-drop operation for the widget.
-        """
-        drag = QDrag(self)
-        mime_data = QMimeData()
-        mime_data.setText(str(self.subtask.id))
-        drag.setMimeData(mime_data)
-
-        pixmap = self.grab()
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(self.drag_start_position)
-
-        drag.exec(Qt.DropAction.MoveAction)
-
 
 class SubtaskWindow(QWidget):
     """
     Window for managing subtasks within a task, providing UI for adding, editing, deleting, and reordering subtasks.
     """
 
-    def __init__(self, task, task_list):
+    def __init__(self, task, task_list, parent=None):
         super().__init__()
+        self.parent = parent
         self.task = task
         self.task_list = task_list
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -756,6 +712,7 @@ class SubtaskWindow(QWidget):
             self.task_list.add_subtask(self.task, new_subtask)
             self.subtask_input.clear()
             self.load_subtasks()
+        global_signals.task_list_updated.emit()
 
     def toggle_subtask_completion(self, subtask, state):
         """
@@ -818,8 +775,10 @@ class SubtaskWindow(QWidget):
             del widget.line_edit
             self.subtask_list.clearFocus()
             self.clearFocus()
+            global_signals.task_list_updated.emit()
         else:
             self.delete_subtask(item)
+            global_signals.task_list_updated.emit()
 
     def delete_subtask(self, item):
         """
@@ -829,8 +788,9 @@ class SubtaskWindow(QWidget):
         subtask = self.task.subtasks[index]
         self.task_list.remove_subtask(self.task, subtask)
         self.load_subtasks()
+        global_signals.task_list_updated.emit()
 
-    def on_subtask_reordered(self, start, end, destination, row):
+    def on_subtask_reordered(self):
         """
         Reorder subtasks within the list and update their order in the database.
         """
@@ -845,9 +805,9 @@ class SubtaskWindow(QWidget):
 
         self.task.subtasks = [id_to_subtask[subtask_id] for subtask_id in new_order_ids]
         self.task_list.update_task(self.task)
+        global_signals.task_list_updated.emit()
 
-        self.subtask_list.clearSelection()
-        self.subtask_list.clearFocus()
+        self.parent.reopen_dialog()
 
 
 class TagInputWidget(QWidget):
@@ -1245,6 +1205,8 @@ class TaskDetailDialog(QDialog):
 
         # Set dialog properties
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
+        self.setModal(True)
+
         self.task = task
         self.task_list_widget = task_list_widget
         self.is_edit_mode = False
@@ -1253,6 +1215,10 @@ class TaskDetailDialog(QDialog):
         self.display_task_details()
         self.setup_due_date_display()
         self.installEventFilter(self)
+
+    def reopen_dialog(self):
+        self.hide()
+        self.show()
 
     def setup_ui(self):
         # Main layout for the dialog
@@ -1276,9 +1242,9 @@ class TaskDetailDialog(QDialog):
         # Initialize the Task Name Label as a QLabel initially
         self.task_name_label = QLabel()
         self.task_name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        self.task_name_label.setText(self.task.title)  # Set initial text from task
+        self.task_name_label.setText(self.task.title)
         self.task_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.task_name_label.mousePressEvent = self.edit_task_name  # Trigger edit on click
+        self.task_name_label.mousePressEvent = self.edit_task_name
         self.header_layout.addWidget(self.task_name_label)
 
         # Due Date Label
@@ -1374,20 +1340,20 @@ class TaskDetailDialog(QDialog):
             recurring_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             self.details_layout.addWidget(recurring_label, alignment=Qt.AlignmentFlag.AlignRight)
 
-        dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
-        dropdowns.connect_dropdown_signals(
+        self.dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
+        self.dropdowns.connect_dropdown_signals(
             lambda value: self.update_task_attribute('status', value),
             lambda value: self.update_task_attribute('deadline_flexibility', value),
             lambda value: self.update_task_attribute('effort_level', value)
         )
-        self.details_layout.addWidget(dropdowns)
+        self.details_layout.addWidget(self.dropdowns)
 
         # Check if task has a description
         if self.task.description:
             description_container = DescriptionContainer(self.task.description)
             self.details_layout.addWidget(description_container, stretch=0)
 
-        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
+        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list, parent=self)
         self.details_layout.addWidget(sub_task_window)
 
         # Resources
@@ -1503,6 +1469,7 @@ class TaskDetailDialog(QDialog):
         # Detect mouse clicks outside the dialog to close it
         if event.type() == QEvent.Type.MouseButtonPress:
             if not self.geometry().contains(event.globalPosition().toPoint()):
+                print("bruh")
                 self.close()
                 return True
         if event.type() == QEvent.Type.MouseButtonPress:
@@ -1886,10 +1853,3 @@ class TaskDetailDialog(QDialog):
                 widget.deleteLater()
             elif item.layout() is not None:
                 self.clear_layout(item.layout())
-
-    def focusOutEvent(self, event):
-        """Close the dialog when it loses focus to a widget outside itself."""
-        # Check if the new focus widget is not a descendant of this dialog
-        if not self.isAncestorOf(QApplication.focusWidget()):
-            self.close()
-        super().focusOutEvent(event)

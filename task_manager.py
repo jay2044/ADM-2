@@ -196,6 +196,7 @@ class TaskList:
         subtask.task_id = task.id
         self.manager.add_subtask(subtask)
         task.subtasks.append(subtask)
+        self.update_task(task)
 
     def remove_subtask(self, task, subtask):
         self.manager.remove_subtask(subtask)
@@ -566,7 +567,6 @@ class TaskListManager:
             subtask.id
         ))
         self.conn.commit()
-        print(f"subtask updated {subtask.completed}")
 
     def remove_subtask(self, subtask):
         cursor = self.conn.cursor()
