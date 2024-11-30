@@ -40,6 +40,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.task_manager = TaskListManager()
         self.task_lists = {}
+        self.hash_to_widget = {}
         self.settings = QSettings("123", "ADM")
         self.setup_ui(app)
         self.options()
@@ -52,15 +53,16 @@ class MainWindow(QMainWindow):
 
     def setup_ui(self, app):
         setup_font(app)
+
+        self.stacked_task_list = TaskListDockStacked(self)
         self.setup_main_window()
-        self.setup_layouts()
         self.setup_right_widgets()
-        self.setup_left_widgets()
         self.setup_history_dock()
         self.setup_calendar_dock()
         self.stacked_task_list.update_toolbar()
 
-        self.task_list_collection.search_bar.textChanged.connect(self.stacked_task_list.filter_current_task_list)
+        self.navigation_sidebar_dock.task_list_collection.search_bar.textChanged.connect(
+            self.stacked_task_list.filter_current_task_list)
 
     def setup_main_window(self):
         self.setWindowTitle('ADM')
@@ -72,52 +74,18 @@ class MainWindow(QMainWindow):
         self.move(top_left_point)
 
         # Create central dock widget
-        self.central_dock_widget = QDockWidget("Central Dock", self)
-        self.central_dock_widget.setObjectName("centralDockWidget")
-        self.central_dock_widget.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.navigation_sidebar_dock = NavigationSidebarDock(self)
+        self.navigation_sidebar_dock.setObjectName("NavigationSidebarDock")
 
-        central_content = QWidget()
-        central_layout = QVBoxLayout()
-        central_layout.setContentsMargins(0, 0, 0, 0)
-        central_content.setLayout(central_layout)
-
-        self.central_dock_widget.setWidget(central_content)
-        self.central_dock_widget.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
-
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.central_dock_widget)
-        self.central_dock_widget.setFixedWidth(200)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.navigation_sidebar_dock)
+        self.navigation_sidebar_dock.setFixedWidth(200)
 
     def options(self):
         self.setDockOptions(QMainWindow.DockOption.AllowTabbedDocks |
                             QMainWindow.DockOption.AllowNestedDocks |
                             QMainWindow.DockOption.AnimatedDocks)
 
-    def setup_layouts(self):
-        self.left_widget = QWidget()
-        self.left_widget.setObjectName("leftWidget")
-        self.left_layout = QVBoxLayout()
-        self.left_layout.setObjectName("leftLayout")
-        self.left_widget.setLayout(self.left_layout)
-
-        self.central_dock_widget.widget().layout().addWidget(self.left_widget)
-
-        self.left_widget.setFixedWidth(200)
-
-    def setup_left_widgets(self):
-        self.hash_to_widget = {}
-        self.task_list_collection = TaskListCollection(self)
-        self.task_list_collection.setObjectName("taskListCollection")
-        self.left_top_toolbar = TaskListManagerToolbar(self)
-        self.left_top_toolbar.setObjectName("leftTopToolbar")
-        self.left_layout.addWidget(self.left_top_toolbar)
-        self.left_layout.addWidget(self.task_list_collection)
-        self.info_bar = InfoBar(self)
-        self.info_bar.setObjectName("infoBar")
-        self.left_layout.addWidget(self.info_bar)
-        self.left_layout.setContentsMargins(0, 0, 0, 0)
-
     def setup_right_widgets(self):
-        self.stacked_task_list = TaskListDockStacked(self)
         self.stacked_task_list.setObjectName("stackedTaskListDock")
         self.stacked_task_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
