@@ -6,6 +6,49 @@ from task_manager import *
 from gui import global_signals
 
 
+class TaskProgressBar(QWidget):
+    def __init__(self, task: Task, parent=None):
+        super().__init__(parent)
+        self.task = task
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_bar.setStyleSheet("QProgressBar { text-align: center; font-size: 12px; }")  # Smaller font size
+        self.update_progress()
+        layout.addWidget(self.progress_bar)
+        self.setLayout(layout)
+
+    def update_progress(self):
+        progress = self.calculate_progress()
+        self.progress_bar.setValue(progress)
+        self.progress_bar.setFormat(f"{progress}%")  # Show progress percentage
+
+    def calculate_progress(self):
+        total_weight = 0
+        progress = 0
+
+        if self.task.count_required > 0:  # Use count_completed
+            count_progress = (self.task.count_completed / self.task.count_required) * 100
+            progress += count_progress
+            total_weight += 1
+
+        if self.task.estimate > 0:  # Use time_logged
+            time_progress = (self.task.time_logged / self.task.estimate) * 100
+            progress += time_progress
+            total_weight += 1
+
+        if self.task.subtasks:  # Use completed subtasks
+            completed_subtasks = sum(subtask.completed for subtask in self.task.subtasks)
+            subtask_progress = (completed_subtasks / len(self.task.subtasks)) * 100
+            progress += subtask_progress
+            total_weight += 1
+
+        return int(progress / total_weight) if total_weight > 0 else 0
+
+
 class ResourcesWidget(QWidget):
     """
     A widget for managing a list of resources (URLs or file paths) associated with a task.
@@ -1245,7 +1288,11 @@ class TaskDetailDialog(QDialog):
         self.due_date_label.mousePressEvent = self.open_due_date_picker
         self.header_layout.addWidget(self.due_date_label)
 
-        self.header_layout.addStretch()
+        if self.task.count_required or self.task.estimate or self.task.subtasks:
+            self.progress_bar = TaskProgressBar(self.task)
+            self.header_layout.addWidget(self.progress_bar)
+        else:
+            self.header_layout.addStretch()
 
         # Edit Button
         self.edit_button = QPushButton("Edit")
@@ -1450,6 +1497,7 @@ class TaskDetailDialog(QDialog):
             print(f"Error in keyPressEvent: {e}")
 
     def eventFilter(self, source, event):
+        self.progress_bar.update_progress()
         # Detect mouse clicks outside the dialog to close it
         if event.type() == QEvent.Type.MouseButtonPress:
             if not self.geometry().contains(event.globalPosition().toPoint()):

@@ -40,6 +40,9 @@ class TaskWidget(QWidget):
         self.task_label.setStyleSheet("font-size: 14px; text-decoration: none;")
         self.task_label.mousePressEvent = self.on_task_label_click
         self.layout.addWidget(self.task_label)
+        if self.task.count_required or self.task.estimate or self.task.subtasks:
+            self.progress_bar = TaskProgressBar(self.task)
+            self.layout.addWidget(self.progress_bar)
         self.layout.addStretch()
         self.due_label = QLabel()
         self.due_label.setStyleSheet("font-size: 14px;")
