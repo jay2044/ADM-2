@@ -1029,6 +1029,7 @@ class AddTaskDialog(QDialog):
         # Initially hide recurrence detail widgets
         self.every_n_days_widget.hide()
         self.specific_weekdays_widget.hide()
+        self.recurrence_options_widget.hide()
 
         # Add recurrence options to basic layout
         self.basic_layout.addRow(self.recurrence_options_widget)
@@ -1222,6 +1223,9 @@ class TaskDetailDialog(QDialog):
 
         # Layout for the content widget
         self.content_layout = QVBoxLayout(self.content_widget)
+
+        self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
 
         # Header Layout: Task Name, Due Date, Edit, and Close Buttons
         self.header_layout = QHBoxLayout()
@@ -1595,13 +1599,82 @@ class TaskDetailDialog(QDialog):
         self.add_labeled_widget("Categories:", self.categories_input)
 
         # Recurring
-        self.recurring_checkbox = QCheckBox("Recurring")
-        self.recurring_checkbox.setChecked(self.task.recurring)
+        self.recurring_checkbox = QCheckBox("Recurring", self)
         self.details_layout.addWidget(self.recurring_checkbox)
 
-        # Recur Every
-        self.recur_every_edit = QLineEdit(", ".join(map(str, self.task.recur_every)))
-        self.add_labeled_widget("Recur Every (list of days or numbers):", self.recur_every_edit)
+        # Recurrence Options
+        self.recurrence_options_widget = QWidget()
+        self.recurrence_layout = QVBoxLayout(self.recurrence_options_widget)
+
+        self.recur_type_group = QButtonGroup(self)
+
+        self.every_n_days_radio = QRadioButton("Every N days")
+        self.specific_weekdays_radio = QRadioButton("Specific weekdays")
+
+        self.recur_type_group.addButton(self.every_n_days_radio)
+        self.recur_type_group.addButton(self.specific_weekdays_radio)
+
+        self.recurrence_layout.addWidget(self.every_n_days_radio)
+        self.recurrence_layout.addWidget(self.specific_weekdays_radio)
+
+        # Every N Days Widget
+        self.every_n_days_widget = QWidget()
+        self.every_n_days_layout = QHBoxLayout(self.every_n_days_widget)
+
+        self.every_n_days_label = QLabel("Every")
+        self.every_n_days_spinbox = QSpinBox()
+        self.every_n_days_spinbox.setMinimum(1)
+        self.every_n_days_spinbox.setMaximum(365)
+        self.every_n_days_spinbox.setValue(1)
+        self.every_n_days_unit_label = QLabel("day(s)")
+
+        self.every_n_days_layout.addWidget(self.every_n_days_label)
+        self.every_n_days_layout.addWidget(self.every_n_days_spinbox)
+        self.every_n_days_layout.addWidget(self.every_n_days_unit_label)
+
+        # Specific Weekdays Widget
+        self.specific_weekdays_widget = QWidget()
+        self.specific_weekdays_layout = QHBoxLayout(self.specific_weekdays_widget)
+
+        self.weekday_checkboxes = []
+        weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        for day in weekdays:
+            checkbox = QCheckBox(day)
+            checkbox.setObjectName(f"{day}Checkbox")
+            self.weekday_checkboxes.append(checkbox)
+            self.specific_weekdays_layout.addWidget(checkbox)
+
+        self.recurrence_layout.addWidget(self.every_n_days_widget)
+        self.recurrence_layout.addWidget(self.specific_weekdays_widget)
+
+        # Initially hide recurrence detail widgets
+        if not self.task.recurring:
+            self.every_n_days_widget.hide()
+            self.specific_weekdays_widget.hide()
+            self.recurrence_options_widget.hide()
+        else:
+            self.recurring_checkbox.setChecked(self.task.recurring)
+            if isinstance(self.task.recur_every, list) and len(self.task.recur_every) == 1 and isinstance(
+                    self.task.recur_every[0], int):
+                # Set "Every N days" option
+                self.every_n_days_radio.setChecked(True)
+                self.every_n_days_spinbox.setValue(self.task.recur_every[0])
+                self.update_recurrence_detail_widgets()
+            elif isinstance(self.task.recur_every, list) and all(isinstance(day, str) for day in self.task.recur_every):
+                # Set specific weekdays
+                self.specific_weekdays_radio.setChecked(True)
+                for checkbox in self.weekday_checkboxes:
+                    if checkbox.text() in self.task.recur_every:
+                        checkbox.setChecked(True)
+                self.update_recurrence_detail_widgets()
+
+        # Add recurrence options to basic layout
+        self.details_layout.addWidget(self.recurrence_options_widget)
+
+        # Connect signals
+        self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
+        self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
+        self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
 
         # Estimate
         self.estimate_spinbox = QDoubleSpinBox()
@@ -1656,15 +1729,17 @@ class TaskDetailDialog(QDialog):
         self.task.recurring = self.recurring_checkbox.isChecked()
 
         # Recur Every
-        recur_every_text = self.recur_every_edit.text().strip()
-        if recur_every_text:
-            try:
-                self.task.recur_every = [int(item) for item in recur_every_text.split(',') if item.strip().isdigit()]
-            except ValueError:
-                QMessageBox.warning(self, "Input Error", "Recur Every must be a list of integers separated by commas.")
-                return
+        if self.recurring_checkbox.isChecked():
+            if self.every_n_days_radio.isChecked():
+                self.task.recur_every = [int(self.every_n_days_spinbox.value())]
+            elif self.specific_weekdays_radio.isChecked():
+                selected_weekdays = []
+                for checkbox in self.weekday_checkboxes:
+                    if checkbox.isChecked():
+                        selected_weekdays.append(checkbox.text())
+                self.task.recur_every = selected_weekdays
         else:
-            self.task.recur_every = []
+            self.task.recur_every = None
 
         self.task.estimate = self.estimate_spinbox.value()
         self.task.time_logged = self.time_logged_spinbox.value()
@@ -1698,6 +1773,25 @@ class TaskDetailDialog(QDialog):
 
         # Refresh the task details view
         self.display_task_details()
+
+    def toggle_recurrence_options(self, state):
+        if state == Qt.CheckState.Checked.value:
+            self.recurrence_options_widget.show()
+            self.every_n_days_radio.setChecked(True)
+            self.update_recurrence_detail_widgets()
+        else:
+            self.recurrence_options_widget.hide()
+
+    def update_recurrence_detail_widgets(self):
+        if self.every_n_days_radio.isChecked():
+            self.every_n_days_widget.show()
+            self.specific_weekdays_widget.hide()
+        elif self.specific_weekdays_radio.isChecked():
+            self.every_n_days_widget.hide()
+            self.specific_weekdays_widget.show()
+        else:
+            self.every_n_days_widget.hide()
+            self.specific_weekdays_widget.hide()
 
     def increment_time_logged(self):
         """Increment the time logged by one hour."""
