@@ -6,6 +6,49 @@ from task_manager import *
 from gui import global_signals
 
 
+class TaskProgressBar(QWidget):
+    def __init__(self, task: Task, parent=None):
+        super().__init__(parent)
+        self.task = task
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_bar.setStyleSheet("QProgressBar { text-align: center; font-size: 12px; }")
+        self.update_progress()
+        layout.addWidget(self.progress_bar)
+        self.setLayout(layout)
+
+    def update_progress(self):
+        progress = self.calculate_progress()
+        self.progress_bar.setValue(progress)
+        self.progress_bar.setFormat(f"{progress}%")
+
+    def calculate_progress(self):
+        total_weight = 0
+        progress = 0
+
+        if self.task.count_required > 0:  # Use count_completed
+            count_progress = (self.task.count_completed / self.task.count_required) * 100
+            progress += count_progress
+            total_weight += 1
+
+        if self.task.estimate > 0:  # Use time_logged
+            time_progress = (self.task.time_logged / self.task.estimate) * 100
+            progress += time_progress
+            total_weight += 1
+
+        if self.task.subtasks:
+            completed_subtasks = sum(subtask.completed for subtask in self.task.subtasks)
+            subtask_progress = (completed_subtasks / len(self.task.subtasks)) * 100
+            progress += subtask_progress
+            total_weight += 1
+
+        return int(progress / total_weight) if total_weight > 0 else 0
+
+
 class ResourcesWidget(QWidget):
     """
     A widget for managing a list of resources (URLs or file paths) associated with a task.
@@ -87,7 +130,6 @@ class ResourcesWidget(QWidget):
         if resource:
             self.add_resource_node(resource)
             self.task.resources.append(resource)
-            print(self.task.resources)
             self.task_list_updated()
         self.input_box.hide()
         self.input_box.clear()
@@ -586,7 +628,6 @@ class SubtaskItemWidget(QWidget):
 
         self.checkbox = QCheckBox(self.subtask.title)
         self.checkbox.setChecked(self.subtask.completed)
-        print(self.subtask.completed)
         self.checkbox.stateChanged.connect(self.on_state_changed)
         layout.addWidget(self.checkbox)
 
@@ -597,10 +638,6 @@ class SubtaskItemWidget(QWidget):
         self.drag_handle.setStyleSheet("font-size: 16px;")
         layout.addWidget(self.drag_handle)
 
-        self.drag_handle.mousePressEvent = self.drag_handle_mouse_press_event
-        self.drag_handle.mouseMoveEvent = self.drag_handle_mouse_move_event
-        self.drag_handle.mouseReleaseEvent = self.drag_handle_mouse_release_event
-
         self.drag_start_position = None
 
     def on_state_changed(self, state):
@@ -610,55 +647,15 @@ class SubtaskItemWidget(QWidget):
         self.subtask.completed = (state == Qt.CheckState.Checked)
         self.parent.toggle_subtask_completion(self.subtask, state)
 
-    def drag_handle_mouse_press_event(self, event):
-        """
-        Handle mouse press event for drag functionality.
-        """
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_start_position = event.pos()
-            self.drag_handle.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-
-    def drag_handle_mouse_move_event(self, event):
-        """
-        Handle mouse movement to initiate drag if beyond drag threshold.
-        """
-        if event.buttons() & Qt.MouseButton.LeftButton:
-            if (event.pos() - self.drag_start_position).manhattanLength() > QApplication.startDragDistance():
-                self.start_drag()
-                event.accept()
-
-    def drag_handle_mouse_release_event(self, event):
-        """
-        Reset cursor when mouse button is released.
-        """
-        self.drag_handle.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.clearFocus()
-        event.accept()
-
-    def start_drag(self):
-        """
-        Initiate a drag-and-drop operation for the widget.
-        """
-        drag = QDrag(self)
-        mime_data = QMimeData()
-        mime_data.setText(str(self.subtask.id))
-        drag.setMimeData(mime_data)
-
-        pixmap = self.grab()
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(self.drag_start_position)
-
-        drag.exec(Qt.DropAction.MoveAction)
-
 
 class SubtaskWindow(QWidget):
     """
     Window for managing subtasks within a task, providing UI for adding, editing, deleting, and reordering subtasks.
     """
 
-    def __init__(self, task, task_list):
+    def __init__(self, task, task_list, parent=None):
         super().__init__()
+        self.parent = parent
         self.task = task
         self.task_list = task_list
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -713,6 +710,7 @@ class SubtaskWindow(QWidget):
             self.task_list.add_subtask(self.task, new_subtask)
             self.subtask_input.clear()
             self.load_subtasks()
+        global_signals.task_list_updated.emit()
 
     def toggle_subtask_completion(self, subtask, state):
         """
@@ -723,6 +721,7 @@ class SubtaskWindow(QWidget):
         elif state == 0:
             subtask.completed = False
         self.task_list.update_subtask(subtask)
+        self.parent.progress_bar.update_progress()
         global_signals.task_list_updated.emit()
 
     def show_context_menu(self, position):
@@ -775,8 +774,10 @@ class SubtaskWindow(QWidget):
             del widget.line_edit
             self.subtask_list.clearFocus()
             self.clearFocus()
+            global_signals.task_list_updated.emit()
         else:
             self.delete_subtask(item)
+            global_signals.task_list_updated.emit()
 
     def delete_subtask(self, item):
         """
@@ -786,8 +787,9 @@ class SubtaskWindow(QWidget):
         subtask = self.task.subtasks[index]
         self.task_list.remove_subtask(self.task, subtask)
         self.load_subtasks()
+        global_signals.task_list_updated.emit()
 
-    def on_subtask_reordered(self, start, end, destination, row):
+    def on_subtask_reordered(self):
         """
         Reorder subtasks within the list and update their order in the database.
         """
@@ -802,9 +804,7 @@ class SubtaskWindow(QWidget):
 
         self.task.subtasks = [id_to_subtask[subtask_id] for subtask_id in new_order_ids]
         self.task_list.update_task(self.task)
-
-        self.subtask_list.clearSelection()
-        self.subtask_list.clearFocus()
+        global_signals.task_list_updated.emit()
 
 
 class TagInputWidget(QWidget):
@@ -1029,6 +1029,7 @@ class AddTaskDialog(QDialog):
         # Initially hide recurrence detail widgets
         self.every_n_days_widget.hide()
         self.specific_weekdays_widget.hide()
+        self.recurrence_options_widget.hide()
 
         # Add recurrence options to basic layout
         self.basic_layout.addRow(self.recurrence_options_widget)
@@ -1194,27 +1195,43 @@ class AddTaskDialog(QDialog):
         return task_data
 
 
-class TaskDetailDialog(QDialog):
+class TaskDetailDock(QDockWidget):
     def __init__(self, task, task_list_widget, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Task Details")
 
-        # Set dialog properties
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
+        self.setWindowTitle(task.title)
+
+        # main window
+        self.parent = parent
+
         self.task = task
         self.task_list_widget = task_list_widget
         self.is_edit_mode = False
 
+        self.set_allowed_areas()
         self.setup_ui()
         self.display_task_details()
         self.setup_due_date_display()
         self.installEventFilter(self)
 
+    def closeEvent(self, event):
+        self.deleteLater()
+        super().closeEvent(event)
+
+    def set_allowed_areas(self):
+        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
+                         QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+                         QDockWidget.DockWidgetFeature.DockWidgetClosable)
+
     def setup_ui(self):
+        self.widget = QWidget()
+        self.setWidget(self.widget)
         # Main layout for the dialog
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
+        self.widget.setLayout(self.main_layout)
 
         # Container widget for the content
         self.content_widget = QWidget()
@@ -1223,15 +1240,18 @@ class TaskDetailDialog(QDialog):
         # Layout for the content widget
         self.content_layout = QVBoxLayout(self.content_widget)
 
+        self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+
         # Header Layout: Task Name, Due Date, Edit, and Close Buttons
         self.header_layout = QHBoxLayout()
 
         # Initialize the Task Name Label as a QLabel initially
         self.task_name_label = QLabel()
         self.task_name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        self.task_name_label.setText(self.task.title)  # Set initial text from task
+        self.task_name_label.setText(self.task.title)
         self.task_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.task_name_label.mousePressEvent = self.edit_task_name  # Trigger edit on click
+        self.task_name_label.mousePressEvent = self.edit_task_name
         self.header_layout.addWidget(self.task_name_label)
 
         # Due Date Label
@@ -1241,7 +1261,12 @@ class TaskDetailDialog(QDialog):
         self.due_date_label.mousePressEvent = self.open_due_date_picker
         self.header_layout.addWidget(self.due_date_label)
 
-        self.header_layout.addStretch()
+        if self.task.count_required or self.task.estimate or self.task.subtasks:
+            self.progress_bar = TaskProgressBar(self.task)
+            self.header_layout.addWidget(self.progress_bar)
+        else:
+            self.header_layout.addStretch()
+            self.progress_bar = None
 
         # Edit Button
         self.edit_button = QPushButton("Edit")
@@ -1322,20 +1347,20 @@ class TaskDetailDialog(QDialog):
             recurring_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             self.details_layout.addWidget(recurring_label, alignment=Qt.AlignmentFlag.AlignRight)
 
-        dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
-        dropdowns.connect_dropdown_signals(
+        self.dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
+        self.dropdowns.connect_dropdown_signals(
             lambda value: self.update_task_attribute('status', value),
             lambda value: self.update_task_attribute('deadline_flexibility', value),
             lambda value: self.update_task_attribute('effort_level', value)
         )
-        self.details_layout.addWidget(dropdowns)
+        self.details_layout.addWidget(self.dropdowns)
 
         # Check if task has a description
         if self.task.description:
             description_container = DescriptionContainer(self.task.description)
             self.details_layout.addWidget(description_container, stretch=0)
 
-        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list)
+        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list, parent=self)
         self.details_layout.addWidget(sub_task_window)
 
         # Resources
@@ -1446,20 +1471,13 @@ class TaskDetailDialog(QDialog):
             print(f"Error in keyPressEvent: {e}")
 
     def eventFilter(self, source, event):
-        # Detect mouse clicks outside the dialog to close it
-        if event.type() == QEvent.Type.MouseButtonPress:
-            if not self.geometry().contains(event.globalPosition().toPoint()):
-                self.close()
-                return True
         if event.type() == QEvent.Type.MouseButtonPress:
             try:
                 if hasattr(self, 'task_name_edit') and self.task_name_edit.isVisible():
-                    # Check if the click is outside the QLineEdit
                     if not self.task_name_edit.geometry().contains(event.pos()):
                         self.finish_editing_task_name()
-                        return True  # Event has been handled
+                        return True
             except RuntimeError:
-                # Handle case where task_name_edit has been deleted
                 pass
         return super().eventFilter(source, event)
 
@@ -1469,7 +1487,7 @@ class TaskDetailDialog(QDialog):
         due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
         due_time = QTime.fromString(self.task.due_time, "HH:mm")
 
-        if due_date != QDate(2000, 1, 1):  # Check if due date is set
+        if due_date != QDate(2000, 1, 1):
             today = QDate.currentDate()
             days_to_due = today.daysTo(due_date)
 
@@ -1488,52 +1506,32 @@ class TaskDetailDialog(QDialog):
         self.due_date_label.setText(due_date_text)
 
     def open_due_date_picker(self, event):
-        # Create a transparent popup dialog
         dialog = QDialog(self)
         dialog.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-
-        # Main vertical layout to hold the calendar, time, and buttons
         layout = QVBoxLayout(dialog)
         dialog.setLayout(layout)
-
-        # Calendar widget for due date
         calendar = QCalendarWidget(dialog)
-
-        # Check if the due date is the default placeholder; if so, set it to today
         default_due_date = "2000-01-01"
         current_due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
         if current_due_date.toString("yyyy-MM-dd") != default_due_date:
-            # Otherwise, use the existing due date
             calendar.setSelectedDate(current_due_date)
-
-        # Connect the calendar selection to update the due date
         calendar.selectionChanged.connect(lambda: self.update_due_date_from_calendar(calendar))
         layout.addWidget(calendar)
-
-        # Time Edit widget for due time
         time_edit = QTimeEdit(dialog)
         current_due_time = QTime.fromString(self.task.due_time, "HH:mm")
         time_edit.setTime(current_due_time)
         time_edit.setDisplayFormat("h:mm AP")
         time_edit.timeChanged.connect(lambda: self.update_due_time_from_time_edit(time_edit))
         layout.addWidget(time_edit)
-
-        # Button layout for delete options
         button_layout = QHBoxLayout()
-
-        # Button to clear due date
         clear_date_button = QPushButton("Clear Date", dialog)
         clear_date_button.clicked.connect(lambda: self.clear_due_date(calendar))
         button_layout.addWidget(clear_date_button)
-
-        # Button to clear due time
         clear_time_button = QPushButton("Clear Time", dialog)
         clear_time_button.clicked.connect(lambda: self.clear_due_time(time_edit))
         button_layout.addWidget(clear_time_button)
 
         layout.addLayout(button_layout)
-
-        # Position the dialog at the center of the due_date_label click
         label_pos = self.due_date_label.mapToGlobal(
             QPoint(self.due_date_label.width() // 2, self.due_date_label.height() // 2))
         dialog.move(label_pos - QPoint(dialog.width() // 2, dialog.height() // 2))
@@ -1615,13 +1613,85 @@ class TaskDetailDialog(QDialog):
         self.add_labeled_widget("Categories:", self.categories_input)
 
         # Recurring
-        self.recurring_checkbox = QCheckBox("Recurring")
-        self.recurring_checkbox.setChecked(self.task.recurring)
+        self.recurring_checkbox = QCheckBox("Recurring", self)
         self.details_layout.addWidget(self.recurring_checkbox)
 
-        # Recur Every
-        self.recur_every_edit = QLineEdit(", ".join(map(str, self.task.recur_every)))
-        self.add_labeled_widget("Recur Every (list of days or numbers):", self.recur_every_edit)
+        # Recurrence Options
+        self.recurrence_options_widget = QWidget()
+        self.recurrence_layout = QVBoxLayout(self.recurrence_options_widget)
+
+        self.recur_type_group = QButtonGroup(self)
+
+        self.every_n_days_radio = QRadioButton("Every N days")
+        self.specific_weekdays_radio = QRadioButton("Specific weekdays")
+
+        self.recur_type_group.addButton(self.every_n_days_radio)
+        self.recur_type_group.addButton(self.specific_weekdays_radio)
+
+        self.recurrence_layout.addWidget(self.every_n_days_radio)
+        self.recurrence_layout.addWidget(self.specific_weekdays_radio)
+
+        # Every N Days Widget
+        self.every_n_days_widget = QWidget()
+        self.every_n_days_layout = QHBoxLayout(self.every_n_days_widget)
+
+        self.every_n_days_label = QLabel("Every")
+        self.every_n_days_spinbox = QSpinBox()
+        self.every_n_days_spinbox.setMinimum(1)
+        self.every_n_days_spinbox.setMaximum(365)
+        self.every_n_days_spinbox.setValue(1)
+        self.every_n_days_unit_label = QLabel("day(s)")
+
+        self.every_n_days_layout.addWidget(self.every_n_days_label)
+        self.every_n_days_layout.addWidget(self.every_n_days_spinbox)
+        self.every_n_days_layout.addWidget(self.every_n_days_unit_label)
+
+        # Specific Weekdays Widget
+        self.specific_weekdays_widget = QWidget()
+        self.specific_weekdays_layout = QHBoxLayout(self.specific_weekdays_widget)
+
+        self.specific_weekdays_layout.setSpacing(0)
+        self.specific_weekdays_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.weekday_checkboxes = []
+        weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        for day in weekdays:
+            checkbox = QCheckBox(day)
+            checkbox.setObjectName(f"{day}Checkbox")
+            self.weekday_checkboxes.append(checkbox)
+            self.specific_weekdays_layout.addWidget(checkbox)
+
+        self.recurrence_layout.addWidget(self.every_n_days_widget)
+        self.recurrence_layout.addWidget(self.specific_weekdays_widget)
+
+        # Initially hide recurrence detail widgets
+        if not self.task.recurring:
+            self.every_n_days_widget.hide()
+            self.specific_weekdays_widget.hide()
+            self.recurrence_options_widget.hide()
+        else:
+            self.recurring_checkbox.setChecked(self.task.recurring)
+            if isinstance(self.task.recur_every, list) and len(self.task.recur_every) == 1 and isinstance(
+                    self.task.recur_every[0], int):
+                # Set "Every N days" option
+                self.every_n_days_radio.setChecked(True)
+                self.every_n_days_spinbox.setValue(self.task.recur_every[0])
+                self.update_recurrence_detail_widgets()
+            elif isinstance(self.task.recur_every, list) and all(isinstance(day, str) for day in self.task.recur_every):
+                # Set specific weekdays
+                self.specific_weekdays_radio.setChecked(True)
+                for checkbox in self.weekday_checkboxes:
+                    if checkbox.text() in self.task.recur_every:
+                        checkbox.setChecked(True)
+                self.update_recurrence_detail_widgets()
+
+        # Add recurrence options to basic layout
+        self.details_layout.addWidget(self.recurrence_options_widget)
+
+        # Connect signals
+        self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
+        self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
+        self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
 
         # Estimate
         self.estimate_spinbox = QDoubleSpinBox()
@@ -1676,15 +1746,17 @@ class TaskDetailDialog(QDialog):
         self.task.recurring = self.recurring_checkbox.isChecked()
 
         # Recur Every
-        recur_every_text = self.recur_every_edit.text().strip()
-        if recur_every_text:
-            try:
-                self.task.recur_every = [int(item) for item in recur_every_text.split(',') if item.strip().isdigit()]
-            except ValueError:
-                QMessageBox.warning(self, "Input Error", "Recur Every must be a list of integers separated by commas.")
-                return
+        if self.recurring_checkbox.isChecked():
+            if self.every_n_days_radio.isChecked():
+                self.task.recur_every = [int(self.every_n_days_spinbox.value())]
+            elif self.specific_weekdays_radio.isChecked():
+                selected_weekdays = []
+                for checkbox in self.weekday_checkboxes:
+                    if checkbox.isChecked():
+                        selected_weekdays.append(checkbox.text())
+                self.task.recur_every = selected_weekdays
         else:
-            self.task.recur_every = []
+            self.task.recur_every = None
 
         self.task.estimate = self.estimate_spinbox.value()
         self.task.time_logged = self.time_logged_spinbox.value()
@@ -1719,6 +1791,25 @@ class TaskDetailDialog(QDialog):
         # Refresh the task details view
         self.display_task_details()
 
+    def toggle_recurrence_options(self, state):
+        if state == Qt.CheckState.Checked.value:
+            self.recurrence_options_widget.show()
+            self.every_n_days_radio.setChecked(True)
+            self.update_recurrence_detail_widgets()
+        else:
+            self.recurrence_options_widget.hide()
+
+    def update_recurrence_detail_widgets(self):
+        if self.every_n_days_radio.isChecked():
+            self.every_n_days_widget.show()
+            self.specific_weekdays_widget.hide()
+        elif self.specific_weekdays_radio.isChecked():
+            self.every_n_days_widget.hide()
+            self.specific_weekdays_widget.show()
+        else:
+            self.every_n_days_widget.hide()
+            self.specific_weekdays_widget.hide()
+
     def increment_time_logged(self):
         """Increment the time logged by one hour."""
         if self.task.time_logged < self.task.estimate:
@@ -1726,6 +1817,7 @@ class TaskDetailDialog(QDialog):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def decrement_time_logged(self):
         """Decrement the time logged by one hour, ensuring it doesn't go below zero."""
@@ -1734,6 +1826,7 @@ class TaskDetailDialog(QDialog):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def increment_count(self):
         """Increment the count completed by one."""
@@ -1742,6 +1835,7 @@ class TaskDetailDialog(QDialog):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def decrement_count(self):
         """Decrement the count completed by one, ensuring it doesn't go below zero."""
@@ -1750,6 +1844,7 @@ class TaskDetailDialog(QDialog):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def clear_layout(self, layout):
         while layout.count():
@@ -1759,10 +1854,3 @@ class TaskDetailDialog(QDialog):
                 widget.deleteLater()
             elif item.layout() is not None:
                 self.clear_layout(item.layout())
-
-    def focusOutEvent(self, event):
-        """Close the dialog when it loses focus to a widget outside itself."""
-        # Check if the new focus widget is not a descendant of this dialog
-        if not self.isAncestorOf(QApplication.focusWidget()):
-            self.close()
-        super().focusOutEvent(event)

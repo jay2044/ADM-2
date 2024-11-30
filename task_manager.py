@@ -141,7 +141,8 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name, manager, queue=False, stack=False, priority=False, category=None, task_categories=None):
+    def __init__(self, list_name, manager, queue=False, stack=False, priority=False, category=None,
+                 task_categories=None):
         self.list_name = list_name
         self.manager = manager
         self.queue = queue
@@ -196,6 +197,7 @@ class TaskList:
         subtask.task_id = task.id
         self.manager.add_subtask(subtask)
         task.subtasks.append(subtask)
+        self.update_task(task)
 
     def remove_subtask(self, task, subtask):
         self.manager.remove_subtask(subtask)
@@ -382,6 +384,29 @@ class TaskListManager:
         except sqlite3.Error as e:
             print(f"Error creating tables: {e}")
 
+    def get_category_tasklist_names(self):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT id, name FROM categories ORDER BY \"order\"")
+            categories = cursor.fetchall()
+            category_tasklists = {category["name"]: [] for category in categories}
+            cursor.execute("""
+                SELECT task_lists.list_name, categories.name AS category_name
+                FROM task_lists
+                LEFT JOIN categories ON task_lists.category_id = categories.id
+                ORDER BY task_lists.\"order\"
+            """)
+            task_lists = cursor.fetchall()
+            for task_list in task_lists:
+                category_name = task_list["category_name"] or "Uncategorized"
+                if category_name not in category_tasklists:
+                    category_tasklists[category_name] = []
+                category_tasklists[category_name].append(task_list["list_name"])
+            return category_tasklists
+        except sqlite3.Error as e:
+            print(f"Error: {e}")
+            return {}
+
     def load_categories(self):
         categories = {}
         cursor = self.conn.cursor()
@@ -543,7 +568,6 @@ class TaskListManager:
             subtask.id
         ))
         self.conn.commit()
-        print(f"subtask updated {subtask.completed}")
 
     def remove_subtask(self, subtask):
         cursor = self.conn.cursor()
@@ -781,7 +805,7 @@ class TaskListManager:
             cursor.execute("""
                 UPDATE tasks
                 SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
-                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?, "order"=?
+                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?, "order"=?, list_name=?
                 WHERE id=?
             """, (
                 task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
@@ -795,21 +819,19 @@ class TaskListManager:
                 task.notes, task.time_logged,
                 json.dumps(task.recurring_subtasks) if task.recurring_subtasks else None,
                 task.order,
-                task.id)
-                           )
+                task.list_name,
+                task.id
+            ))
             self.conn.commit()
 
-            # Update subtasks
             existing_subtask_ids = [subtask.id for subtask in task.subtasks if subtask.id]
             cursor.execute("SELECT id FROM subtasks WHERE task_id=?", (task.id,))
-            db_subtask_ids = [row['id'] for row in cursor.fetchall()]
+            db_subtask_ids = [row["id"] for row in cursor.fetchall()]
 
-            # Remove subtasks that are no longer in the task's subtasks list
             for db_subtask_id in db_subtask_ids:
                 if db_subtask_id not in existing_subtask_ids:
                     self.remove_subtask(Subtask(subtask_id=db_subtask_id))
 
-            # Add or update subtasks
             for subtask in task.subtasks:
                 if subtask.id:
                     self.update_subtask(subtask)
@@ -817,8 +839,7 @@ class TaskListManager:
                     subtask.task_id = task.id
                     self.add_subtask(subtask)
 
-            print(f"Task (id:{task.id}) updated successfully in the database.")
-
+            self.conn.commit()
         except Exception as e:
             print(f"Failed to update task: {e}")
 
