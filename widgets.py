@@ -306,9 +306,109 @@ class TaskListWidget(QListWidget):
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.load_tasks()
         global_signals.task_list_updated.connect(self.load_tasks)
         self.model().rowsMoved.connect(self.on_rows_moved)
+
+    def multi_selection_mode(self):
+        self.clear()
+
+        # Load and display tasks with checkboxes
+        filtered = False
+        if self.task_list.queue or self.task_list.stack or self.task_list.priority:
+            filtered = True
+        priority_filter = self.task_list.priority
+
+        try:
+            self.task_list.tasks = self.task_list.load_tasks()
+
+            if not filtered:
+                tasks = sorted(self.task_list.get_tasks(), key=lambda task: task.order)
+            else:
+                tasks = self.task_list.get_tasks()
+
+            if priority_filter:
+                tasks = sorted(tasks, key=lambda task: task.priority, reverse=True)
+
+            for task in tasks:
+                item = QListWidgetItem(task.title)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsSelectable)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                self.addItem(item)
+        except Exception as e:
+            print(f"Error in multi_selection_mode: {e}")
+
+    def get_selected_items(self):
+        selected_items = []
+        for index in range(self.count()):
+            item = self.item(index)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                selected_items.append(item.text())
+        return selected_items
+
+    def select_all_items(self):
+        for index in range(self.count()):
+            item = self.item(index)
+            if item:
+                item.setCheckState(Qt.CheckState.Checked)
+
+    def clear_selection_all_items(self):
+        for index in range(self.count()):
+            item = self.item(index)
+            if item:
+                item.setCheckState(Qt.CheckState.Unchecked)
+
+    def delete_selected_items(self):
+        tasks_to_delete = self.get_selected_items()
+        tasks = self.task_list.get_tasks()
+        for index in reversed(range(self.count())):
+            item = self.item(index)
+            if item and item.text() in tasks_to_delete:
+                for task in tasks:
+                    if task.title == item.text():
+                        self.delete_task(task)
+                        print(f"Deleted {item.text()}")
+                        self.takeItem(index)
+
+    def move_selected_items(self):
+        tasks_to_move = self.get_selected_items()
+        tasks = self.task_list.get_tasks()
+
+        # Create a context menu for selecting the destination list
+        move_to_menu = QMenu("Move To", self)
+        categories_tasklists = self.manager.get_category_tasklist_names()
+
+        # Populate the menu with categories and task lists
+        for category, task_lists in categories_tasklists.items():
+            if task_lists:
+                category_menu = QMenu(category, self)
+                for list_name in task_lists:
+                    if list_name != self.task_list_name:  # Exclude current list
+                        move_to_action = QAction(list_name, self)
+                        move_to_action.triggered.connect(
+                            lambda _, name=list_name: self.perform_move(tasks_to_move, name))
+                        category_menu.addAction(move_to_action)
+                if not category_menu.isEmpty():
+                    move_to_menu.addMenu(category_menu)
+
+        # Display the menu
+        cursor_position = self.cursor().pos()  # Get the current cursor position
+        move_to_menu.exec(cursor_position)
+
+    def perform_move(self, tasks_to_move, new_list_name):
+        tasks = self.task_list.get_tasks()
+        for index in reversed(range(self.count())):
+            item = self.item(index)
+            if item and item.text() in tasks_to_move:
+                for task in tasks:
+                    if task.title == item.text():
+                        # Update task with the new list name
+                        task.list_name = new_list_name
+                        self.task_list.update_task(task)
+                        print(f"Moved {item.text()} to {new_list_name}")
+                        self.takeItem(index)
+        global_signals.task_list_updated.emit()
 
     def filter_tasks(self, text):
         first_visible_item = None
@@ -368,6 +468,7 @@ class TaskListWidget(QListWidget):
                 item.setSizeHint(task_widget.sizeHint())
                 self.addItem(item)
                 self.setItemWidget(item, task_widget)
+            self.in_multi_selection_mode = False
         except Exception as e:
             print(f"Error in load_tasks: {e}")
 
@@ -981,6 +1082,7 @@ class TaskListToolbar(QToolBar):
         self.add_action("Q", parent, parent.set_queue)
         self.add_action("S", parent, parent.set_stack)
         self.add_action("P", parent, parent.priority_sort)
+        self.add_action("MS", parent, parent.toggle_multi_select)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
     def add_action(self, text, parent, function):
@@ -994,6 +1096,8 @@ class TaskListDockStacked(QDockWidget):
         super().__init__("Tasks", parent)
         self.type = "stack"
         self.priority_filter = False
+        self.multi_select_mode_toggle_bool = False
+        self.moving = False
         self.parent = parent
         self.task_manager = self.parent.task_manager
         self.set_allowed_areas()
@@ -1001,6 +1105,8 @@ class TaskListDockStacked(QDockWidget):
         self.setObjectName("taskListDockStacked")
         self.toolbar.setObjectName("taskListToolbar")
         self.stack_widget.setObjectName("stackWidget")
+
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
     def filter_current_task_list(self, text):
         current_task_list_widget = self.get_current_task_list_widget()
@@ -1121,6 +1227,48 @@ class TaskListDockStacked(QDockWidget):
         except Exception as e:
             print(f"Error in priority_sort: {e}")
 
+    def toggle_multi_select(self):
+        current_task_list_widget = self.get_current_task_list_widget()
+
+        # Check if there is a valid current task list widget
+        if not current_task_list_widget or current_task_list_widget.count() == 0:
+            if not self.multi_select_mode_toggle_bool:
+                print("No tasks available or invalid task list widget.")
+                self.multi_select_mode_toggle_bool = False
+                self.toolbar.actions()[4].setCheckable(False)
+                self.toolbar.actions()[4].setChecked(False)
+                return
+
+        self.multi_select_mode_toggle_bool = not self.multi_select_mode_toggle_bool
+        self.toolbar.actions()[4].setCheckable(True if self.multi_select_mode_toggle_bool else False)
+        self.toolbar.actions()[4].setChecked(True if self.multi_select_mode_toggle_bool else False)
+
+        if self.multi_select_mode_toggle_bool:
+            self.multi_selection_tool_bar = QToolBar(self)
+            self.multi_selection_tool_bar.addAction("Select All", current_task_list_widget.select_all_items)
+            self.multi_selection_tool_bar.addAction("Clear Selection",
+                                                    current_task_list_widget.clear_selection_all_items)
+            self.multi_selection_tool_bar.addAction("Delete", current_task_list_widget.delete_selected_items)
+            self.multi_selection_tool_bar.addAction("Move To", self.move_action)
+
+            self.layout.insertWidget(1, self.multi_selection_tool_bar)
+            current_task_list_widget.multi_selection_mode()
+        else:
+            if hasattr(self, "multi_selection_tool_bar"):
+                self.multi_selection_tool_bar.hide()
+            global_signals.task_list_updated.emit()
+
+    def move_action(self):
+        self.moving = True
+        self.get_current_task_list_widget().move_selected_items()
+        self.moving = False
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        print("TaskListDockStacked lost focus")
+        if self.multi_select_mode_toggle_bool and not self.moving:
+            self.toggle_multi_select()
+
     def get_current_task_list_widget(self):
         current_widget = self.stack_widget.currentWidget()
         return current_widget if isinstance(current_widget, TaskListWidget) else None
@@ -1138,6 +1286,9 @@ class TaskListDock(QDockWidget):
         self.setFloating(True)
         self.setMouseTracking(True)
         self.dragging = False
+
+        self.multi_select_mode_toggle_bool = False
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
         task_list = self.parent.task_lists.get(task_list_name,
                                                TaskList(task_list_name, self.task_manager, False, False, False))
@@ -1242,6 +1393,48 @@ class TaskListDock(QDockWidget):
         if self.dragging:
             self.dragging = False
             self.releaseMouse()
+
+    def toggle_multi_select(self):
+        current_task_list_widget = self.task_list_widget
+
+        # Check if there is a valid current task list widget
+        if not current_task_list_widget or current_task_list_widget.count() == 0:
+            if not self.multi_select_mode_toggle_bool:
+                print("No tasks available or invalid task list widget.")
+                self.multi_select_mode_toggle_bool = False
+                self.toolbar.actions()[4].setCheckable(False)
+                self.toolbar.actions()[4].setChecked(False)
+                return
+
+        self.multi_select_mode_toggle_bool = not self.multi_select_mode_toggle_bool
+        self.toolbar.actions()[4].setCheckable(True if self.multi_select_mode_toggle_bool else False)
+        self.toolbar.actions()[4].setChecked(True if self.multi_select_mode_toggle_bool else False)
+
+        if self.multi_select_mode_toggle_bool:
+            self.multi_selection_tool_bar = QToolBar(self)
+            self.multi_selection_tool_bar.addAction("Select All", current_task_list_widget.select_all_items)
+            self.multi_selection_tool_bar.addAction("Clear Selection",
+                                                    current_task_list_widget.clear_selection_all_items)
+            self.multi_selection_tool_bar.addAction("Delete", current_task_list_widget.delete_selected_items)
+            self.multi_selection_tool_bar.addAction("Move To", self.move_action)
+
+            self.layout.insertWidget(1, self.multi_selection_tool_bar)
+            current_task_list_widget.multi_selection_mode()
+        else:
+            if hasattr(self, "multi_selection_tool_bar"):
+                self.multi_selection_tool_bar.hide()
+            global_signals.task_list_updated.emit()
+
+    def move_action(self):
+        self.moving = True
+        self.task_list_widget.move_selected_items()
+        self.moving = False
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        print("TaskListDockStacked lost focus")
+        if self.multi_select_mode_toggle_bool and not self.moving:
+            self.toggle_multi_select()
 
 
 class HistoryDock(QDockWidget):
