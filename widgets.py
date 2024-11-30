@@ -384,6 +384,7 @@ class TaskListWidget(QListWidget):
             print(f"Error in delete_task: {e}")
 
     def startDrag(self, supportedActions):
+        print("yo")
         item = self.currentItem()
         if item:
             task_widget = self.itemWidget(item)

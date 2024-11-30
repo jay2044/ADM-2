@@ -1293,6 +1293,7 @@ class TaskDetailDialog(QDialog):
             self.header_layout.addWidget(self.progress_bar)
         else:
             self.header_layout.addStretch()
+            self.progress_bar = None
 
         # Edit Button
         self.edit_button = QPushButton("Edit")
@@ -1497,7 +1498,8 @@ class TaskDetailDialog(QDialog):
             print(f"Error in keyPressEvent: {e}")
 
     def eventFilter(self, source, event):
-        self.progress_bar.update_progress()
+        if self.progress_bar:
+            self.progress_bar.update_progress()
         # Detect mouse clicks outside the dialog to close it
         if event.type() == QEvent.Type.MouseButtonPress:
             if not self.geometry().contains(event.globalPosition().toPoint()):
