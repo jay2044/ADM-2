@@ -55,6 +55,34 @@ class MainWindow(QMainWindow):
         self.load_settings()
         self.setAcceptDrops(True)
         self.setup_signals()
+        # self.reset_settings()
+
+    def reset_settings(self):
+        confirm = QMessageBox.question(
+            self,
+            "Reset Settings",
+            "Are you sure you want to reset all settings to default? This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            # Clear the settings
+            self.settings.clear()
+
+            # Reset UI components to their default state
+            self.restoreState(QByteArray())  # Clear window state
+            self.task_lists.clear()
+            self.hash_to_widget.clear()
+
+            # Close all dock widgets
+            for dock_widget in self.findChildren(QDockWidget):
+                dock_widget.close()
+
+            # Notify the user and prompt for restart
+            QMessageBox.information(
+                self,
+                "Settings Reset",
+                "All settings have been reset. Please restart the application for changes to take effect."
+            )
 
     def setup_signals(self):
         global_signals.task_list_updated.connect(self.handle_task_list_update)
@@ -96,17 +124,20 @@ class MainWindow(QMainWindow):
     def setup_right_widgets(self):
         self.stacked_task_list.setObjectName("stackedTaskListDock")
         self.stacked_task_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.stacked_task_list)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.stacked_task_list)
+        self.splitDockWidget(self.navigation_sidebar_dock, self.stacked_task_list, Qt.Orientation.Horizontal)
 
     def setup_history_dock(self):
         self.history_dock = HistoryDock(self)
         self.history_dock.setObjectName("historyDock")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
+        self.history_dock.hide()
 
     def setup_calendar_dock(self):
         self.calendar_dock = CalendarDock(self)
         self.calendar_dock.setObjectName("calendarDock")
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.calendar_dock)
+        self.calendar_dock.hide()
 
     def closeEvent(self, event):
         self.save_settings()
@@ -156,8 +187,18 @@ class MainWindow(QMainWindow):
         task_detail_dock.setObjectName(f"TaskListDock_{task.title}_{unique_id}")
         task_detail_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
 
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, task_detail_dock)
-        task_detail_dock.show()
+        # Check existing docks in the right area
+        existing_docks = [
+            d for d in self.findChildren(QDockWidget)
+            if self.dockWidgetArea(d) == Qt.DockWidgetArea.RightDockWidgetArea
+        ]
+
+        if existing_docks:
+            # Split the last dock to place the new one to its right
+            self.splitDockWidget(existing_docks[-1], task_detail_dock, Qt.Orientation.Horizontal)
+        else:
+            # No existing docks, add to the right dock area
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, task_detail_dock)
 
     def clear_settings(self):
         self.settings.clear()
