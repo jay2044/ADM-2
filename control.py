@@ -1198,33 +1198,39 @@ class AddTaskDialog(QDialog):
         return task_data
 
 
-class TaskDetailDialog(QDialog):
+class TaskDetailDialog(QDockWidget):
     def __init__(self, task, task_list_widget, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Task Details")
 
-        # Set dialog properties
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
-        self.setModal(True)
+        self.setWindowTitle(task.title)
+
+        # main window
+        self.parent = parent
 
         self.task = task
         self.task_list_widget = task_list_widget
         self.is_edit_mode = False
 
+        self.set_allowed_areas()
         self.setup_ui()
         self.display_task_details()
         self.setup_due_date_display()
-        self.installEventFilter(self)
+        # self.installEventFilter(self)
 
-    def reopen_dialog(self):
-        self.hide()
-        self.show()
+    def set_allowed_areas(self):
+        self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable |
+                         QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+                         QDockWidget.DockWidgetFeature.DockWidgetClosable)
 
     def setup_ui(self):
+        self.widget = QWidget()
+        self.setWidget(self.widget)
         # Main layout for the dialog
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
+        self.widget.setLayout(self.main_layout)
 
         # Container widget for the content
         self.content_widget = QWidget()

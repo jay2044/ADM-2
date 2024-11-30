@@ -84,7 +84,6 @@ class MainWindow(QMainWindow):
         self.central_dock_widget.setWidget(central_content)
         self.central_dock_widget.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
 
-
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.central_dock_widget)
         self.central_dock_widget.setFixedWidth(200)
 
@@ -138,7 +137,7 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def save_settings(self):
-        settings = QSettings("YourAppz", "ADM")
+        settings = QSettings("x", "ADM")
         settings.setValue("mainWindowState", self.saveState())
 
         open_dock_widgets = []
@@ -152,7 +151,7 @@ class MainWindow(QMainWindow):
         settings.setValue("openDockWidgets", json.dumps(open_dock_widgets))
 
     def load_settings(self):
-        settings = QSettings("YourAppz", "ADM")
+        settings = QSettings("x", "ADM")
 
         open_dock_widgets = json.loads(settings.value("openDockWidgets", "[]"))
         for dock_info in open_dock_widgets:
@@ -171,6 +170,15 @@ class MainWindow(QMainWindow):
 
     def toggle_calendar(self):
         self.calendar_dock.setVisible(not self.calendar_dock.isVisible())
+
+    def add_task_detail_dock(self, task, task_list_widget):
+        unique_id = random.randint(1000, 9999)
+        task_detail_dock = TaskDetailDialog(task, task_list_widget, parent=self)
+        task_detail_dock.setObjectName(f"TaskListDock_{task.title}_{unique_id}")
+        task_detail_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
+
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, task_detail_dock)
+        task_detail_dock.show()
 
     def clear_settings(self):
         self.settings.clear()
