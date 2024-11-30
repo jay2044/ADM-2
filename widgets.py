@@ -1134,7 +1134,7 @@ class TaskListDockStacked(QDockWidget):
             task_list_widget = self.parent.hash_to_widget[hash_key]
             self.stack_widget.setCurrentWidget(task_list_widget)
             self.update_toolbar()
-            search_text = self.parent.task_list_collection.search_bar.text()
+            search_text = self.parent.navigation_sidebar_dock.task_list_collection.search_bar.text()
             task_list_widget.filter_tasks(search_text)
 
     def set_allowed_areas(self):
