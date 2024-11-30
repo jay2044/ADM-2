@@ -87,6 +87,9 @@ class TaskWidget(QWidget):
                     if not category_menu.isEmpty():
                         move_to_menu.addMenu(category_menu)
             menu.addMenu(move_to_menu)
+            duplicate_action = QAction("Duplicate", self)
+            duplicate_action.triggered.connect(self.duplicate_task)
+            menu.addAction(duplicate_action)
             delete_action = QAction("Delete", self)
             delete_action.triggered.connect(self.delete_task)
             menu.addAction(delete_action)
@@ -168,6 +171,10 @@ class TaskWidget(QWidget):
 
     def delete_task(self):
         self.task_list_widget.delete_task(self.task)
+
+    def duplicate_task(self):
+        self.task_list_widget.task_list.add_task(self.task)
+        global_signals.task_list_updated.emit()
 
     def update_due_label(self):
         due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
