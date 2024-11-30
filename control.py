@@ -16,7 +16,7 @@ class TaskProgressBar(QWidget):
         layout = QVBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.progress_bar.setStyleSheet("QProgressBar { text-align: center; font-size: 12px; }")  # Smaller font size
+        self.progress_bar.setStyleSheet("QProgressBar { text-align: center; font-size: 12px; }")
         self.update_progress()
         layout.addWidget(self.progress_bar)
         self.setLayout(layout)
@@ -24,7 +24,7 @@ class TaskProgressBar(QWidget):
     def update_progress(self):
         progress = self.calculate_progress()
         self.progress_bar.setValue(progress)
-        self.progress_bar.setFormat(f"{progress}%")  # Show progress percentage
+        self.progress_bar.setFormat(f"{progress}%")
 
     def calculate_progress(self):
         total_weight = 0
@@ -40,7 +40,7 @@ class TaskProgressBar(QWidget):
             progress += time_progress
             total_weight += 1
 
-        if self.task.subtasks:  # Use completed subtasks
+        if self.task.subtasks:
             completed_subtasks = sum(subtask.completed for subtask in self.task.subtasks)
             subtask_progress = (completed_subtasks / len(self.task.subtasks)) * 100
             progress += subtask_progress
@@ -721,6 +721,7 @@ class SubtaskWindow(QWidget):
         elif state == 0:
             subtask.completed = False
         self.task_list.update_subtask(subtask)
+        self.parent.progress_bar.update_progress()
         global_signals.task_list_updated.emit()
 
     def show_context_menu(self, position):
@@ -1211,7 +1212,7 @@ class TaskDetailDock(QDockWidget):
         self.setup_ui()
         self.display_task_details()
         self.setup_due_date_display()
-        # self.installEventFilter(self)
+        self.installEventFilter(self)
 
     def closeEvent(self, event):
         self.deleteLater()
@@ -1470,23 +1471,13 @@ class TaskDetailDock(QDockWidget):
             print(f"Error in keyPressEvent: {e}")
 
     def eventFilter(self, source, event):
-        if self.progress_bar:
-            self.progress_bar.update_progress()
-        # Detect mouse clicks outside the dialog to close it
-        if event.type() == QEvent.Type.MouseButtonPress:
-            if not self.geometry().contains(event.globalPosition().toPoint()):
-                print("bruh")
-                self.close()
-                return True
         if event.type() == QEvent.Type.MouseButtonPress:
             try:
                 if hasattr(self, 'task_name_edit') and self.task_name_edit.isVisible():
-                    # Check if the click is outside the QLineEdit
                     if not self.task_name_edit.geometry().contains(event.pos()):
                         self.finish_editing_task_name()
-                        return True  # Event has been handled
+                        return True
             except RuntimeError:
-                # Handle case where task_name_edit has been deleted
                 pass
         return super().eventFilter(source, event)
 
@@ -1826,6 +1817,7 @@ class TaskDetailDock(QDockWidget):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def decrement_time_logged(self):
         """Decrement the time logged by one hour, ensuring it doesn't go below zero."""
@@ -1834,6 +1826,7 @@ class TaskDetailDock(QDockWidget):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def increment_count(self):
         """Increment the count completed by one."""
@@ -1842,6 +1835,7 @@ class TaskDetailDock(QDockWidget):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def decrement_count(self):
         """Decrement the count completed by one, ensuring it doesn't go below zero."""
@@ -1850,6 +1844,7 @@ class TaskDetailDock(QDockWidget):
             self.task_list_widget.task_list.update_task(self.task)
             self.display_task_details()
             global_signals.task_list_updated.emit()
+            self.progress_bar.update_progress()
 
     def clear_layout(self, layout):
         while layout.count():
