@@ -25,6 +25,14 @@ area_map = {
     "DockWidgetArea.BottomDockWidgetArea": Qt.DockWidgetArea.BottomDockWidgetArea,
 }
 
+# Global Settings Keys
+APP_NAME = "ADM"
+ORG_NAME = "x"
+SETTINGS_MAIN_WINDOW_STATE = "mainWindowState"
+SETTINGS_OPEN_DOCK_WIDGETS = "openDockWidgets"
+
+DEFAULT_DOCK_AREA = Qt.DockWidgetArea.RightDockWidgetArea
+
 
 def setup_font(app):
     # font_id = QFontDatabase.addApplicationFont("fonts/entsans.ttf")
@@ -41,7 +49,7 @@ class MainWindow(QMainWindow):
         self.task_manager = TaskListManager()
         self.task_lists = {}
         self.hash_to_widget = {}
-        self.settings = QSettings("123", "ADM")
+        self.settings = QSettings("x", "ADM")
         self.setup_ui(app)
         self.options()
         self.load_settings()
@@ -98,15 +106,15 @@ class MainWindow(QMainWindow):
     def setup_calendar_dock(self):
         self.calendar_dock = CalendarDock(self)
         self.calendar_dock.setObjectName("calendarDock")
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.calendar_dock)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.calendar_dock)
 
     def closeEvent(self, event):
         self.save_settings()
         super().closeEvent(event)
 
     def save_settings(self):
-        settings = QSettings("x", "ADM")
-        settings.setValue("mainWindowState", self.saveState())
+        settings = QSettings(ORG_NAME, APP_NAME)
+        settings.setValue(SETTINGS_MAIN_WINDOW_STATE, self.saveState())
 
         open_dock_widgets = []
         for dock in self.findChildren(TaskListDock):
@@ -116,19 +124,22 @@ class MainWindow(QMainWindow):
                     'task_list_name': dock.task_list_name
                 }
                 open_dock_widgets.append(dock_info)
-        settings.setValue("openDockWidgets", json.dumps(open_dock_widgets))
+        settings.setValue(SETTINGS_OPEN_DOCK_WIDGETS, json.dumps(open_dock_widgets))
 
     def load_settings(self):
-        settings = QSettings("x", "ADM")
+        try:
+            settings = QSettings(ORG_NAME, APP_NAME)
 
-        open_dock_widgets = json.loads(settings.value("openDockWidgets", "[]"))
-        for dock_info in open_dock_widgets:
-            dock = TaskListDock(dock_info['task_list_name'], self)
-            dock.setObjectName(dock_info['objectName'])
-            dock.setWindowTitle(dock_info['task_list_name'])
-            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+            open_dock_widgets = json.loads(settings.value(SETTINGS_OPEN_DOCK_WIDGETS, "[]"))
+            for dock_info in open_dock_widgets:
+                dock = TaskListDock(dock_info['task_list_name'], self)
+                dock.setObjectName(dock_info['objectName'])
+                dock.setWindowTitle(dock_info['task_list_name'])
+                self.addDockWidget(DEFAULT_DOCK_AREA, dock)
 
-        self.restoreState(settings.value("mainWindowState"))
+            self.restoreState(settings.value(SETTINGS_MAIN_WINDOW_STATE))
+        except Exception as e:
+            print(e)
 
     def toggle_stacked_task_list(self):
         self.stacked_task_list.setVisible(not self.stacked_task_list.isVisible())
