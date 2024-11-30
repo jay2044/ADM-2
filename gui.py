@@ -182,14 +182,14 @@ class MainWindow(QMainWindow):
         self.calendar_dock.setVisible(not self.calendar_dock.isVisible())
 
     def add_task_detail_dock(self, task, task_list_widget):
-        for dock in self.findChildren(TaskDetailDialog):
+        for dock in self.findChildren(TaskDetailDock):
             if dock.task == task:
                 dock.raise_()
                 dock.activateWindow()
                 return
 
         unique_id = random.randint(1000, 9999)
-        task_detail_dock = TaskDetailDialog(task, task_list_widget, parent=self)
+        task_detail_dock = TaskDetailDock(task, task_list_widget, parent=self)
         task_detail_dock.setObjectName(f"TaskListDock_{task.title}_{unique_id}")
         task_detail_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
 

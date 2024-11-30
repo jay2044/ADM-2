@@ -141,7 +141,8 @@ class Task:
 
 
 class TaskList:
-    def __init__(self, list_name, manager, queue=False, stack=False, priority=False, category=None, task_categories=None):
+    def __init__(self, list_name, manager, queue=False, stack=False, priority=False, category=None,
+                 task_categories=None):
         self.list_name = list_name
         self.manager = manager
         self.queue = queue

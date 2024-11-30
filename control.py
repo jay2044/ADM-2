@@ -1194,7 +1194,7 @@ class AddTaskDialog(QDialog):
         return task_data
 
 
-class TaskDetailDialog(QDockWidget):
+class TaskDetailDock(QDockWidget):
     def __init__(self, task, task_list_widget, parent=None):
         super().__init__(parent)
 

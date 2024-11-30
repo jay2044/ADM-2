@@ -1580,27 +1580,7 @@ class HistoryDock(QDockWidget):
             task_list_widget = TaskListWidget(task_list, self.parent)
             self.parent.hash_to_widget[task.list_name] = task_list_widget
 
-        dialog = TaskDetailDialog(task, task_list_widget, parent=self)
-
-        dock_widget = self
-        if dock_widget:
-            dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
-            dock_size = dock_widget.size()
-
-            offset = int(0.2 * dock_size.width())
-            dialog_width = dock_size.width() - offset
-            dialog_height = dock_size.height()
-            dialog_x = dock_pos.x() + offset
-            dialog_y = dock_pos.y()
-
-            dialog.resize(dialog_width, dialog_height)
-            dialog.move(dialog_x, dialog_y)
-            dialog.setFixedSize(dialog_width, dialog_height)
-        else:
-            dialog.adjustSize()
-            dialog.move(self.mapToGlobal(QPoint(0, 0)))
-
-        dialog.exec()
+        task_list_widget.parent.add_task_detail_dock(task, task_list_widget)
 
     def restore_task(self, task):
         reply = QMessageBox.question(self, 'Restore Task', 'Are you sure you want to restore this task?',
@@ -1788,27 +1768,7 @@ class CalendarDock(QDockWidget):
             task_list_widget = TaskListWidget(task_list, self.parent)
             self.parent.hash_to_widget[task.list_name] = task_list_widget
 
-        dialog = TaskDetailDialog(task, task_list_widget, parent=self)
-        global_signals.task_list_updated.emit()
-        dock_widget = self
-        if dock_widget:
-            dock_pos = dock_widget.mapToGlobal(QPoint(0, 0))
-            dock_size = dock_widget.size()
-
-            offset = int(0.2 * dock_size.width())
-            dialog_width = dock_size.width() - offset
-            dialog_height = dock_size.height()
-            dialog_x = dock_pos.x() + offset
-            dialog_y = dock_pos.y()
-
-            dialog.resize(dialog_width, dialog_height)
-            dialog.move(dialog_x, dialog_y)
-            dialog.setFixedSize(dialog_width, dialog_height)
-        else:
-            dialog.adjustSize()
-            dialog.move(self.mapToGlobal(QPoint(0, 0)))
-
-        dialog.exec()
+        task_list_widget.parent.add_task_detail_dock(task, task_list_widget)
 
     def on_task_clicked(self, item):
         pass

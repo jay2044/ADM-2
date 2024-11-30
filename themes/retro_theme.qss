@@ -1,0 +1,181 @@
+/* Base settings for the retro theme */
+QWidget {
+    background-color: #2b2b2b; /* Dark gray background */
+    color: #e0e0e0; /* Light gray text */
+    font-family: "Courier New", monospace; /* Pixelated retro font */
+    font-size: 12px;
+    border: 1px solid #1a1a1a; /* Thin border for widgets */
+    padding: 5px;
+}
+
+/* Buttons */
+QPushButton {
+    background-color: #3d3d3d; /* Slightly lighter gray for buttons */
+    border: 2px solid #606060; /* Contrasting border */
+    border-radius: 5px;
+    color: #00ff00; /* Bright green text (retro terminal look) */
+    padding: 7px 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+QPushButton:hover {
+    background-color: #505050; /* Highlight on hover */
+    border-color: #80ff80; /* Glow effect */
+}
+
+QPushButton:pressed {
+    background-color: #606060; /* Darker background on press */
+    border-color: #00ff00; /* Green border */
+}
+
+/* Labels */
+QLabel {
+    font-size: 14px;
+    color: #ffffff; /* White text for labels */
+}
+
+/* Line Edits */
+QLineEdit {
+    background-color: #404040; /* Input field background */
+    border: 2px solid #707070;
+    border-radius: 3px;
+    color: #ffff00; /* Yellow text for input fields */
+    padding: 3px;
+}
+
+QLineEdit:focus {
+    border-color: #ffff00; /* Highlight border on focus */
+}
+
+/* Combo Boxes */
+QComboBox {
+    background-color: #3d3d3d;
+    border: 2px solid #606060;
+    border-radius: 3px;
+    padding: 3px;
+    color: #00ffff; /* Cyan text */
+}
+
+QComboBox:hover {
+    border-color: #80d4ff;
+}
+
+/* Menus */
+QMenu {
+    background-color: #333333;
+    color: #e0e0e0;
+    border: 1px solid #606060;
+}
+
+QMenu::item {
+    background-color: #333333;
+    padding: 5px;
+    margin: 2px;
+    color: #ffffff;
+}
+
+QMenu::item:selected {
+    background-color: #606060; /* Highlight menu item */
+    color: #00ff00;
+}
+
+/* Scrollbars */
+QScrollBar:vertical, QScrollBar:horizontal {
+    background-color: #3d3d3d;
+    border: 1px solid #606060;
+    width: 12px;
+    height: 12px;
+}
+
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background-color: #707070;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    background-color: #606060;
+    border: 1px solid #808080;
+    width: 12px;
+    height: 12px;
+}
+
+/* Tabs */
+QTabWidget::pane {
+    background-color: #3d3d3d;
+    border: 1px solid #606060;
+}
+
+QTabBar::tab {
+    background-color: #404040;
+    border: 1px solid #707070;
+    border-bottom: none; /* Make tabs look connected */
+    color: #e0e0e0;
+    padding: 7px 15px;
+}
+
+QTabBar::tab:selected {
+    background-color: #606060;
+    color: #00ff00;
+}
+
+/* Checkboxes */
+QCheckBox {
+    color: #e0e0e0;
+    spacing: 5px;
+}
+
+QCheckBox::indicator {
+    width: 13px;
+    height: 13px;
+    background-color: #404040;
+    border: 1px solid #606060;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #00ff00;
+    border: 1px solid #80ff80;
+}
+
+/* Sliders */
+QSlider::groove:horizontal, QSlider::groove:vertical {
+    background-color: #606060;
+    border: 1px solid #707070;
+    height: 5px;
+}
+
+QSlider::handle:horizontal, QSlider::handle:vertical {
+    background-color: #00ff00;
+    border: 1px solid #80ff80;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0; /* Center the handle */
+}
+
+/* Progress Bars */
+QProgressBar {
+    background-color: #404040;
+    border: 1px solid #606060;
+    border-radius: 5px;
+    text-align: center;
+    color: #e0e0e0;
+}
+
+QProgressBar::chunk {
+    background-color: #00ff00;
+    width: 10px;
+    margin: 1px;
+}
+
+/* Tooltips */
+QToolTip {
+    background-color: #303030;
+    color: #00ff00;
+    border: 1px solid #606060;
+    font-family: "Courier New", monospace;
+    font-size: 10px;
+}
