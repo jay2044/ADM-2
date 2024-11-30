@@ -1636,6 +1636,9 @@ class TaskDetailDialog(QDialog):
         self.specific_weekdays_widget = QWidget()
         self.specific_weekdays_layout = QHBoxLayout(self.specific_weekdays_widget)
 
+        self.specific_weekdays_layout.setSpacing(0)
+        self.specific_weekdays_layout.setContentsMargins(0, 0, 0, 0)
+
         self.weekday_checkboxes = []
         weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         for day in weekdays:
