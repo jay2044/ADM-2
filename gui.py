@@ -182,23 +182,31 @@ class MainWindow(QMainWindow):
         self.calendar_dock.setVisible(not self.calendar_dock.isVisible())
 
     def add_task_detail_dock(self, task, task_list_widget):
+        for dock in self.findChildren(TaskDetailDialog):
+            if dock.task == task:
+                dock.raise_()
+                dock.activateWindow()
+                return
+
         unique_id = random.randint(1000, 9999)
         task_detail_dock = TaskDetailDialog(task, task_list_widget, parent=self)
         task_detail_dock.setObjectName(f"TaskListDock_{task.title}_{unique_id}")
         task_detail_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
 
-        # Check existing docks in the right area
         existing_docks = [
             d for d in self.findChildren(QDockWidget)
             if self.dockWidgetArea(d) == Qt.DockWidgetArea.RightDockWidgetArea
         ]
 
         if existing_docks:
-            # Split the last dock to place the new one to its right
-            self.splitDockWidget(existing_docks[-1], task_detail_dock, Qt.Orientation.Horizontal)
+            self.tabifyDockWidget(existing_docks[-1], task_detail_dock)
         else:
-            # No existing docks, add to the right dock area
             self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, task_detail_dock)
+
+        QApplication.processEvents()
+
+        task_detail_dock.raise_()
+        task_detail_dock.activateWindow()
 
     def clear_settings(self):
         self.settings.clear()

@@ -256,10 +256,7 @@ class TaskWidget(QWidget):
             print(e)
 
     def edit_task(self):
-        try:
-            self.task_list_widget.parent.add_task_detail_dock(self.task, self.task_list_widget)
-        except Exception as e:
-            print(f"Error in edit_task: {e}")
+        self.task_list_widget.parent.add_task_detail_dock(self.task, self.task_list_widget)
 
     def task_checked(self, state):
         try:
@@ -1333,6 +1330,10 @@ class TaskListDock(QDockWidget):
         self.widget.setLayout(self.layout)
         self.setup_toolbar()
         self.layout.addWidget(self.task_list_widget)
+
+    def closeEvent(self, event):
+        self.deleteLater()
+        super().closeEvent(event)
 
     def setup_toolbar(self):
         self.toolbar = TaskListToolbar(self)

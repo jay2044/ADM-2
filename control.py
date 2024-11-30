@@ -130,7 +130,6 @@ class ResourcesWidget(QWidget):
         if resource:
             self.add_resource_node(resource)
             self.task.resources.append(resource)
-            print(self.task.resources)
             self.task_list_updated()
         self.input_box.hide()
         self.input_box.clear()
@@ -629,7 +628,6 @@ class SubtaskItemWidget(QWidget):
 
         self.checkbox = QCheckBox(self.subtask.title)
         self.checkbox.setChecked(self.subtask.completed)
-        print(self.subtask.completed)
         self.checkbox.stateChanged.connect(self.on_state_changed)
         layout.addWidget(self.checkbox)
 
@@ -806,8 +804,6 @@ class SubtaskWindow(QWidget):
         self.task.subtasks = [id_to_subtask[subtask_id] for subtask_id in new_order_ids]
         self.task_list.update_task(self.task)
         global_signals.task_list_updated.emit()
-
-        self.parent.reopen_dialog()
 
 
 class TagInputWidget(QWidget):
@@ -1216,6 +1212,10 @@ class TaskDetailDialog(QDockWidget):
         self.display_task_details()
         self.setup_due_date_display()
         # self.installEventFilter(self)
+
+    def closeEvent(self, event):
+        self.deleteLater()
+        super().closeEvent(event)
 
     def set_allowed_areas(self):
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.AllDockWidgetAreas)
