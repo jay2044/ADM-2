@@ -265,6 +265,8 @@ class CountProgressWidget(QWidget):
         """
         super().__init__(parent)
 
+        self.parent = parent
+
         self.task = task
         self.task_list_widget = task_list_widget
         self.count_required = self.task.count_required
@@ -336,6 +338,7 @@ class CountProgressWidget(QWidget):
         percentage = (self.count_completed / self.count_required) * 100 if self.count_required > 0 else 0
         self.progress_bar.setFormat(f"{percentage:.0f}%")
         self.count_label.setText(f"{self.count_completed}/{self.count_required}")
+        self.parent.progress_bar.update_progress()
 
     def update_task(self):
         """Updates the task in the database and emits a global signal."""
@@ -358,6 +361,7 @@ class TimeProgressWidget(QWidget):
         :param parent: Optional parent widget.
         """
         super().__init__(parent)
+        self.parent = parent
 
         self.task = task
         self.task_list_widget = task_list_widget
@@ -443,6 +447,7 @@ class TimeProgressWidget(QWidget):
         time_logged_display = f"{self.time_logged:.2f}".rstrip("0").rstrip(".")
         estimate_display = f"{self.estimate:.2f}".rstrip("0").rstrip(".")
         self.time_label.setText(f"Hr: {time_logged_display}/{estimate_display}")
+        self.parent.progress_bar.update_progress()
 
     def update_task(self):
         """Updates the task in the database and emits a global signal."""
@@ -1809,42 +1814,6 @@ class TaskDetailDock(QDockWidget):
         else:
             self.every_n_days_widget.hide()
             self.specific_weekdays_widget.hide()
-
-    def increment_time_logged(self):
-        """Increment the time logged by one hour."""
-        if self.task.time_logged < self.task.estimate:
-            self.task.time_logged += 1
-            self.task_list_widget.task_list.update_task(self.task)
-            self.display_task_details()
-            global_signals.task_list_updated.emit()
-            self.progress_bar.update_progress()
-
-    def decrement_time_logged(self):
-        """Decrement the time logged by one hour, ensuring it doesn't go below zero."""
-        if self.task.time_logged > 0:
-            self.task.time_logged -= 1
-            self.task_list_widget.task_list.update_task(self.task)
-            self.display_task_details()
-            global_signals.task_list_updated.emit()
-            self.progress_bar.update_progress()
-
-    def increment_count(self):
-        """Increment the count completed by one."""
-        if self.task.count_completed < self.task.count_required:
-            self.task.count_completed += 1
-            self.task_list_widget.task_list.update_task(self.task)
-            self.display_task_details()
-            global_signals.task_list_updated.emit()
-            self.progress_bar.update_progress()
-
-    def decrement_count(self):
-        """Decrement the count completed by one, ensuring it doesn't go below zero."""
-        if self.task.count_completed > 0:
-            self.task.count_completed -= 1
-            self.task_list_widget.task_list.update_task(self.task)
-            self.display_task_details()
-            global_signals.task_list_updated.emit()
-            self.progress_bar.update_progress()
 
     def clear_layout(self, layout):
         while layout.count():
