@@ -338,7 +338,8 @@ class CountProgressWidget(QWidget):
         percentage = (self.count_completed / self.count_required) * 100 if self.count_required > 0 else 0
         self.progress_bar.setFormat(f"{percentage:.0f}%")
         self.count_label.setText(f"{self.count_completed}/{self.count_required}")
-        self.parent.progress_bar.update_progress()
+        if hasattr(self.parent, 'progress_bar') and hasattr(self.parent.progress_bar, 'update_progress'):
+            self.parent.progress_bar.update_progress()
 
     def update_task(self):
         """Updates the task in the database and emits a global signal."""
@@ -447,7 +448,8 @@ class TimeProgressWidget(QWidget):
         time_logged_display = f"{self.time_logged:.2f}".rstrip("0").rstrip(".")
         estimate_display = f"{self.estimate:.2f}".rstrip("0").rstrip(".")
         self.time_label.setText(f"Hr: {time_logged_display}/{estimate_display}")
-        self.parent.progress_bar.update_progress()
+        if hasattr(self.parent, 'progress_bar') and hasattr(self.parent.progress_bar, 'update_progress'):
+            self.parent.progress_bar.update_progress()
 
     def update_task(self):
         """Updates the task in the database and emits a global signal."""
@@ -726,7 +728,8 @@ class SubtaskWindow(QWidget):
         elif state == 0:
             subtask.completed = False
         self.task_list.update_subtask(subtask)
-        self.parent.progress_bar.update_progress()
+        if hasattr(self.parent, 'progress_bar') and hasattr(self.parent.progress_bar, 'update_progress'):
+            self.parent.progress_bar.update_progress()
         global_signals.task_list_updated.emit()
 
     def show_context_menu(self, position):
