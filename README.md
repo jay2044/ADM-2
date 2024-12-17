@@ -23,7 +23,7 @@ prioritize tasks, track progress, and generate a structured daily plan—all in 
   Visualize tasks on a calendar for a quick overview of deadlines and due dates. Review completed tasks in the history
   section and restore them if needed.
 
-- **Integrated Productivity Tools:**  
+- **Integrated Productivity Tools:** 
   Track your effort using count and time-based progress bars, manage task-related resources, and maintain notes within
   the app.
 
