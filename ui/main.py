@@ -1,13 +1,11 @@
 from PyQt6.QtWidgets import QApplication
 import sys
-from gui import MainWindow
-from task_manager import TaskList
-import os
+from ui.gui import MainWindow
 
 
 def main():
     app = QApplication(sys.argv)
-    with open('styles.qss', 'r') as f:
+    with open('themes/styles.qss', 'r') as f:
         app.setStyleSheet(f.read())
     main_window = MainWindow(app)
     main_window.show()

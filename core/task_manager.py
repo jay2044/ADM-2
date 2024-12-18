@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 import re
 import json
+from core.signals import global_signals
 
 
 def sanitize_name(name):
@@ -263,7 +264,7 @@ class TaskListManager:
         return cls._instance
 
     def __init__(self):
-        self.data_dir = "data"
+        self.data_dir = "../data"
         os.makedirs(self.data_dir, exist_ok=True)
         self.db_file = os.path.join(self.data_dir, "task_lists.db")
         self.conn = sqlite3.connect(self.db_file)

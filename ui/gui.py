@@ -1,22 +1,9 @@
-import sys
-import os
-import json
-import random
-
-from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
-from task_manager import *
-
-
-class GlobalSignals(QObject):
-    task_list_updated = pyqtSignal()
-
-
-global_signals = GlobalSignals()
-
-from control import *
-from widgets import *
+from PyQt6.QtCore import *
+from PyQt6.QtGui import QFont
+from widgets.dock_widgets import *
+from core.task_manager import *
+from core.signals import global_signals
 
 area_map = {
     "DockWidgetArea.LeftDockWidgetArea": Qt.DockWidgetArea.LeftDockWidgetArea,
