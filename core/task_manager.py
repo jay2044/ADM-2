@@ -24,7 +24,7 @@ class Subtask:
 
 
 class Task:
-    def __init__(self, title, description, due_date, due_time, task_id=None, is_important=False, priority=0,
+    def __init__(self, title, description, due_date, due_time, task_id, is_important=False, priority=0,
                  completed=False, categories=None, recurring=False, recur_every=None, last_completed_date=None,
                  list_name=None, status=None, estimate=0.0, count_required=0, count_completed=0,
                  subtasks=None, dependencies=None, deadline_flexibility=None, effort_level=None,
@@ -266,7 +266,7 @@ class TaskListManager:
     def __init__(self):
         self.data_dir = "../data"
         os.makedirs(self.data_dir, exist_ok=True)
-        self.db_file = os.path.join(self.data_dir, "task_lists.db")
+        self.db_file = os.path.join(self.data_dir, "adm.db")
         self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_tables()

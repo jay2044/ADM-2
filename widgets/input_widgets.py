@@ -1,4 +1,5 @@
 from .task_widgets import *
+import uuid
 
 
 class TagInputWidget(QWidget):
@@ -349,6 +350,7 @@ class AddTaskDialog(QDialog):
             "description": self.description_edit.text(),
             "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
             "due_time": self.due_time_edit.time().toString("HH:mm"),
+            "task_id": uuid.uuid4().int,
             "priority": self.priority_spinbox.value(),
             "categories": self.categories_input.get_tags(),
             "is_important": self.important_checkbox.isChecked(),

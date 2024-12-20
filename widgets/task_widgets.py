@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from core.task_manager import *
 from core.globals import *
+from .task_progress_widgets import *
 import random
 
 
