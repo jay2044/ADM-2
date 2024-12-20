@@ -1,3 +1,6 @@
+from .task_widgets import *
+
+
 class TagInputWidget(QWidget):
     """
     A widget that allows users to input and manage tags dynamically.

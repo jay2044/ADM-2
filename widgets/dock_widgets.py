@@ -1,6 +1,7 @@
 from .task_widgets import *
 from .toolbar_widgets import *
 from .container_widgets import *
+from .input_widgets import *
 
 class TaskDetailDock(QDockWidget):
     def __init__(self, task, task_list_widget, parent=None):
