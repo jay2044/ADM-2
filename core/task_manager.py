@@ -264,7 +264,7 @@ class TaskListManager:
         return cls._instance
 
     def __init__(self):
-        self.data_dir = "../data"
+        self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
         self.db_file = os.path.join(self.data_dir, "adm.db")
         self.conn = sqlite3.connect(self.db_file)
@@ -660,6 +660,147 @@ class TaskListManager:
         self.categories = self.load_categories()
         return self.categories
 
+    def get_tasks_by_category(self, category_name):
+        """
+        Fetches all tasks belonging to a specific category. This includes:
+         1) Tasks whose own categories list includes `category_name`.
+         2) Tasks that belong to a task_list with the specified category_id.
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            # First, get the category ID based on the category name.
+            # If it doesn't exist, we can return an empty list or raise an error.
+            cursor.execute("SELECT id FROM categories WHERE name = ?", (category_name,))
+            category_row = cursor.fetchone()
+
+            if not category_row:
+                print(f"Category '{category_name}' does not exist.")
+                return []
+
+            category_id = category_row["id"]
+
+            # Build a combined query to fetch all tasks:
+            #   A) tasks that have `category_name` in their 'categories' column
+            #       (using pattern matching)
+            #   B) tasks that belong to a task_list whose category_id matches this category
+
+            # We use UNION ALL here in case a single task satisfies both conditions.
+            # If duplicates need to be removed, use UNION (without ALL) or handle in Python.
+            combined_query = """
+                        SELECT * FROM (
+                            -- Tasks with 'category_name' in the 'categories' column
+                            SELECT * 
+                            FROM tasks
+                            WHERE ',' || categories || ',' LIKE '%,{category_name},%'
+
+                            UNION ALL
+
+                            -- Tasks belonging to a task_list with this category_id
+                            SELECT t.* 
+                            FROM tasks t
+                            JOIN task_lists tl
+                            ON t.list_name = tl.list_name
+                            WHERE tl.category_id = ?
+                        )
+                    """
+
+            cursor.execute(combined_query, (category_id,))
+            task_rows = cursor.fetchall()
+
+            # Build the list of Task objects
+            task_list = []
+            for row in task_rows:
+                task_list.append(
+                    Task(
+                        task_id=row["id"],
+                        title=row["title"],
+                        description=row["description"],
+                        due_date=row["due_date"],
+                        due_time=row["due_time"],
+                        is_important=bool(row["is_important"]),
+                        priority=row["priority"],
+                        completed=bool(row["completed"]),
+                        categories=row["categories"].split(',') if row["categories"] else [],
+                        recurring=bool(row["recurring"]),
+                        recur_every=json.loads(row["recur_every"]) if row["recur_every"] else [],
+                        last_completed_date=datetime.fromisoformat(row["last_completed_date"])
+                        if row["last_completed_date"] else None,
+                        list_name=row["list_name"],
+                        status=row["status"] if "status" in row.keys() else "Not Started",
+                        estimate=row["estimate"] if "estimate" in row.keys() else 0.0,
+                        count_required=row["count_required"] if "count_required" in row.keys() else 0,
+                        count_completed=row["count_completed"] if "count_completed" in row.keys() else 0,
+                        dependencies=json.loads(row["dependencies"]) if row["dependencies"] else [],
+                        deadline_flexibility=row[
+                            "deadline_flexibility"] if "deadline_flexibility" in row.keys() else "Strict",
+                        effort_level=row["effort_level"] if "effort_level" in row.keys() else "Medium",
+                        resources=json.loads(row["resources"]) if row["resources"] else [],
+                        notes=row["notes"] if "notes" in row.keys() else "",
+                        time_logged=row["time_logged"] if "time_logged" in row.keys() else 0.0,
+                        recurring_subtasks=json.loads(row["recurring_subtasks"]) if row["recurring_subtasks"] else [],
+                        order=row["order"] if "order" in row.keys() else 0,
+                    )
+                )
+
+            return task_list
+
+        except sqlite3.Error as e:
+            print(f"Error fetching tasks by category '{category_name}': {e}")
+            return []
+
+    def get_task(self, task_id):
+        """
+        Fetches a task by its ID.
+        :param task_id: ID of the task to fetch.
+        :return: Task object if found, None otherwise.
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            # Fetch the task by ID
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            task_row = cursor.fetchone()
+
+            if not task_row:
+                return None
+
+            # Create and return a Task object
+            task = Task(
+                task_id=task_row["id"],
+                title=task_row["title"],
+                description=task_row["description"],
+                due_date=task_row["due_date"],
+                due_time=task_row["due_time"],
+                is_important=bool(task_row["is_important"]),
+                priority=task_row["priority"],
+                completed=bool(task_row["completed"]),
+                categories=task_row["categories"].split(',') if task_row["categories"] else [],
+                recurring=bool(task_row["recurring"]),
+                recur_every=json.loads(task_row["recur_every"]) if task_row["recur_every"] else [],
+                last_completed_date=datetime.fromisoformat(task_row["last_completed_date"]) if task_row[
+                    "last_completed_date"] else None,
+                list_name=task_row["list_name"],
+                status=task_row.get("status"),
+                estimate=task_row.get("estimate", 0.0),
+                count_required=task_row.get("count_required", 0),
+                count_completed=task_row.get("count_completed", 0),
+                dependencies=json.loads(task_row["dependencies"]) if task_row["dependencies"] else [],
+                deadline_flexibility=task_row.get("deadline_flexibility"),
+                effort_level=task_row.get("effort_level"),
+                resources=json.loads(task_row["resources"]) if task_row["resources"] else [],
+                notes=task_row.get("notes"),
+                time_logged=task_row.get("time_logged", 0.0),
+                recurring_subtasks=json.loads(task_row["recurring_subtasks"]) if task_row["recurring_subtasks"] else [],
+                order=task_row.get("order", 0)
+            )
+
+            return task
+
+        except sqlite3.Error as e:
+            print(f"Error fetching task by ID: {e}")
+            return None
+
     def add_task_list(self, list_name, queue=False, stack=False, priority=False, category=None):
         if list_name not in [task_list["list_name"] for task_list in self.task_lists]:
             cursor = self.conn.cursor()
@@ -708,15 +849,15 @@ class TaskListManager:
     def change_task_list_name(self, task_list, new_name):
         cursor = self.conn.cursor()
         cursor.execute("""
-            UPDATE task_lists
-            SET list_name = ?
-            WHERE list_name = ?
-        """, (new_name, task_list.list_name))
+                UPDATE task_lists
+                SET list_name = ?
+                WHERE list_name = ?
+            """, (new_name, task_list.list_name))
         cursor.execute("""
-            UPDATE tasks
-            SET list_name = ?
-            WHERE list_name = ?
-        """, (new_name, task_list.list_name))
+                UPDATE tasks
+                SET list_name = ?
+                WHERE list_name = ?
+            """, (new_name, task_list.list_name))
         self.conn.commit()
         for tl in self.task_lists:
             if tl["list_name"] == task_list.list_name:
@@ -735,17 +876,17 @@ class TaskListManager:
 
         # Update task list name in task_lists table
         cursor.execute("""
-            UPDATE task_lists
-            SET list_name = ?
-            WHERE list_name = ?
-        """, (new_name, old_name))
+                UPDATE task_lists
+                SET list_name = ?
+                WHERE list_name = ?
+            """, (new_name, old_name))
 
         # Update task list name in tasks table
         cursor.execute("""
-            UPDATE tasks
-            SET list_name = ?
-            WHERE list_name = ?
-        """, (new_name, old_name))
+                UPDATE tasks
+                SET list_name = ?
+                WHERE list_name = ?
+            """, (new_name, old_name))
 
         self.conn.commit()
 
@@ -804,11 +945,11 @@ class TaskListManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                UPDATE tasks
-                SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
-                    status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?, "order"=?, list_name=?
-                WHERE id=?
-            """, (
+                    UPDATE tasks
+                    SET title=?, description=?, due_date=?, due_time=?, completed=?, priority=?, is_important=?, categories=?, recurring=?, recur_every=?, last_completed_date=?,
+                        status=?, estimate=?, count_required=?, count_completed=?, dependencies=?, deadline_flexibility=?, effort_level=?, resources=?, notes=?, time_logged=?, recurring_subtasks=?, "order"=?, list_name=?
+                    WHERE id=?
+                """, (
                 task.title, task.description, task.due_date, task.due_time, int(task.completed), task.priority,
                 int(task.is_important), ','.join(task.categories), int(task.recurring),
                 json.dumps(task.recur_every),
@@ -853,10 +994,10 @@ class TaskListManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                UPDATE task_lists
-                SET queue = ?, stack = ?, priority = ?
-                WHERE list_name = ?
-            """, (int(task_list.queue), int(task_list.stack), int(task_list.priority), task_list.list_name))
+                    UPDATE task_lists
+                    SET queue = ?, stack = ?, priority = ?
+                    WHERE list_name = ?
+                """, (int(task_list.queue), int(task_list.stack), int(task_list.priority), task_list.list_name))
             self.conn.commit()
         except Exception as e:
             print(f"Error in update_task_list: {e}")

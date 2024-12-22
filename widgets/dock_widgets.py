@@ -2,6 +2,8 @@ from .task_widgets import *
 from .toolbar_widgets import *
 from .container_widgets import *
 from .input_widgets import *
+from .schedule_widgets import *
+
 
 class TaskDetailDock(QDockWidget):
     def __init__(self, task, task_list_widget, parent=None):
@@ -1334,3 +1336,43 @@ class CalendarDock(QDockWidget):
     def update_calendar(self):
         self.highlight_tasks_on_calendar()
         self.load_tasks_for_selected_date()
+
+
+class ScheduleViewDock(QDockWidget):
+    def __init__(self, parent):
+        super(ScheduleViewDock, self).__init__(parent)
+        self.type = "schedule"
+        self.parent = parent
+        self.task_manager = self.parent.task_manager
+        self.schedule_manager = ScheduleManager(self.task_manager)
+        self.set_allowed_areas()
+        self.setup_ui()
+        self.setObjectName("scheduleDock")
+
+    def set_allowed_areas(self):
+        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+
+    from datetime import datetime
+
+    def setup_ui(self):
+        # start_time = datetime.strptime("12:00", "%H:%M").time()
+        # end_time = datetime.strptime("16:00", "%H:%M").time()
+        #
+        # self.schedule_manager.add_timeblock(TimeBlock(
+        #     task_manager_instance=self.task_manager,
+        #     start_time=start_time,
+        #     end_time=end_time,
+        #     name="test3",
+        #     include_categories=["test3"],
+        #     block_type="user"
+        # ))
+
+        self.widget = ScheduleViewWidget(self.schedule_manager)
+        self.setWidget(self.widget)
+        # QTimer.singleShot(2000, self.widget.print_time_block_heights)
+

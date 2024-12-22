@@ -121,7 +121,11 @@ class MainWindow(QMainWindow):
         self.history_dock.hide()
 
     def setup_calendar_dock(self):
-        self.calendar_dock = CalendarDock(self)
+        # self.calendar_dock = CalendarDock(self)
+        # self.calendar_dock.setObjectName("calendarDock")
+        # self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.calendar_dock)
+        # self.calendar_dock.hide()
+        self.calendar_dock = ScheduleViewDock(self)
         self.calendar_dock.setObjectName("calendarDock")
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.calendar_dock)
         self.calendar_dock.hide()
@@ -250,6 +254,6 @@ class MainWindow(QMainWindow):
             current_widget.load_tasks()
 
         self.history_dock.update_history()
-        self.calendar_dock.update_calendar()
+        # self.calendar_dock.update_calendar()
 
         print("Task list has been updated globally")
