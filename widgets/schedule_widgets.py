@@ -376,9 +376,10 @@ class DraggableListWidget(QListWidget):
 
     def on_rows_moved(self, parent, start, end, destination, row):
         """
-        Optional: React to reordering within the same list.
+        React to reordering within the same list.
         'parent', 'destination' are model indexes, while 'start', 'end', 'row' are row indices.
         """
+        # TODO: implement reorder logic. (probably by changing weights)
         print("Rows moved internally in DraggableListWidget")
         # Implement reorder logic if needed.
 
@@ -462,7 +463,6 @@ class TimeBlockWidget(QWidget):
             self.add_task(task)
 
     def add_task(self, task):
-        # TODO: convert this task item to a TaskWidget if needed
         task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager, task)
         item = QListWidgetItem()
         item.setSizeHint(task_widget.sizeHint())
@@ -520,10 +520,6 @@ class TimeBlockWidget(QWidget):
         p = self.parent()
         if isinstance(p, ScheduleViewWidget):
             QTimer.singleShot(0, p.update_time_cell_heights)
-
-    def on_rows_moved(self, row):
-        # TODO: implement reorder logic. (probably by changing weights)
-        pass
 
 
 class ScheduleViewWidget(QWidget):
@@ -587,8 +583,6 @@ class ScheduleViewWidget(QWidget):
         for block in self.time_blocks:
             tb_widget = TimeBlockWidget(self, block)
             stretch_factor = tb_widget.base_height
-            # TODO: If total_base is large scale it
-            # stretch_factor = int((block.base_height / total_base) * 100) or smn
             self.timeBlocksLayout.addWidget(tb_widget, stretch=stretch_factor)
 
         QTimer.singleShot(0, self.update_time_cell_heights)

@@ -154,7 +154,6 @@ class TimeBlockWidget(QWidget):
             self.add_task(task)
 
     def add_task(self, task):
-        # TODO: make it init and add TaskWidgets
         self.task_list.addItem(task)
         task_height = self.task_list.sizeHintForRow(0)
         if (self.base_height - self.name_label.height()) / task_height < self.task_list.count():
