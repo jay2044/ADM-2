@@ -285,7 +285,7 @@ class TaskListWidget(QListWidget):
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.load_tasks()
         global_signals.task_list_updated.connect(self.load_tasks)
         self.model().rowsMoved.connect(self.on_rows_moved)

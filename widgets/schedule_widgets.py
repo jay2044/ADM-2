@@ -325,6 +325,64 @@ class HourScaleWidget(QWidget):
         self.highlight_current_hour()
 
 
+class DraggableListWidget(QListWidget):
+    def __init__(self, parent_time_block_widget):
+        """
+        :param parent_time_block_widget: The TimeBlockWidget that owns this list.
+        """
+        super().__init__(parent_time_block_widget.frame)
+        self.parent_time_block_widget = parent_time_block_widget
+        self.dragged_task_widget = None
+
+        # Basic list settings for drag and drop
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.setSizeAdjustPolicy(QAbstractItemView.SizeAdjustPolicy.AdjustToContents)
+        self.adjustSize()
+
+        # If you want to react to reordering within the list:
+        self.model().rowsMoved.connect(self.on_rows_moved)
+
+    def startDrag(self, supportedActions):
+        """Called when the user begins dragging an item."""
+        item = self.currentItem()
+        if item:
+            task_widget = self.itemWidget(item)
+            if task_widget:
+                self.dragged_task_widget = task_widget
+        super().startDrag(supportedActions)
+
+    def dropEvent(self, event):
+        """Called when a dragged item is dropped onto this list."""
+        source_list_widget = event.source()
+        if source_list_widget and source_list_widget is not self:
+            # If the drop comes from another DraggableListWidget
+            dragged_task_widget = getattr(source_list_widget, "dragged_task_widget", None)
+            if dragged_task_widget:
+                print(f"Task '{dragged_task_widget.task.title}' "
+                      f"moved from {source_list_widget.parent_time_block_widget.name} "
+                      f"to {self.parent_time_block_widget.name}")
+                event.ignore()
+                source_list_widget.parent_time_block_widget.remove_task(dragged_task_widget.task)
+                self.parent_time_block_widget.add_task(dragged_task_widget.task)
+        else:
+            super().dropEvent(event)
+
+    def on_rows_moved(self, parent, start, end, destination, row):
+        """
+        Optional: React to reordering within the same list.
+        'parent', 'destination' are model indexes, while 'start', 'end', 'row' are row indices.
+        """
+        print("Rows moved internally in DraggableListWidget")
+        # Implement reorder logic if needed.
+
+
 class TimeBlockWidget(QWidget):
     def __init__(self, parent, time_block: TimeBlock):
         super().__init__(parent)
@@ -340,12 +398,12 @@ class TimeBlockWidget(QWidget):
         empty = (self.time_block.block_type == "empty")
         unavailable = (self.time_block.block_type == "unavailable")
 
-        start_hour = int(self.start_time.split(':')[0])
-        end_hour = int(self.end_time.split(':')[0])
+        self.start_hour = int(self.start_time.split(':')[0])
+        self.end_hour = int(self.end_time.split(':')[0])
         # Adjust if end hour is on the next day
-        if end_hour < start_hour:
-            end_hour += 24
-        self.base_height = max(45 * (end_hour - start_hour), 45)
+        if self.end_hour < self.start_hour:
+            self.end_hour += 24
+        self.base_height = max(45 * (self.end_hour - self.start_hour), 45)
         self.setMinimumHeight(self.base_height)
 
         self.layout = QVBoxLayout(self)
@@ -390,9 +448,7 @@ class TimeBlockWidget(QWidget):
 
     def init_ui_time_block_with_tasks(self):
         self.setup_frame(self.name, self.color)
-        self.task_list = QListWidget(self.frame)
-        self.task_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.task_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.task_list = DraggableListWidget(self)
         self.frame_layout.addWidget(self.task_list)
 
     def init_ui_empty(self):
@@ -412,11 +468,62 @@ class TimeBlockWidget(QWidget):
         item.setSizeHint(task_widget.sizeHint())
         self.task_list.addItem(item)
         self.task_list.setItemWidget(item, task_widget)
-        task_height = self.task_list.sizeHintForRow(0)
-        print(task_height)
-        if (self.base_height - self.name_label.height()) / task_height < self.task_list.count():
-            self.base_height += task_height
-            self.setMinimumHeight(self.base_height)
+        self.resize_frame_and_hour_cells()
+
+    def remove_task(self, task):
+        """
+        Removes the specified task from both the widget's internal list (self.tasks)
+        and the QListWidget display.
+        """
+        # 1) Locate the matching item in the QListWidget
+        item_to_remove = None
+        for i in range(self.task_list.count()):
+            item = self.task_list.item(i)
+            task_widget = self.task_list.itemWidget(item)
+            if task_widget and task_widget.task == task:
+                item_to_remove = item
+                break
+
+        # 2) remove from the QListWidget and from self.tasks if found
+        if item_to_remove is not None:
+            row = self.task_list.row(item_to_remove)
+            self.task_list.takeItem(row)  # Removes from UI
+            if task in self.tasks:
+                self.tasks.remove(task)  # Remove from internal list
+
+            # 3) Adjust minimum height if block to shrink
+            self.resize_frame_and_hour_cells()
+
+    def resize_frame_and_hour_cells(self):
+        """
+        1) Recalculate the widget's minimum height based on the
+           current tasks in the QListWidget.
+        2) Update the corresponding hour cells in the parent
+           ScheduleViewWidget's HourScaleWidget.
+        """
+        # --- 1) Recalculate the minimum height ---
+        if self.task_list.count() == 0:
+            new_height = self.base_height
+        else:
+            task_height = self.name_label.height() + sum(
+                self.task_list.sizeHintForRow(i) for i in range(self.task_list.count()))+15
+            if self.base_height >= task_height:
+                new_height = max(task_height, max(45 * (self.end_hour - self.start_hour), 45))
+            else:
+                new_height = max(task_height, self.base_height)
+
+        self.base_height = new_height + (self.task_list.frameWidth()*2)
+        self.setMinimumHeight(self.base_height)
+        self.task_list.adjustSize()
+
+        # --- 2) Update hour cells in the parent (if available) ---
+        p = self.parent()
+        if isinstance(p, ScheduleViewWidget):
+            QTimer.singleShot(0, p.update_time_cell_heights)
+
+    def on_rows_moved(self, row):
+        # TODO: implement reorder logic. (probably by changing weights)
+        pass
 
 
 class ScheduleViewWidget(QWidget):
@@ -485,13 +592,6 @@ class ScheduleViewWidget(QWidget):
             self.timeBlocksLayout.addWidget(tb_widget, stretch=stretch_factor)
 
         QTimer.singleShot(0, self.update_time_cell_heights)
-
-    # probably not needed:
-    # def update_time_block_stretch_factor(self):
-    #     for i in range(self.timeBlocksLayout.count()):
-    #         tb_widget = self.timeBlocksLayout.itemAt(i).widget()
-    #         if tb_widget:
-    #             self.timeBlocksLayout.setStretchFactor(tb_widget, stretch=tb_widget.base_height)
 
     def update_time_cell_heights(self):
         self.updateGeometry()
