@@ -711,37 +711,39 @@ class TaskListManager:
             # Build the list of Task objects
             task_list = []
             for row in task_rows:
-                task_list.append(
-                    Task(
-                        task_id=row["id"],
-                        title=row["title"],
-                        description=row["description"],
-                        due_date=row["due_date"],
-                        due_time=row["due_time"],
-                        is_important=bool(row["is_important"]),
-                        priority=row["priority"],
-                        completed=bool(row["completed"]),
-                        categories=row["categories"].split(',') if row["categories"] else [],
-                        recurring=bool(row["recurring"]),
-                        recur_every=json.loads(row["recur_every"]) if row["recur_every"] else [],
-                        last_completed_date=datetime.fromisoformat(row["last_completed_date"])
-                        if row["last_completed_date"] else None,
-                        list_name=row["list_name"],
-                        status=row["status"] if "status" in row.keys() else "Not Started",
-                        estimate=row["estimate"] if "estimate" in row.keys() else 0.0,
-                        count_required=row["count_required"] if "count_required" in row.keys() else 0,
-                        count_completed=row["count_completed"] if "count_completed" in row.keys() else 0,
-                        dependencies=json.loads(row["dependencies"]) if row["dependencies"] else [],
-                        deadline_flexibility=row[
-                            "deadline_flexibility"] if "deadline_flexibility" in row.keys() else "Strict",
-                        effort_level=row["effort_level"] if "effort_level" in row.keys() else "Medium",
-                        resources=json.loads(row["resources"]) if row["resources"] else [],
-                        notes=row["notes"] if "notes" in row.keys() else "",
-                        time_logged=row["time_logged"] if "time_logged" in row.keys() else 0.0,
-                        recurring_subtasks=json.loads(row["recurring_subtasks"]) if row["recurring_subtasks"] else [],
-                        order=row["order"] if "order" in row.keys() else 0,
-                    )
+                task = Task(
+                    title=row['title'],
+                    description=row['description'],
+                    due_date=row['due_date'],
+                    due_time=row['due_time'],
+                    task_id=row['id'],
+                    is_important=bool(row['is_important']),
+                    priority=row['priority'],
+                    completed=bool(row['completed']),
+                    categories=row['categories'].split(',') if row['categories'] else [],
+                    recurring=bool(row['recurring']),
+                    recur_every=json.loads(row['recur_every']) if row['recur_every'] else [],
+                    last_completed_date=datetime.fromisoformat(row['last_completed_date']) if row[
+                        'last_completed_date'] else None,
+                    list_name=row['list_name'],
+                    status=row['status'] if 'status' in row.keys() else "Not Started",
+                    estimate=row['estimate'] if 'estimate' in row.keys() else 0.0,
+                    count_required=row['count_required'] if 'count_required' in row.keys() else 0,
+                    count_completed=row['count_completed'] if 'count_completed' in row.keys() else 0,
+                    dependencies=json.loads(row['dependencies']) if row['dependencies'] else [],
+                    deadline_flexibility=row[
+                        'deadline_flexibility'] if 'deadline_flexibility' in row.keys() else "Strict",
+                    effort_level=row['effort_level'] if 'effort_level' in row.keys() else "Medium",
+                    resources=json.loads(row['resources']) if row['resources'] else [],
+                    notes=row['notes'] if 'notes' in row.keys() else "",
+                    time_logged=row['time_logged'] if 'time_logged' in row.keys() else 0.0,
+                    recurring_subtasks=json.loads(row['recurring_subtasks']) if row['recurring_subtasks'] else [],
+                    order=row['order'] if 'order' in row.keys() else 0
                 )
+                task.added_date_time = datetime.fromisoformat(row['added_date_time'])
+                # Load subtasks for this task
+                task.subtasks = self.load_subtasks(task.id)
+                task_list.append(task)
 
             return task_list
 
