@@ -293,8 +293,8 @@ class HourScaleWidget(QWidget):
         for index in range(start_index, end_index + 1):
             if 0 <= index < len(self.hours):
                 self.custom_heights[index] = height
-                # self.layout.itemAt(index).widget().setFixedHeight(height)
                 widget = self.layout.itemAt(index).widget()
+                widget.resize(widget.width(), height)
                 self.layout.setStretchFactor(widget, height)
 
     def set_height_by_widget(self, start_hour, end_hour, widget):
@@ -302,7 +302,7 @@ class HourScaleWidget(QWidget):
         hours = self.hours
         start_index = hours.index(start_hour)
         end_index = hours.index(end_hour)
-        widget_height = widget.height()
+        widget_height = widget.base_height
         self.set_height(start_index, end_index, widget_height)
 
     def highlight_current_hour(self):
