@@ -501,7 +501,6 @@ class TimeBlockWidget(QWidget):
         2) Update the corresponding hour cells in the parent
            ScheduleViewWidget's HourScaleWidget.
         """
-        # --- 1) Recalculate the minimum height ---
         if self.task_list.count() == 0:
             new_height = self.base_height
         else:
@@ -516,10 +515,10 @@ class TimeBlockWidget(QWidget):
         self.setMinimumHeight(self.base_height)
         self.task_list.adjustSize()
 
-        # --- 2) Update hour cells in the parent (if available) ---
         p = self.parent()
         if isinstance(p, ScheduleViewWidget):
             QTimer.singleShot(0, p.update_time_cell_heights)
+            p.timeBlocksLayout.setStretchFactor(self, self.base_height)
 
 
 class ScheduleViewWidget(QWidget):
