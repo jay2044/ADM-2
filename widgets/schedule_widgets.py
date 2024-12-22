@@ -17,7 +17,7 @@ class ScheduleTaskWidget(QWidget):
         self.is_dragging = False
         self.no_context = False
         self.setup_ui()
-        # self.setup_timer()
+        self.setup_timer()
         self.checkbox.setObjectName("taskCheckbox")
         self.radio_button.setObjectName("importantRadioButton")
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -191,10 +191,10 @@ class ScheduleTaskWidget(QWidget):
             self.due_label.setStyleSheet("")
         self.task_list_manager.update_task(self.task)
 
-    # def setup_timer(self):
-    #     self.timer = QTimer(self)
-    #     self.timer.setSingleShot(True)
-    #     self.timer.timeout.connect(self.edit_task)
+    def setup_timer(self):
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.edit_task)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -224,8 +224,8 @@ class ScheduleTaskWidget(QWidget):
         except Exception as e:
             print(e)
 
-    # def edit_task(self):
-    #     self.task_list_widget.parent.add_task_detail_dock(self.task, self.task_list_widget)
+    def edit_task(self):
+        get_main_window().add_task_detail_dock(self.task)
 
     def task_checked(self, state):
         try:

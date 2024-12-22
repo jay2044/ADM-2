@@ -844,6 +844,21 @@ class TaskListDockStacked(QDockWidget):
         current_widget = self.stack_widget.currentWidget()
         return current_widget if isinstance(current_widget, TaskListWidget) else None
 
+    def get_task_list_widget_by_task(self, task_id):
+        """
+        Finds the TaskListWidget containing a task with the specified task_id.
+
+        :param task_id: The ID of the task to find.
+        :return: The TaskListWidget containing the task, or None if not found.
+        """
+        for i in range(self.stack_widget.count()):
+            task_list_widget = self.stack_widget.widget(i)
+            if isinstance(task_list_widget, TaskListWidget):
+                task_list = task_list_widget.task_list
+                if any(task.id == task_id for task in task_list.tasks):
+                    return task_list_widget
+        return None
+
 
 class TaskListDock(QDockWidget):
     def __init__(self, task_list_name, parent=None):
@@ -1375,4 +1390,3 @@ class ScheduleViewDock(QDockWidget):
         self.widget = ScheduleViewWidget(self.schedule_manager)
         self.setWidget(self.widget)
         # QTimer.singleShot(2000, self.widget.print_time_block_heights)
-

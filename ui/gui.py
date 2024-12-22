@@ -172,7 +172,8 @@ class MainWindow(QMainWindow):
     def toggle_calendar(self):
         self.calendar_dock.setVisible(not self.calendar_dock.isVisible())
 
-    def add_task_detail_dock(self, task, task_list_widget):
+    def add_task_detail_dock(self, task):
+        task_list_widget = self.stacked_task_list.get_task_list_widget_by_task(task.id)
         for dock in self.findChildren(TaskDetailDock):
             if dock.task == task:
                 dock.raise_()

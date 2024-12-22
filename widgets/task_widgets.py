@@ -248,7 +248,7 @@ class TaskWidget(QWidget):
             print(e)
 
     def edit_task(self):
-        self.task_list_widget.parent.add_task_detail_dock(self.task, self.task_list_widget)
+        self.task_list_widget.parent.add_task_detail_dock(self.task)
 
     def task_checked(self, state):
         try:
