@@ -1078,7 +1078,6 @@ class TaskListDock(QDockWidget):
             self.toggle_multi_select()
 
 
-
 class HistoryDock(QDockWidget):
     def __init__(self, parent):
         super().__init__("History", parent)
