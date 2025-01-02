@@ -120,13 +120,13 @@ class CustomDateEdit(QDateEdit):
 
 
 class AddTaskDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, task_list_widget=None):
         super().__init__(parent)
         self.setWindowTitle("Add New Task")
-
-        # Set dialog properties
         self.resize(500, 400)
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
+
+        self.task_list_widget = task_list_widget
 
         # Main layout
         self.main_layout = QVBoxLayout(self)
@@ -163,9 +163,9 @@ class AddTaskDialog(QDialog):
         categories = []
         # if a TaskListDock
         if parent.type == "dock":
-            categories = parent.task_list_widget.task_list.get_task_categories()
+            categories = parent.task_list_widget.task_list.get_task_tags()
         elif parent.type == "stack":  # if TaskListStacked
-            categories = parent.get_current_task_list_widget().task_list.get_task_categories()
+            categories = parent.get_current_task_list_widget().task_list.get_task_tags()
 
         self.categories_input = TagInputWidget(categories)
         self.basic_layout.addRow("Category:", self.categories_input)
@@ -268,7 +268,7 @@ class AddTaskDialog(QDialog):
         self.advanced_layout.addRow("Dependencies:", self.dependencies_edit)
 
         self.deadline_flexibility_combo = QComboBox()
-        self.deadline_flexibility_combo.addItems(["Strict", "Flexible"])
+        self.deadline_flexibility_combo.addItems(["Strict", "Flexible", "Very Flexible"])
         self.deadline_flexibility_combo.setCurrentIndex(-1)  # Initialize to None
         self.advanced_layout.addRow("Deadline Flexibility:", self.deadline_flexibility_combo)
 
@@ -345,47 +345,53 @@ class AddTaskDialog(QDialog):
         super().accept()
 
     def get_task_data(self):
+        due_date = self.due_date_edit.date()
+        due_time = self.due_time_edit.time()
+        due_datetime = None
+        if due_date and not due_date.isNull():
+            if due_date != QDate(2000, 1, 1):
+                py_date = due_date.toPyDate()
+                py_time = due_time.toPyTime()
+                due_datetime = datetime.combine(py_date, py_time)
+
         task_data = {
-            "title": self.title_edit.text(),
+            "name": self.title_edit.text(),
             "description": self.description_edit.text(),
-            "due_date": self.due_date_edit.date().toString("yyyy-MM-dd"),
-            "due_time": self.due_time_edit.time().toString("HH:mm"),
-            "task_id": uuid.uuid4().int,
-            "priority": self.priority_spinbox.value(),
-            "categories": self.categories_input.get_tags(),
-            "is_important": self.important_checkbox.isChecked(),
-            "recurring": self.recurring_checkbox.isChecked(),
-            "recur_every": [],  # Calculated below
-            # Default Advanced Fields
-            "status": self.status_combo.currentText() if self.status_combo.currentText() else None,
-            "estimate": self.estimate_spinbox.value(),
-            "count_required": self.count_required_spinbox.value(),
-            "count_completed": self.count_completed_spinbox.value(),
-            "dependencies": [],
-            "deadline_flexibility": self.deadline_flexibility_combo.currentText() if self.deadline_flexibility_combo.currentText() else None,
-            "effort_level": self.effort_level_combo.currentText() if self.effort_level_combo.currentText() else None,
-            "resources": [],
             "notes": self.notes_edit.toPlainText(),
-            "time_logged": self.time_logged_spinbox.value()
+            "tags": self.categories_input.get_tags(),
+            "resources": [res.strip() for res in self.resources_edit.text().split(",") if res.strip()],
+            "start_date": None,  # Missing in the method
+            "due_datetime": due_datetime,
+            "added_date_time": None,  # Missing in the method
+            "last_completed_date": None,  # Missing in the method
+            "list_order": 0,  # Default value, missing in the method
+            "list_name": self.task_list_widget.task_list_name,
+            "recurring": self.recurring_checkbox.isChecked(),
+            "recur_every": int(self.every_n_days_spinbox.value()) if self.every_n_days_radio.isChecked() else [
+                checkbox.text() for checkbox in self.weekday_checkboxes if checkbox.isChecked()
+            ] if self.specific_weekdays_radio.isChecked() else None,
+            "recurrences": 0,  # Default value, missing in the method
+            "time_estimate": self.estimate_spinbox.value(),
+            "time_chunk_size": None,  # Missing in the method
+            "time_of_day_preference": None,  # Missing in the method
+            "time_logged": self.time_logged_spinbox.value(),
+            "count_required": self.count_required_spinbox.value(),
+            "count_chunk_size": 1,  # Default value, missing in the method
+            "count_completed": self.count_completed_spinbox.value(),
+            "subtasks": None,  # Missing in the method
+            "dependencies": [dep.strip() for dep in self.dependencies_edit.text().split(",") if dep.strip()],
+            "status": self.status_combo.currentText() if self.status_combo.currentText() else 'Not Started',
+            "flexibility": self.deadline_flexibility_combo.currentText() if self.deadline_flexibility_combo.currentText() else 'Flexible',
+            "effort_level": self.effort_level_combo.currentText() if self.effort_level_combo.currentText() else 'Medium',
+            "priority": self.priority_spinbox.value(),
+            "previous_priority": 0,  # Default value, missing in the method
+            "preferred_work_days": None,  # Missing in the method
+            "progress": 0.0,  # Default value, missing in the method
+            "urgency": 0.0,  # Default value, missing in the method
+            "milestones": None,  # Missing in the method
+            "global_weight": None,  # Missing in the method
+            "schedule_weight": None,  # Missing in the method
+            "behind_schedule": False,  # Default value, missing in the method
         }
-
-        # Recurrence Data
-        if self.recurring_checkbox.isChecked():
-            if self.every_n_days_radio.isChecked():
-                task_data["recur_every"] = int(self.every_n_days_spinbox.value())
-            elif self.specific_weekdays_radio.isChecked():
-                selected_weekdays = []
-                for checkbox in self.weekday_checkboxes:
-                    if checkbox.isChecked():
-                        selected_weekdays.append(checkbox.text())
-                task_data["recur_every"] = selected_weekdays
-        else:
-            task_data["recur_every"] = None
-
-        # Advanced Data
-        dependencies_text = self.dependencies_edit.text()
-        task_data["dependencies"] = [dep.strip() for dep in dependencies_text.split(",") if dep.strip()]
-        resources_text = self.resources_edit.text()
-        task_data["resources"] = [res.strip() for res in resources_text.split(",") if res.strip()]
 
         return task_data

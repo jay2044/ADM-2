@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, time, timedelta
 import random
 
-from core.task_manager import TaskListManager
+from core.task_manager import TaskManager
 
 DAY_START = time(4, 0)  # Day starts at 4 AM
 DAY_DURATION = timedelta(hours=23, minutes=59, seconds=59)
@@ -239,7 +239,7 @@ class TimeBlock:
 
 
 class ScheduleManager:
-    def __init__(self, task_manager: TaskListManager):
+    def __init__(self, task_manager: TaskManager):
         self.task_manager = task_manager
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)

@@ -34,7 +34,7 @@ class InfoBar(QWidget):
         self.setLayout(layout)
 
     def update_task_list_count_label(self):
-        task_count = self.task_manager.get_task_list_count()
+        task_count = len(self.task_manager.task_lists)
         self.task_list_count_label.setText(f"  {task_count}")
 
 

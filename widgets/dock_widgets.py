@@ -9,7 +9,7 @@ class TaskDetailDock(QDockWidget):
     def __init__(self, task, task_list_widget, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle(task.title)
+        self.setWindowTitle(task.name)
 
         # main window
         self.parent = parent
@@ -59,7 +59,7 @@ class TaskDetailDock(QDockWidget):
         # Initialize the Task Name Label as a QLabel initially
         self.task_name_label = QLabel()
         self.task_name_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        self.task_name_label.setText(self.task.title)
+        self.task_name_label.setText(self.task.name)
         self.task_name_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.task_name_label.mousePressEvent = self.edit_task_name
         self.header_layout.addWidget(self.task_name_label)
@@ -71,7 +71,7 @@ class TaskDetailDock(QDockWidget):
         self.due_date_label.mousePressEvent = self.open_due_date_picker
         self.header_layout.addWidget(self.due_date_label)
 
-        if self.task.count_required or self.task.estimate or self.task.subtasks:
+        if self.task.count_required or self.task.time_estimate or self.task.subtasks:
             self.progress_bar = TaskProgressBar(self.task)
             self.header_layout.addWidget(self.progress_bar)
         else:
@@ -133,7 +133,7 @@ class TaskDetailDock(QDockWidget):
         self.details_layout.setContentsMargins(0, 0, 0, 0)
 
         # Update task name
-        self.task_name_label.setText(self.task.title)
+        self.task_name_label.setText(self.task.name)
 
         # If task is recurring, show when it is recurring
         if self.task.recurring:
@@ -160,7 +160,7 @@ class TaskDetailDock(QDockWidget):
         self.dropdowns = TaskDropdownsWidget(task=self.task, parent=self)
         self.dropdowns.connect_dropdown_signals(
             lambda value: self.update_task_attribute('status', value),
-            lambda value: self.update_task_attribute('deadline_flexibility', value),
+            lambda value: self.update_task_attribute('flexibility', value),
             lambda value: self.update_task_attribute('effort_level', value)
         )
         self.details_layout.addWidget(self.dropdowns)
@@ -170,7 +170,7 @@ class TaskDetailDock(QDockWidget):
             description_container = DescriptionContainer(self.task.description)
             self.details_layout.addWidget(description_container, stretch=0)
 
-        sub_task_window = SubtaskWindow(self.task, self.task_list_widget.task_list, parent=self)
+        sub_task_window = SubtaskWindow(self.task, parent=self)
         self.details_layout.addWidget(sub_task_window)
 
         # Resources
@@ -184,7 +184,7 @@ class TaskDetailDock(QDockWidget):
             self.details_layout.addWidget(progress_bar)
 
         # Progress Bar for Time Logged
-        if self.task.estimate > 0:
+        if self.task.time_estimate > 0:
             time_bar = TimeProgressWidget(task=self.task, task_list_widget=self.task_list_widget, parent=self)
             self.details_layout.addWidget(time_bar)
 
@@ -209,8 +209,8 @@ class TaskDetailDock(QDockWidget):
         tag_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # Allow the widget to expand
 
         # Style each tag label with centered alignment, shadow, translucent background, and inverted text color
-        for category in self.task.categories:
-            tag_label = QLabel(f"{category} ")
+        for tag in self.task.tags:
+            tag_label = QLabel(f"{tag} ")
             tag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Center align text within the label
 
             # Add shadow effect
@@ -238,7 +238,7 @@ class TaskDetailDock(QDockWidget):
 
     def update_task_attribute(self, attribute, value):
         self.task.set_attribute(attribute, value)
-        self.task_list_widget.task_list.update_task(self.task)
+        self.parent.task_manager.update_task(self.task)
         global_signals.task_list_updated.emit()
 
     def edit_task_name(self, event):
@@ -255,8 +255,8 @@ class TaskDetailDock(QDockWidget):
 
     def finish_editing_task_name(self):
         # Update task title with the new text and replace QLineEdit with QLabel
-        self.task.title = self.task_name_edit.text()  # Update task with new name
-        self.task_name_label.setText(self.task.title)
+        self.task.name = self.task_name_edit.text()  # Update task with new name
+        self.task_name_label.setText(self.task.name)
 
         # Replace QLineEdit back with QLabel
         self.header_layout.replaceWidget(self.task_name_edit, self.task_name_label)
@@ -292,96 +292,107 @@ class TaskDetailDock(QDockWidget):
         return super().eventFilter(source, event)
 
     def setup_due_date_display(self):
-        # Determine the due date string based on conditions
-        due_date_text = ""
-        due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
-        due_time = QTime.fromString(self.task.due_time, "HH:mm")
+        """
+        Displays the task's due date/time in self.due_date_label
+        based on the single self.task.due_datetime attribute.
+        """
+        if not self.task.due_datetime:
+            self.due_date_label.setText("")  # No due date set
+            return
 
-        if due_date != QDate(2000, 1, 1):
-            today = QDate.currentDate()
-            days_to_due = today.daysTo(due_date)
+        # Convert Python datetime to QDateTime
+        qdt = QDateTime(
+            self.task.due_datetime.year,
+            self.task.due_datetime.month,
+            self.task.due_datetime.day,
+            self.task.due_datetime.hour,
+            self.task.due_datetime.minute,
+        )
 
-            if days_to_due == 0:
-                due_date_text = "today"
-            elif 0 < days_to_due <= 6:  # Due within the current week
-                due_date_text = due_date.toString("ddd")
-            else:
-                due_date_text = due_date.toString("dd MMM")
-                if due_date.year() != today.year():
-                    due_date_text += f" {due_date.year()}"
+        # Calculate how many days until due
+        today = QDate.currentDate()
+        days_to_due = today.daysTo(qdt.date())
 
-        if due_time != QTime(0, 0):  # Check if due time is set
-            due_date_text += " " + due_time.toString("h:mm AP")
-
-        self.due_date_label.setText(due_date_text)
+        # Simple formatting examples
+        if days_to_due == 0:
+            self.due_date_label.setText("due today")
+        elif days_to_due > 0 and days_to_due <= 7:
+            # Show day of week if within 7 days
+            self.due_date_label.setText(qdt.date().toString("ddd h:mm AP"))
+        else:
+            # Show date plus year if it differs
+            display_str = qdt.date().toString("dd MMM")
+            if qdt.date().year() != today.year():
+                display_str += f" {qdt.date().year()}"
+            display_str += " " + qdt.time().toString("h:mm AP")
+            self.due_date_label.setText(display_str)
 
     def open_due_date_picker(self, event):
+        """
+        Opens a dialog with a QCalendarWidget for selecting the date
+        and a QTimeEdit for setting the time.
+        """
         dialog = QDialog(self)
         dialog.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         layout = QVBoxLayout(dialog)
         dialog.setLayout(layout)
+
+        # Calendar for date selection
         calendar = QCalendarWidget(dialog)
-        default_due_date = "2000-01-01"
-        current_due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
-        if current_due_date.toString("yyyy-MM-dd") != default_due_date:
-            calendar.setSelectedDate(current_due_date)
-        calendar.selectionChanged.connect(lambda: self.update_due_date_from_calendar(calendar))
+        if self.task.due_datetime:
+            calendar.setSelectedDate(self.task.due_datetime.date())
         layout.addWidget(calendar)
+
+        # Time selection
         time_edit = QTimeEdit(dialog)
-        current_due_time = QTime.fromString(self.task.due_time, "HH:mm")
-        time_edit.setTime(current_due_time)
         time_edit.setDisplayFormat("h:mm AP")
-        time_edit.timeChanged.connect(lambda: self.update_due_time_from_time_edit(time_edit))
+        if self.task.due_datetime:
+            time_edit.setTime(self.task.due_datetime.time())
+        else:
+            time_edit.setTime(QTime(0, 0))  # Default to midnight
         layout.addWidget(time_edit)
+
+        # Buttons
         button_layout = QHBoxLayout()
-        clear_date_button = QPushButton("Clear Date", dialog)
-        clear_date_button.clicked.connect(lambda: self.clear_due_date(calendar))
-        button_layout.addWidget(clear_date_button)
-        clear_time_button = QPushButton("Clear Time", dialog)
-        clear_time_button.clicked.connect(lambda: self.clear_due_time(time_edit))
-        button_layout.addWidget(clear_time_button)
+        ok_button = QPushButton("OK", dialog)
+        ok_button.clicked.connect(
+            lambda: self.set_task_due_datetime(calendar.selectedDate(), time_edit.time(), dialog)
+        )
+        button_layout.addWidget(ok_button)
+
+        clear_button = QPushButton("Clear", dialog)
+        clear_button.clicked.connect(lambda: self.clear_due_datetime(dialog))
+        button_layout.addWidget(clear_button)
 
         layout.addLayout(button_layout)
+
+        # Position the dialog near the label
         label_pos = self.due_date_label.mapToGlobal(
-            QPoint(self.due_date_label.width() // 2, self.due_date_label.height() // 2))
+            QPoint(self.due_date_label.width() // 2, self.due_date_label.height() // 2)
+        )
         dialog.move(label_pos - QPoint(dialog.width() // 2, dialog.height() // 2))
+
         dialog.exec()
 
-    def update_task_due_date(self, due_date):
-        # Update task's due date
-        self.task.due_date = due_date
-        self.task_list_widget.task_list.update_task(self.task)
-        global_signals.task_list_updated.emit()
-
-    def update_task_due_time(self, due_time):
-        # Update task's due time
-        self.task.due_time = due_time
-        self.task_list_widget.task_list.update_task(self.task)
-        global_signals.task_list_updated.emit()
-
-    def update_due_date_from_calendar(self, calendar):
-        # Use update_task_due_date to set due date based on calendar selection
-        selected_date = calendar.selectedDate().toString("yyyy-MM-dd")
-        self.update_task_due_date(selected_date)
+    def set_task_due_datetime(self, qdate, qtime, dialog):
+        """
+        Sets the task's due_datetime using the selected QDate and QTime.
+        """
+        self.task.due_datetime = datetime(
+            qdate.year(), qdate.month(), qdate.day(), qtime.hour(), qtime.minute()
+        )
+        self.parent.task_manager.update_task(self.task)
         self.setup_due_date_display()
+        dialog.accept()
 
-    def update_due_time_from_time_edit(self, time_edit):
-        # Use update_task_due_time to set due time based on time edit
-        selected_time = time_edit.time().toString("HH:mm")
-        self.update_task_due_time(selected_time)
+    def clear_due_datetime(self, dialog):
+        """
+        Clears the task's due_datetime (sets it to None).
+        """
+        self.task.due_datetime = None
+        self.parent.task_manager.update_task(self.task)
         self.setup_due_date_display()
-
-    def clear_due_date(self, calendar):
-        # Use update_task_due_date to clear the due date
-        self.update_task_due_date("2000-01-01")  # Default/undefined date
-        calendar.clearFocus()
-        self.setup_due_date_display()
-
-    def clear_due_time(self, time_edit):
-        # Use update_task_due_time to clear the due time
-        self.update_task_due_time("00:00")  # Default/undefined time
-        time_edit.setTime(QTime(0, 0))
-        self.setup_due_date_display()
+        dialog.accept()
 
     def toggle_edit_mode(self):
         if self.is_edit_mode:
@@ -403,7 +414,7 @@ class TaskDetailDock(QDockWidget):
         self.clear_layout(self.details_layout)
 
         # Editable Task Name
-        self.task_name_edit = QLineEdit(self.task.title)
+        self.task_name_edit = QLineEdit(self.task.name)
         self.header_layout.replaceWidget(self.task_name_label, self.task_name_edit)
         self.task_name_label.hide()
 
@@ -419,7 +430,7 @@ class TaskDetailDock(QDockWidget):
 
         # Categories
         self.categories_input = TagInputWidget(
-            self.task_list_widget.task_list.get_task_categories(), self.task.categories)
+            self.task_list_widget.task_list.get_task_tags(), self.task.tags)
         self.add_labeled_widget("Categories:", self.categories_input)
 
         # Recurring
@@ -507,7 +518,7 @@ class TaskDetailDock(QDockWidget):
         self.estimate_spinbox = QDoubleSpinBox()
         self.estimate_spinbox.setRange(0, 10000)
         self.estimate_spinbox.setDecimals(2)
-        self.estimate_spinbox.setValue(self.task.estimate)
+        self.estimate_spinbox.setValue(self.task.time_estimate)
         self.add_labeled_widget("Estimate (hours):", self.estimate_spinbox)
 
         # Time Logged
@@ -545,14 +556,14 @@ class TaskDetailDock(QDockWidget):
                 QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
                 return
             # Update task attributes
-            self.task.title = title
+            self.task.name = name
         except Exception as e:
             print(e)
 
         # Update other task attributes
         self.task.description = self.description_edit.toPlainText()
         self.task.priority = self.priority_spinbox.value()
-        self.task.categories = self.categories_input.get_tags()
+        self.task.tags = self.categories_input.get_tags()
         self.task.recurring = self.recurring_checkbox.isChecked()
 
         # Recur Every
@@ -568,14 +579,14 @@ class TaskDetailDock(QDockWidget):
         else:
             self.task.recur_every = None
 
-        self.task.estimate = self.estimate_spinbox.value()
+        self.task.time_estimate = self.estimate_spinbox.value()
         self.task.time_logged = self.time_logged_spinbox.value()
         self.task.count_required = self.count_required_spinbox.value()
         self.task.count_completed = self.count_completed_spinbox.value()
         self.task.notes = self.notes_edit.toPlainText()
 
         # Update task and refresh UI
-        self.task_list_widget.task_list.update_task(self.task)
+        self.parent.task_manager.update_task(self.task)
         global_signals.task_list_updated.emit()
         self.exit_edit_mode()
 
@@ -678,6 +689,19 @@ class TaskListDockStacked(QDockWidget):
         self.stack_widget.setObjectName("stackWidget")
 
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """
+        Monitor focus changes and handle multi-select mode toggling.
+        """
+        if event.type() == QEvent.Type.FocusOut and self.multi_select_mode_toggle_bool:
+            print("FocusOut detected by event filter.")
+            if not self.isAncestorOf(QApplication.focusWidget()) and not self.underMouse():
+                print("Focus moved outside TaskListDockStacked. Exiting multi-select mode.")
+                self.toggle_multi_select()
+                return True
+        return super().eventFilter(obj, event)
 
     def filter_current_task_list(self, text):
         current_task_list_widget = self.get_current_task_list_widget()
@@ -686,8 +710,8 @@ class TaskListDockStacked(QDockWidget):
 
     def show_task_list(self, task_list_name):
         hash_key = hash(task_list_name)
-        if hash_key in self.parent.hash_to_widget:
-            task_list_widget = self.parent.hash_to_widget[hash_key]
+        if hash_key in self.parent.hash_to_task_list_widgets:
+            task_list_widget = self.parent.hash_to_task_list_widgets[hash_key]
             self.stack_widget.setCurrentWidget(task_list_widget)
             self.update_toolbar()
             search_text = self.parent.navigation_sidebar_dock.task_list_collection.search_bar.text()
@@ -716,11 +740,11 @@ class TaskListDockStacked(QDockWidget):
             current_task_list_widget = self.stack_widget.currentWidget()
             current_task_list = current_task_list_widget.task_list
             self.toolbar.actions()[1].setCheckable(True)
-            self.toolbar.actions()[1].setChecked(current_task_list.queue)
+            self.toolbar.actions()[1].setChecked(current_task_list.sort_by_queue)
             self.toolbar.actions()[2].setCheckable(True)
-            self.toolbar.actions()[2].setChecked(current_task_list.stack)
+            self.toolbar.actions()[2].setChecked(current_task_list.sort_by_stack)
             self.toolbar.actions()[3].setCheckable(True)
-            self.toolbar.actions()[3].setChecked(current_task_list.priority)
+            self.toolbar.actions()[3].setChecked(current_task_list.sort_by_priority)
         except Exception as e:
             print(e)
 
@@ -733,18 +757,18 @@ class TaskListDockStacked(QDockWidget):
         self.show_add_task_dialog(current_task_list_widget)
 
     def show_add_task_dialog(self, task_list_widget):
-        try:
-            dialog = AddTaskDialog(self)
-            button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
-            dialog.adjustSize()
-            dialog.move(button_pos.x() - dialog.width(), button_pos.y())
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                task_data = dialog.get_task_data()
-                task = Task(**task_data)
-                task_list_widget.task_list.add_task(task)
-                global_signals.task_list_updated.emit()
-        except Exception as e:
-            print(f"An error occurred while adding a task: {e}")
+        # try:
+        dialog = AddTaskDialog(self, task_list_widget)
+        button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
+        dialog.adjustSize()
+        dialog.move(button_pos.x() - dialog.width(), button_pos.y())
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            task_data = dialog.get_task_data()
+            task = Task(**task_data)
+            self.task_manager.add_task(task)
+            global_signals.task_list_updated.emit()
+        # except Exception as e:
+        #     print(f"An error occurred while adding a task: {e}")
 
     def set_queue(self):
         try:
@@ -752,9 +776,11 @@ class TaskListDockStacked(QDockWidget):
             if not isinstance(current_task_list_widget, TaskListWidget):
                 return
             current_task_list = current_task_list_widget.task_list
-            current_task_list.queue = not current_task_list.queue
-            self.toolbar.actions()[1].setCheckable(True if current_task_list.queue else False)
-            self.toolbar.actions()[1].setChecked(current_task_list.queue)
+            current_task_list.sort_by_queue = not current_task_list.sort_by_queue
+            if current_task_list.sort_by_stack:
+                current_task_list.sort_by_stack = False
+            self.toolbar.actions()[1].setCheckable(True if current_task_list.sort_by_queue else False)
+            self.toolbar.actions()[1].setChecked(current_task_list.sort_by_queue)
             self.toolbar.actions()[2].setCheckable(False)
             self.toolbar.actions()[3].setCheckable(False)
             self.priority_filter = False
@@ -769,13 +795,15 @@ class TaskListDockStacked(QDockWidget):
             if not isinstance(current_task_list_widget, TaskListWidget):
                 return
             current_task_list = current_task_list_widget.task_list
-            current_task_list.stack = not current_task_list.stack
-            self.toolbar.actions()[2].setCheckable(True if current_task_list.stack else False)
-            self.toolbar.actions()[2].setChecked(current_task_list.stack)
+            current_task_list.sort_by_stack = not current_task_list.sort_by_stack
+            if current_task_list.sort_by_queue:
+                current_task_list.sort_by_queue = False
+            self.toolbar.actions()[2].setCheckable(True if current_task_list.sort_by_stack else False)
+            self.toolbar.actions()[2].setChecked(current_task_list.sort_by_stack)
             self.toolbar.actions()[1].setCheckable(False)
             self.toolbar.actions()[3].setCheckable(False)
             self.priority_filter = False
-            current_task_list.queue = False
+            current_task_list.sort_by_queue = False
             current_task_list_widget.load_tasks()
             self.task_manager.update_task_list(current_task_list)
         except Exception as e:
@@ -787,21 +815,35 @@ class TaskListDockStacked(QDockWidget):
             if not isinstance(current_task_list_widget, TaskListWidget):
                 return
             current_task_list = current_task_list_widget.task_list
-            current_task_list.priority = not current_task_list.priority
-            self.toolbar.actions()[3].setCheckable(True if not self.priority_filter else False)
-            self.toolbar.actions()[3].setChecked(True if not self.priority_filter else False)
-            self.toolbar.actions()[2].setCheckable(False)
-            self.toolbar.actions()[1].setCheckable(False)
+
+            # Toggle the priority filter
             self.priority_filter = not self.priority_filter
+            current_task_list.sort_by_priority = self.priority_filter
+
+            # Update toolbar states
+            self.toolbar.actions()[3].setCheckable(self.priority_filter)
+            self.toolbar.actions()[3].setChecked(self.priority_filter)
+
+            # Ensure other sorting options are disabled
+            current_task_list.sort_by_stack = False
+            current_task_list.sort_by_queue = False
+            self.toolbar.actions()[2].setCheckable(False)
+            self.toolbar.actions()[2].setChecked(False)
+            self.toolbar.actions()[1].setCheckable(False)
+            self.toolbar.actions()[1].setChecked(False)
+
+            # Reload tasks in the current task list widget
             current_task_list_widget.load_tasks()
+
+            # Update the backend with the new sorting state
             self.task_manager.update_task_list(current_task_list)
+
         except Exception as e:
             print(f"Error in priority_sort: {e}")
 
     def toggle_multi_select(self):
         current_task_list_widget = self.get_current_task_list_widget()
 
-        # Check if there is a valid current task list widget
         if not current_task_list_widget or current_task_list_widget.count() == 0:
             if not self.multi_select_mode_toggle_bool:
                 print("No tasks available or invalid task list widget.")
@@ -811,8 +853,10 @@ class TaskListDockStacked(QDockWidget):
                 return
 
         self.multi_select_mode_toggle_bool = not self.multi_select_mode_toggle_bool
-        self.toolbar.actions()[4].setCheckable(True if self.multi_select_mode_toggle_bool else False)
-        self.toolbar.actions()[4].setChecked(True if self.multi_select_mode_toggle_bool else False)
+        print(f"Multi-select mode toggled: {self.multi_select_mode_toggle_bool}")  # Debug
+
+        self.toolbar.actions()[4].setCheckable(self.multi_select_mode_toggle_bool)
+        self.toolbar.actions()[4].setChecked(self.multi_select_mode_toggle_bool)
 
         if self.multi_select_mode_toggle_bool:
             self.multi_selection_tool_bar = QToolBar(self)
@@ -827,6 +871,7 @@ class TaskListDockStacked(QDockWidget):
         else:
             if hasattr(self, "multi_selection_tool_bar"):
                 self.multi_selection_tool_bar.hide()
+            current_task_list_widget.load_tasks()  # Ensure tasks reload in normal mode
             global_signals.task_list_updated.emit()
 
     def move_action(self):
@@ -835,10 +880,21 @@ class TaskListDockStacked(QDockWidget):
         self.moving = False
 
     def focusOutEvent(self, event):
+        """
+        Handle focus out event for TaskListDockStacked.
+        """
         super().focusOutEvent(event)
         print("TaskListDockStacked lost focus")
-        if self.multi_select_mode_toggle_bool and not self.moving:
-            self.toggle_multi_select()
+
+        # Prevent exiting multi-select when clicking inside the widget or on its child widgets
+        if self.multi_select_mode_toggle_bool:
+            if self.underMouse():
+                print("Focus still within widget or child. Ignoring focus out.")
+                return
+
+            if not self.isAncestorOf(QApplication.focusWidget()):
+                print("Focus moved outside TaskListDockStacked. Exiting multi-select mode.")
+                self.toggle_multi_select()
 
     def get_current_task_list_widget(self):
         current_widget = self.stack_widget.currentWidget()
@@ -876,9 +932,7 @@ class TaskListDock(QDockWidget):
         self.multi_select_mode_toggle_bool = False
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
-        task_list = self.parent.task_lists.get(task_list_name,
-                                               TaskList(task_list_name, self.task_manager, False, False, False))
-        self.parent.task_lists[task_list_name] = task_list
+        task_list = next((tl for tl in self.task_manager.task_lists if tl.name == task_list_name), None)
         self.task_list_widget = TaskListWidget(task_list, self.parent)
         self.priority_filter = False
         self.set_allowed_areas()
@@ -914,26 +968,23 @@ class TaskListDock(QDockWidget):
         self.show_add_task_dialog(self.task_list_widget)
 
     def show_add_task_dialog(self, task_list_widget):
-        try:
-            dialog = AddTaskDialog(self)
-            button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
-            dialog.adjustSize()
-            dialog.move(button_pos.x() - dialog.width(), button_pos.y())
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                task_data = dialog.get_task_data()
-                task = Task(**task_data)
-                task_list_widget.task_list.add_task(task)
-                global_signals.task_list_updated.emit()
-        except Exception as e:
-            print(f"An error occurred while adding a task: {e}")
+        dialog = AddTaskDialog(self, task_list_widget)
+        button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
+        dialog.adjustSize()
+        dialog.move(button_pos.x() - dialog.width(), button_pos.y())
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            task_data = dialog.get_task_data()
+            task = Task(**task_data)
+            self.task_manager.add_task(task)
+            global_signals.task_list_updated.emit()
 
     def set_queue(self):
         try:
             task_list = self.task_list_widget.task_list
-            task_list.queue = not task_list.queue
-            self.toolbar.actions()[1].setCheckable(task_list.queue)
-            self.toolbar.actions()[1].setChecked(task_list.queue)
-            task_list.stack = False
+            task_list.sort_by_queue = not task_list.sort_by_queue
+            self.toolbar.actions()[1].setCheckable(task_list.sort_by_queue)
+            self.toolbar.actions()[1].setChecked(task_list.sort_by_queue)
+            task_list.sort_by_stack = False
             self.toolbar.actions()[2].setCheckable(False)
             self.toolbar.actions()[3].setCheckable(False)
             self.priority_filter = False
@@ -945,13 +996,13 @@ class TaskListDock(QDockWidget):
     def set_stack(self):
         try:
             task_list = self.task_list_widget.task_list
-            task_list.stack = not task_list.stack
-            self.toolbar.actions()[2].setCheckable(task_list.stack)
-            self.toolbar.actions()[2].setChecked(task_list.stack)
+            task_list.sort_by_stack = not task_list.sort_by_stack
+            self.toolbar.actions()[2].setCheckable(task_list.sort_by_stack)
+            self.toolbar.actions()[2].setChecked(task_list.sort_by_stack)
             self.toolbar.actions()[1].setCheckable(False)
             self.toolbar.actions()[3].setCheckable(False)
             self.priority_filter = False
-            task_list.queue = False
+            task_list.sort_by_queue = False
             self.task_list_widget.load_tasks()
             self.task_manager.update_task_list(task_list)
         except Exception as e:
@@ -960,7 +1011,7 @@ class TaskListDock(QDockWidget):
     def priority_sort(self):
         try:
             task_list = self.task_list_widget.task_list
-            task_list.priority = not task_list.priority
+            task_list.sort_by_priority = not task_list.sort_by_priority
             self.toolbar.actions()[3].setCheckable(not self.priority_filter)
             self.toolbar.actions()[3].setChecked(not self.priority_filter)
             self.toolbar.actions()[2].setCheckable(False)
@@ -987,7 +1038,6 @@ class TaskListDock(QDockWidget):
     def toggle_multi_select(self):
         current_task_list_widget = self.task_list_widget
 
-        # Check if there is a valid current task list widget
         if not current_task_list_widget or current_task_list_widget.count() == 0:
             if not self.multi_select_mode_toggle_bool:
                 print("No tasks available or invalid task list widget.")
@@ -1013,6 +1063,7 @@ class TaskListDock(QDockWidget):
         else:
             if hasattr(self, "multi_selection_tool_bar"):
                 self.multi_selection_tool_bar.hide()
+            current_task_list_widget.load_tasks()
             global_signals.task_list_updated.emit()
 
     def move_action(self):
@@ -1022,9 +1073,10 @@ class TaskListDock(QDockWidget):
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
-        print("TaskListDockStacked lost focus")
+        print("TaskListDock lost focus")
         if self.multi_select_mode_toggle_bool and not self.moving:
             self.toggle_multi_select()
+
 
 
 class HistoryDock(QDockWidget):
@@ -1073,19 +1125,16 @@ class HistoryDock(QDockWidget):
         self.history_tree.clear()
         search_text = self.search_bar.text().lower()
 
-        for task_list_info in self.parent.task_manager.get_task_lists():
-            task_list = TaskList(task_list_info["list_name"], self.parent.task_manager,
-                                 task_list_info["queue"], task_list_info["stack"])
-            task_list.refresh_tasks()
-            completed_tasks = task_list.get_completed_tasks()
+        for task_list in self.parent.task_manager.task_lists:
+            completed_tasks = [task for task in task_list.tasks if task.status == "Completed"]
 
             if search_text:
-                completed_tasks = [task for task in completed_tasks if search_text in task.title.lower() or
-                                   search_text in task.description.lower()]
+                completed_tasks = [task for task in completed_tasks if search_text in task.name.lower() or
+                                   search_text in (task.description.lower() if task.description else "")]
 
             if completed_tasks:
                 task_list_item = QTreeWidgetItem(self.history_tree)
-                task_list_item.setText(0, task_list_info["list_name"])
+                task_list_item.setText(0, task_list.name)
                 task_list_item.setFirstColumnSpanned(True)
                 self.history_tree.addTopLevelItem(task_list_item)
 
@@ -1105,10 +1154,10 @@ class HistoryDock(QDockWidget):
 
                     for task in tasks:
                         task_item = QTreeWidgetItem(date_item)
-                        task_item.setText(0, task.title)
+                        task_item.setText(0, task.name)
                         task_item.setText(1, task.last_completed_date.strftime(
                             '%Y-%m-%d %H:%M') if task.last_completed_date else '')
-                        task_item.setText(2, task.due_date if task.due_date != "2000-01-01" else '')
+                        task_item.setText(2, task.due_datetime.strftime('%Y-%m-%d %H:%M') if task.due_datetime else '')
                         task_item.setText(3, str(task.priority))
                         task_item.setData(0, Qt.ItemDataRole.UserRole, task)
                         date_item.addChild(task_item)
@@ -1140,25 +1189,22 @@ class HistoryDock(QDockWidget):
             self.open_task_detail(task)
 
     def open_task_detail(self, task):
-        if task.list_name in self.parent.task_lists:
-            task_list = self.parent.task_lists[task.list_name]
-        else:
-            task_list = TaskList(task.list_name, self.parent.task_manager)
-            self.parent.task_lists[task.list_name] = task_list
+        task_list_name = task.list_name
+        task_list = next((tl for tl in self.parent.task_manager.task_lists if tl.name == task_list_name), None)
+        if task_list:
+            task_list_widget = self.parent.hash_to_task_list_widgets.get(task_list_name)
+            if not task_list_widget:
+                task_list_widget = TaskListWidget(task_list, self.parent)
+                self.parent.hash_to_task_list_widgets[task_list_name] = task_list_widget
 
-        task_list_widget = self.parent.hash_to_widget.get(task.list_name)
-        if not task_list_widget:
-            task_list_widget = TaskListWidget(task_list, self.parent)
-            self.parent.hash_to_widget[task.list_name] = task_list_widget
-
-        task_list_widget.parent.add_task_detail_dock(task, task_list_widget)
+            task_list_widget.parent.add_task_detail_dock(task, task_list_widget)
 
     def restore_task(self, task):
         reply = QMessageBox.question(self, 'Restore Task', 'Are you sure you want to restore this task?',
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            task.completed = False
+            task.status = "Not Started"
             task.last_completed_date = None
             self.parent.task_manager.update_task(task)
             global_signals.task_list_updated.emit()
@@ -1334,10 +1380,10 @@ class CalendarDock(QDockWidget):
             task_list = TaskList(task.list_name, self.task_manager, False, False, False)
             self.parent.task_lists[task.list_name] = task_list
 
-        task_list_widget = self.parent.hash_to_widget.get(task.list_name)
+        task_list_widget = self.parent.hash_to_task_list_widgets.get(task.list_name)
         if not task_list_widget:
             task_list_widget = TaskListWidget(task_list, self.parent)
-            self.parent.hash_to_widget[task.list_name] = task_list_widget
+            self.parent.hash_to_task_list_widgets[task.list_name] = task_list_widget
 
         task_list_widget.parent.add_task_detail_dock(task, task_list_widget)
 

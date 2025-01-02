@@ -1,5 +1,6 @@
 from .task_widgets import *
 
+
 class ResourcesWidget(QWidget):
     """
     A widget for managing a list of resources (URLs or file paths) associated with a task.
@@ -196,7 +197,7 @@ class ResourcesWidget(QWidget):
         """
         Updates the task in the database and emits a global signal.
         """
-        self.task_list_widget.task_list.update_task(self.task)
+        self.task_list_widget.manager.update_task(self.task)
         global_signals.task_list_updated.emit()
 
 
@@ -211,7 +212,7 @@ class TaskDropdownsWidget(QWidget):
         Initializes the TaskDropdownsWidget.
 
         :param task: An object representing the task, with attributes for status,
-                     deadline_flexibility, and effort_level.
+                     flexibility, and effort_level.
         :param parent: Optional parent widget.
         """
         super().__init__(parent)
@@ -226,7 +227,7 @@ class TaskDropdownsWidget(QWidget):
         self.status_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Status",
-            [""] + ["Not Started", "In Progress", "Completed", "Failed", "On Hold"],
+            ["Not Started", "In Progress", "Completed", "Failed", "On Hold"],
             self.task.status,
             lambda value: self.update_task_attribute('status', value)
         )
@@ -234,15 +235,15 @@ class TaskDropdownsWidget(QWidget):
         self.flexibility_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Deadline Flexibility",
-            [""] + ["Strict", "Flexible"],
-            self.task.deadline_flexibility,
-            lambda value: self.update_task_attribute('deadline_flexibility', value)
+            ["Strict", "Flexible", "Very Flexible"],
+            self.task.flexibility,
+            lambda value: self.update_task_attribute('flexibility', value)
         )
 
         self.effort_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Effort Level",
-            [""] + ["Easy", "Medium", "Hard"],
+            ["Easy", "Medium", "Hard"],
             self.task.effort_level,
             lambda value: self.update_task_attribute('effort_level', value)
         )
@@ -275,8 +276,8 @@ class TaskDropdownsWidget(QWidget):
 
         # Create and configure the dropdown
         dropdown = QComboBox()
-        dropdown.addItems(items)
-        index = dropdown.findText(current_value) if current_value else 0
+        dropdown.addItems([str(item) for item in items])  # Convert items to strings
+        index = dropdown.findText(str(current_value)) if current_value else 0  # Convert current_value to string
         dropdown.setCurrentIndex(index)
         dropdown.currentTextChanged.connect(on_change_callback)
         dropdown_layout.addWidget(dropdown)
@@ -376,8 +377,10 @@ class SubtaskItemWidget(QWidget):
         layout.setContentsMargins(5, 0, 5, 0)
         layout.setSpacing(5)
 
-        self.checkbox = QCheckBox(self.subtask.title)
-        self.checkbox.setChecked(self.subtask.completed)
+        print(f"Initializing subtask: {self.subtask}")  # Debug log
+
+        self.checkbox = QCheckBox(self.subtask["name"])
+        self.checkbox.setChecked(self.subtask["completed"])  # Sync with subtask
         self.checkbox.stateChanged.connect(self.on_state_changed)
         layout.addWidget(self.checkbox)
 
@@ -394,8 +397,22 @@ class SubtaskItemWidget(QWidget):
         """
         Handle checkbox state change.
         """
-        self.subtask.completed = (state == Qt.CheckState.Checked)
-        self.parent.toggle_subtask_completion(self.subtask, state)
+        # Direct integer comparison
+        is_checked = (state == 2)  # 2 corresponds to Qt.CheckState.Checked
+        print(f"Checkbox state changed: {state}, is_checked computed as: {is_checked}")  # Debug log
+
+        # Update the subtask
+        self.subtask["completed"] = is_checked
+
+        # Update the corresponding subtask in the parent's task list
+        for subtask in self.parent.task.subtasks:
+            if subtask["order"] == self.subtask["order"]:  # Match by unique identifier
+                subtask["completed"] = is_checked
+                break
+
+        print(f"Subtask state updated: {self.subtask}")
+        print(f"Parent subtasks list: {self.parent.task.subtasks}")  # Debugging output
+        self.parent.update_subtask_completion()
 
 
 class SubtaskWindow(QWidget):
@@ -403,18 +420,16 @@ class SubtaskWindow(QWidget):
     Window for managing subtasks within a task, providing UI for adding, editing, deleting, and reordering subtasks.
     """
 
-    def __init__(self, task, task_list, parent=None):
+    def __init__(self, task, parent=None):
         super().__init__()
         self.parent = parent
         self.task = task
-        self.task_list = task_list
+        self.manager = self.parent.task_list_widget.manager
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setStyleSheet("border-radius: 10px;")
         self.setMinimumSize(50, 100)
 
         self.main_layout = QVBoxLayout(self)
-        # self.main_layout.setContentsMargins(10, 10, 10, 10)
-
         self.input_layout = QHBoxLayout()
         self.subtask_input = QLineEdit()
         self.subtask_input.setPlaceholderText("Add a subtask...")
@@ -444,7 +459,6 @@ class SubtaskWindow(QWidget):
         self.subtask_list.clear()
         for subtask in self.task.subtasks:
             item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, subtask.id)
             widget = SubtaskItemWidget(subtask, parent=self)
             item.setSizeHint(widget.sizeHint())
             self.subtask_list.addItem(item)
@@ -456,23 +470,19 @@ class SubtaskWindow(QWidget):
         """
         subtask_name = self.subtask_input.text().strip()
         if subtask_name:
-            new_subtask = Subtask(title=subtask_name, completed=False, task_id=self.task.id)
-            self.task_list.add_subtask(self.task, new_subtask)
+            new_subtask = {"order": len(self.task.subtasks), "name": subtask_name, "completed": False}
+            self.task.subtasks.append(new_subtask)
             self.subtask_input.clear()
             self.load_subtasks()
+        self.manager.update_task(self.task)
         global_signals.task_list_updated.emit()
 
-    def toggle_subtask_completion(self, subtask, state):
+    def update_subtask_completion(self):
         """
-        Toggle the completion status of a subtask.
+        Update subtask completion status and emit update signal.
         """
-        if state == 2:
-            subtask.completed = True
-        elif state == 0:
-            subtask.completed = False
-        self.task_list.update_subtask(subtask)
-        if hasattr(self.parent, 'progress_bar') and hasattr(self.parent.progress_bar, 'update_progress'):
-            self.parent.progress_bar.update_progress()
+        self.manager.update_task(self.task)
+        # print(self.task.subtasks)
         global_signals.task_list_updated.emit()
 
     def show_context_menu(self, position):
@@ -511,23 +521,24 @@ class SubtaskWindow(QWidget):
 
     def finish_edit_subtask(self, line_edit, item, subtask):
         """
-        Complete editing and update the subtask name in the database.
+        Complete editing and update the subtask name.
         """
         new_name = line_edit.text().strip()
         widget = self.subtask_list.itemWidget(item)
         if new_name:
-            subtask.title = new_name
-            self.task_list.update_subtask(subtask)
+            subtask["name"] = new_name
             widget.layout().removeWidget(line_edit)
             line_edit.deleteLater()
-            widget.checkbox.setText(subtask.title)
+            widget.checkbox.setText(subtask["name"])
             widget.checkbox.show()
             del widget.line_edit
             self.subtask_list.clearFocus()
             self.clearFocus()
+            self.manager.update_task(self.task)
             global_signals.task_list_updated.emit()
         else:
             self.delete_subtask(item)
+            self.manager.update_task(self.task)
             global_signals.task_list_updated.emit()
 
     def delete_subtask(self, item):
@@ -535,26 +546,23 @@ class SubtaskWindow(QWidget):
         Remove a subtask from the task list and update the view.
         """
         index = self.subtask_list.row(item)
-        subtask = self.task.subtasks[index]
-        self.task_list.remove_subtask(self.task, subtask)
+        del self.task.subtasks[index]
         self.load_subtasks()
+        self.manager.update_task(self.task)
         global_signals.task_list_updated.emit()
 
     def on_subtask_reordered(self):
         """
-        Reorder subtasks within the list and update their order in the database.
+        Reorder subtasks within the list and update their order.
         """
-        id_to_subtask = {subtask.id: subtask for subtask in self.task.subtasks}
-        new_order_ids = [self.subtask_list.item(index).data(Qt.ItemDataRole.UserRole)
-                         for index in range(self.subtask_list.count())]
-
-        for index, subtask_id in enumerate(new_order_ids):
-            subtask = id_to_subtask[subtask_id]
-            subtask.order = index
-            self.task_list.update_subtask(subtask)
-
-        self.task.subtasks = [id_to_subtask[subtask_id] for subtask_id in new_order_ids]
-        self.task_list.update_task(self.task)
+        new_order = []
+        for index in range(self.subtask_list.count()):
+            widget = self.subtask_list.itemWidget(self.subtask_list.item(index))
+            subtask = widget.subtask
+            subtask["order"] = index
+            new_order.append(subtask)
+        self.task.subtasks = new_order
+        self.manager.update_task(self.task)
         global_signals.task_list_updated.emit()
 
 
@@ -572,6 +580,7 @@ class CustomTreeWidget(QTreeWidget):
         event.accept()
         if self.currentItem().parent():
             unique_id = random.randint(1000, 9999)
+            from .dock_widgets import TaskListDock
             self.dock_widget = TaskListDock(self.currentItem().text(0), self.parent)
             self.dock_widget.setObjectName(f"TaskListDock_{self.currentItem().text(0)}_{unique_id}")
             self.dock_widget.start_drag()
@@ -608,7 +617,9 @@ class CustomTreeWidget(QTreeWidget):
                 new_category_name = new_parent.text(0) if new_parent else None
                 if new_category_name == "Uncategorized":
                     new_category_name = None
-                self.task_manager.update_task_list_category(task_list_name, new_category_name)
+                task_list = next((tl for tl in self.task_manager.task_lists if tl.name == task_list_name), None)
+                task_list.category = new_category_name
+                self.task_manager.update_task_list(task_list)
 
         super().dropEvent(event)
 
@@ -677,7 +688,7 @@ class TaskListCollection(QWidget):
             self.task_list_widget_in_focus_before_search = self.parent.stacked_task_list.stack_widget.currentWidget()
 
         if not text:
-            # Show all items when the search bar is empty
+            # Reset visibility of all items and revert to previously focused task list
             for i in range(self.tree_widget.topLevelItemCount()):
                 category_item = self.tree_widget.topLevelItem(i)
                 category_item.setHidden(False)
@@ -690,56 +701,43 @@ class TaskListCollection(QWidget):
                 self.task_list_widget_in_focus_before_search = None
             return
 
-        # Iterate over categories and task lists to match the search term
+        # Iterate over categories and task lists
         for i in range(self.tree_widget.topLevelItemCount()):
             category_item = self.tree_widget.topLevelItem(i)
             category_visible = False
-            # Check if the category name matches the search term
             if text.lower() in category_item.text(0).lower():
                 category_visible = True
-            # Iterate over task lists in the category
             for j in range(category_item.childCount()):
                 task_list_item = category_item.child(j)
                 task_list_visible = False
-                # Check if the task list name matches the search term
-                if text.lower() in task_list_item.text(0).lower():
-                    task_list_visible = True
-                # Load tasks and check if any task or its subtasks match the search term
                 task_list_name = task_list_item.text(0)
-                task_list = self.parent.task_lists[task_list_name]
-                tasks = task_list.load_tasks()
+                task_list = next((tl for tl in self.task_manager.task_lists if tl.name == task_list_name), None)
+                tasks = task_list.tasks if task_list else []
                 for task in tasks:
-                    # Check task title, description, and subtasks
-                    if text.lower() in task.title.lower() or text.lower() in task.description.lower():
+                    if text.lower() in task.name.lower() or text.lower() in task.description.lower():
                         task_list_visible = True
                         break
-                    # Check subtasks
                     for subtask in task.subtasks:
-                        if text.lower() in subtask.title.lower() or text.lower():
+                        if text.lower() in subtask["name"].lower():
                             task_list_visible = True
                             break
                     if task_list_visible:
                         break
-                # Show or hide the task list item based on the search result
                 task_list_item.setHidden(not task_list_visible)
                 if task_list_visible:
                     category_visible = True
                     if first_match_task_list_name is None:
                         first_match_task_list_name = task_list_name
-                else:
-                    # Hide task lists that don't match
-                    task_list_item.setHidden(True)
-            # Show or hide the category item based on whether any of its task lists are visible
             category_item.setHidden(not category_visible)
 
-        # Bring the first matching task list into focus
         if first_match_task_list_name:
+            print(f"Switching to task list: {first_match_task_list_name}")  # Debugging
             self.select_task_list_in_tree(first_match_task_list_name)
             self.parent.stacked_task_list.show_task_list(first_match_task_list_name)
 
     def load_task_lists(self):
         self.tree_widget.clear()
-        self.categories = self.task_manager.get_categories()
+        self.categories = self.task_manager.categories
 
         sorted_categories = sorted(
             self.categories.items(),
@@ -755,15 +753,15 @@ class TaskListCollection(QWidget):
             category_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'category', 'name': category_name})
 
             # Ensure that empty categories are still shown
-            if category_info.get('task_lists'):  # If the category has task lists
+            if "task_lists" in category_info:  # If the category has task lists
                 # Sort task lists by their order
                 sorted_task_lists = sorted(
                     category_info['task_lists'],
-                    key=lambda task_list: task_list['order']
+                    key=lambda task_list: task_list.order
                 )
 
                 for task_list_info in sorted_task_lists:
-                    task_list_name = task_list_info["list_name"]
+                    task_list_name = task_list_info.name
 
                     task_list_item = QTreeWidgetItem(category_item)
                     task_list_item.setFlags(task_list_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
@@ -772,23 +770,13 @@ class TaskListCollection(QWidget):
                                            {'type': 'task_list', 'info': task_list_info})
                     task_list_item.setFlags(task_list_item.flags())
 
-                    if task_list_name in self.parent.task_lists:
-                        task_list = self.parent.task_lists[task_list_name]
-                    else:
-                        task_list = TaskList(
-                            task_list_name,
-                            self.task_manager,
-                            task_list_info["queue"],
-                            task_list_info["stack"],
-                            task_list_info["priority"]
-                        )
-                        self.parent.task_lists[task_list_name] = task_list
+                    task_list = next((tl for tl in self.task_manager.task_lists if tl.name == task_list_name), None)
 
                     hash_key = hash(task_list_name)
-                    if hash_key not in self.parent.hash_to_widget:
+                    if hash_key not in self.parent.hash_to_task_list_widgets:
                         task_list_widget = TaskListWidget(task_list, self.parent)
                         self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
-                        self.parent.hash_to_widget[hash_key] = task_list_widget
+                        self.parent.hash_to_task_list_widgets[hash_key] = task_list_widget
 
     def add_category(self):
         category_name, ok = QInputDialog.getText(self, "New Category", "Enter category name:")
@@ -797,55 +785,60 @@ class TaskListCollection(QWidget):
             if category_name in self.categories:
                 QMessageBox.warning(self, "Duplicate Category", "A category with this name already exists.")
                 return
-            self.categories[category_name] = []
+            self.categories[category_name] = {
+                "order": len(self.categories),
+                "task_lists": []
+            }
             self.task_manager.add_category(category_name)
             self.load_task_lists()
 
     def add_task_list(self):
-        try:
-            task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter task list name:")
-            if ok and task_list_name.strip():
-                task_list_name = task_list_name.strip()
-                # Check for duplicates
-                if any(task_list_name == task_list["list_name"] for category in self.categories.values() for task_list
-                       in category['task_lists']):
-                    QMessageBox.warning(self, "Duplicate Task List", "A task list with this name already exists.")
-                    return
-                # Ask if the user wants to assign a category
-                assign_category_reply = QMessageBox.question(
+        task_list_name, ok = QInputDialog.getText(self, "New Task List", "Enter task list name:")
+        if ok and task_list_name.strip():
+            task_list_name = task_list_name.strip()
+            # Check for duplicates
+            if any(task_list_name == task_list.name for category in self.categories.values() for task_list
+                   in category['task_lists']):
+                QMessageBox.warning(self, "Duplicate Task List", "A task list with this name already exists.")
+                return
+            # Ask if the user wants to assign a category
+            assign_category_reply = QMessageBox.question(
+                self,
+                'Assign Category',
+                'Do you want to assign a category to this task list?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            category_name = None
+            if assign_category_reply == QMessageBox.StandardButton.Yes:
+                category_names = [name for name in self.categories.keys() if name != "Uncategorized"]
+                category_name, ok = QInputDialog.getItem(
                     self,
-                    'Assign Category',
-                    'Do you want to assign a category to this task list?',
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.Yes
+                    "Select Category",
+                    "Choose a category:",
+                    category_names,
+                    editable=False
                 )
-                category_name = None
-                if assign_category_reply == QMessageBox.StandardButton.Yes:
-                    category_names = [name for name in self.categories.keys() if name != "Uncategorized"]
-                    category_name, ok = QInputDialog.getItem(
-                        self,
-                        "Select Category",
-                        "Choose a category:",
-                        category_names,
-                        editable=False
-                    )
-                    if not ok:
-                        category_name = None  # User canceled category selection
-                # Add the task list
-                self.task_manager.add_task_list(task_list_name, queue=False, stack=False,
-                                                category=category_name)
-                # Update self.categories
-                self.categories = self.task_manager.get_categories()
-                self.load_task_lists()
-                # Add to the stack widget
-                task_list_widget = TaskListWidget(self.parent.task_lists[task_list_name], self.parent)
-                self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
-                self.parent.hash_to_widget[hash(task_list_name)] = task_list_widget
-                self.parent.stacked_task_list.stack_widget.setCurrentWidget(task_list_widget)
-                self.select_task_list_in_tree(task_list_name)
-        except Exception as e:
-            QMessageBox.critical(self, "Error Adding Task List", f"An error occurred: {e}")
-            print(f"Error in add_task_list: {e}")
+                if not ok:
+                    category_name = "Uncategorized"
+            else:
+                category_name = "Uncategorized"
+            if category_name not in self.categories:
+                category_name = "Uncategorized"
+
+            # Add the task list
+            task_list = TaskList(name=task_list_name, category=category_name)
+            self.task_manager.add_task_list(task_list)
+            # Update self.categories
+            self.categories = self.task_manager.categories
+
+            # Add to the stack widget
+            task_list_widget = TaskListWidget(task_list, self.parent)
+            self.parent.stacked_task_list.stack_widget.addWidget(task_list_widget)
+            self.parent.hash_to_task_list_widgets[hash(task_list_name)] = task_list_widget
+            self.parent.stacked_task_list.stack_widget.setCurrentWidget(task_list_widget)
+            self.select_task_list_in_tree(task_list_name)
+            self.load_task_lists()
 
     def add_task_list_to_category(self, category_item):
         # Get the category name
@@ -857,17 +850,17 @@ class TaskListCollection(QWidget):
             task_list_name = task_list_name.strip()
 
             # Check if the task list already exists in the category
-            if any(task_list_name == task_list["list_name"] for task_list in
+            if any(task_list_name == task_list.name for task_list in
                    self.categories[category_name]['task_lists']):
                 QMessageBox.warning(self, "Duplicate Task List",
                                     "A task list with this name already exists in this category.")
                 return
 
             # Add the task list to the category
-            self.task_manager.add_task_list(task_list_name, queue=False, stack=False, category=category_name)
+            self.task_manager.add_task_list(TaskList(name=task_list_name, category=category_name))
 
             # Reload the task lists and update the UI
-            self.categories = self.task_manager.get_categories()
+            self.categories = self.task_manager.categories
             self.load_task_lists()
         else:
             QMessageBox.warning(self, "Invalid Name", "Task list name cannot be empty.")
@@ -886,8 +879,9 @@ class TaskListCollection(QWidget):
             # This is a task list item
             task_list_name = item.text(0)
             hash_key = hash(task_list_name)
-            if hash_key in self.parent.hash_to_widget:
-                self.parent.stacked_task_list.stack_widget.setCurrentWidget(self.parent.hash_to_widget[hash_key])
+            if hash_key in self.parent.hash_to_task_list_widgets:
+                self.parent.stacked_task_list.stack_widget.setCurrentWidget(
+                    self.parent.hash_to_task_list_widgets[hash_key])
                 self.parent.stacked_task_list.update_toolbar()
 
     def task_list_collection_context_menu(self, position):
@@ -911,7 +905,7 @@ class TaskListCollection(QWidget):
                 if item_type == 'task_list':
                     # Task list item
                     task_list_info = data['info']
-                    task_list_name = task_list_info["list_name"]
+                    task_list_name = task_list_info.name
 
                     rename_action = QAction('Rename Task List', self)
                     delete_action = QAction('Delete Task List', self)
@@ -956,7 +950,7 @@ class TaskListCollection(QWidget):
             new_name = new_name.strip()
 
             # Check for duplicate task list name
-            if any(new_name == task_list["list_name"] for category in self.categories.values() for task_list in
+            if any(new_name == task_list.name for category in self.categories.values() for task_list in
                    category["task_lists"]):
                 QMessageBox.warning(self, "Duplicate Task List", "A task list with this name already exists.")
                 return
@@ -964,18 +958,18 @@ class TaskListCollection(QWidget):
             # Update task list name in the categories structure
             category_name = item.parent().text(0)
             for task_list in self.categories[category_name]['task_lists']:
-                if task_list["list_name"] == old_name:
-                    task_list["list_name"] = new_name
+                if task_list.name == old_name:
+                    task_list.name = new_name
+                    # Update in task manager (database)
+                    self.task_manager.update_task_list(task_list)
                     break
-
-            # Update in task manager (database)
-            self.task_manager.change_task_list_name_by_name(old_name, new_name)
 
             # Update in UI
             item.setText(0, new_name)
 
             # Update hash_to_widget
-            self.parent.hash_to_widget[hash(new_name)] = self.parent.hash_to_widget.pop(hash(old_name))
+            self.parent.hash_to_task_list_widgets[hash(new_name)] = self.parent.hash_to_task_list_widgets.pop(
+                hash(old_name))
 
             # Reload task lists and select the renamed task list
             self.load_task_lists()
@@ -987,24 +981,27 @@ class TaskListCollection(QWidget):
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            # Remove from categories
             category_name = item.parent().text(0)
-            self.categories[category_name] = [task_list for task_list in self.categories[category_name] if
-                                              task_list != task_list_name]
-            # Remove from task manager
+            if category_name in self.categories:
+                self.categories[category_name]["task_lists"] = [
+                    task_list for task_list in self.categories[category_name]["task_lists"] if
+                    task_list.name != task_list_name
+                ]
+
             self.task_manager.remove_task_list(task_list_name)
-            # Remove from UI
+
             index = self.tree_widget.indexOfTopLevelItem(item)
             if index != -1:
                 self.tree_widget.takeTopLevelItem(index)
             else:
                 item.parent().removeChild(item)
-            # Remove from stack widget
+
             hash_key = hash(task_list_name)
-            if hash_key in self.parent.hash_to_widget:
-                widget_to_remove = self.parent.hash_to_widget.pop(hash_key)
+            if hash_key in self.parent.hash_to_task_list_widgets:
+                widget_to_remove = self.parent.hash_to_task_list_widgets.pop(hash_key)
                 self.parent.stacked_task_list.stack_widget.removeWidget(widget_to_remove)
                 widget_to_remove.deleteLater()
+
             self.load_task_lists()
 
     def rename_category(self, item):
@@ -1025,7 +1022,7 @@ class TaskListCollection(QWidget):
                 # Update in task manager
                 self.task_manager.rename_category(old_name, new_name)
                 # Reload categories
-                self.categories = self.task_manager.get_categories()
+                self.categories = self.task_manager.categories
                 # Update UI
                 self.load_task_lists()
                 # Select the new category
@@ -1058,17 +1055,20 @@ class TaskListCollection(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 # Remove all task lists in the category
-                task_lists_in_category = self.categories.get(category_name, {}).get("task_lists", [])
+                task_lists_in_category = [
+                    task_list for task_list in self.categories.get(category_name, {}).get("task_lists", [])
+                    if task_list.category == category_name
+                ]
                 for task_list_info in task_lists_in_category:
-                    task_list_name = task_list_info["list_name"]
+                    task_list_name = task_list_info.name
 
                     # Remove from task manager
                     self.task_manager.remove_task_list(task_list_name)
 
                     # Remove from stack widget
                     hash_key = hash(task_list_name)
-                    if hash_key in self.parent.hash_to_widget:
-                        widget_to_remove = self.parent.hash_to_widget.pop(hash_key)
+                    if hash_key in self.parent.hash_to_task_list_widgets:
+                        widget_to_remove = self.parent.hash_to_task_list_widgets.pop(hash_key)
                         self.parent.stacked_task_list.stack_widget.removeWidget(widget_to_remove)
                         widget_to_remove.deleteLater()
 

@@ -33,9 +33,8 @@ def setup_font(app):
 class MainWindow(QMainWindow):
     def __init__(self, app):
         super().__init__()
-        self.task_manager = TaskListManager()
-        self.task_lists = {}
-        self.hash_to_widget = {}
+        self.task_manager = TaskManager()
+        self.hash_to_task_list_widgets = {}
         self.settings = QSettings("x", "ADM")
         self.setup_ui(app)
         self.options()
@@ -57,8 +56,7 @@ class MainWindow(QMainWindow):
 
             # Reset UI components to their default state
             self.restoreState(QByteArray())  # Clear window state
-            self.task_lists.clear()
-            self.hash_to_widget.clear()
+            self.hash_to_task_list_widgets.clear()
 
             # Close all dock widgets
             for dock_widget in self.findChildren(QDockWidget):
@@ -182,7 +180,7 @@ class MainWindow(QMainWindow):
 
         unique_id = random.randint(1000, 9999)
         task_detail_dock = TaskDetailDock(task, task_list_widget, parent=self)
-        task_detail_dock.setObjectName(f"TaskListDock_{task.title}_{unique_id}")
+        task_detail_dock.setObjectName(f"TaskListDock_{task.name}_{unique_id}")
         task_detail_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
 
         existing_docks = [
@@ -244,9 +242,6 @@ class MainWindow(QMainWindow):
     #         print(f"Error in dropEvent: {e}")
 
     def handle_task_list_update(self):
-        for task_list in self.task_lists.values():
-            task_list.refresh_tasks()
-
         for dock_widget in self.findChildren(TaskListDock):
             dock_widget.task_list_widget.load_tasks()
 

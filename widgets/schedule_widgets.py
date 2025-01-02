@@ -10,7 +10,7 @@ from .task_progress_widgets import *
 
 
 class ScheduleTaskWidget(QWidget):
-    def __init__(self, task_list_manager: TaskListManager, task):
+    def __init__(self, task_list_manager: TaskManager, task):
         super().__init__()
         self.task_list_manager = task_list_manager
         self.task = task
