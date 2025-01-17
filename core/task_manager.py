@@ -73,7 +73,7 @@ class Task:
         self.status = kwargs.get("status",
                                  "Not Started")  # ["Not Started", "In Progress", "Completed", "Failed", "On Hold"]
         self.flexibility = kwargs.get("flexibility", "Flexible")  # ["Strict", "Flexible", "Very Flexible]
-        self.effort_level = kwargs.get("effort_level", "Medium")  # ["Easy", "Medium", "Hard"]
+        self.effort_level = kwargs.get("effort_level", "Medium")  # ["Low", "Medium", "High"]
         self.priority = kwargs.get("priority", 0)  # (0-10)
         self.previous_priority = kwargs.get("previous_priority", self.priority)
         self.preferred_work_days = kwargs.get("preferred_work_days", [])  # ["Monday", "Wednesday", ...]
@@ -81,19 +81,12 @@ class Task:
         self.progress = self.calculate_progress()
         self.urgency = self.calculate_urgency()
 
-        self.milestones = kwargs.get("milestones", [])
-        self._parse_milestones()
-        # Example:
-        # [
-        #     {"title": "Draft outline", "due_datetime": datetime(2024, 1, 1, 10, 0), "estimated_progress": "10%"},
-        #     {"title": "Submit final report", "due_datetime": datetime(2024, 1, 10, 18, 0), "estimated_progress": "90%"},
-        # ]
+        self.include_in_schedule = kwargs.get("include_in_schedule", False)
+        self.currently_in_schedule = False
 
         self.global_weight = kwargs.get("global_weight", None)
         self.schedule_weight = kwargs.get("schedule_weight", None)
         self.behind_schedule = kwargs.get("behind_schedule", False)
-        self.sub_due_date_behavior = kwargs.get("sub_due_date_behavior", "relative")  # Default: relative
-        self.sub_due_date_dependency = kwargs.get("sub_due_date_dependency", "independent")  # Default: independent
 
     @staticmethod
     def _parse_date(date_str, formats):
@@ -122,16 +115,6 @@ class Task:
             except ValueError:
                 continue
         raise ValueError(f"Date '{date_str}' does not match any of the provided formats: {formats}")
-
-    def _parse_milestones(self):
-        if self.milestones:
-            for milestone in self.milestones:
-                try:
-                    milestone["due_date"] = self._parse_date(milestone.get("due_datetime"), "%Y-%m-%d %H:%M")
-                except (KeyError, ValueError):
-                    raise ValueError(
-                        f"Invalid milestone due_date format for milestone '{milestone.get('title', 'Unknown')}'."
-                    )
 
     def calculate_progress(self):
         if self.subtasks:
@@ -507,12 +490,10 @@ class TaskManager:
             preferred_work_days TEXT,
             progress REAL DEFAULT 0,
             urgency REAL DEFAULT 0,
-            milestones TEXT,
+            include_in_schedule BOOLEAN NOT NULL CHECK (include_in_schedule IN (0, 1)) DEFAULT 0,
             global_weight REAL,
             schedule_weight REAL,
             behind_schedule BOOLEAN NOT NULL CHECK (behind_schedule IN (0, 1)) DEFAULT 0,
-            sub_due_date_behavior TEXT,
-            sub_due_date_dependency TEXT,
             FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
         );
         """
@@ -565,8 +546,8 @@ class TaskManager:
             task_data["recur_every"] = json.loads(task_data["recur_every"]) if task_data.get("recur_every") else None
             task_data["subtasks"] = json.loads(task_data["subtasks"]) if task_data.get("subtasks") else []
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
-            task_data["milestones"] = json.loads(task_data["milestones"]) if task_data.get("milestones") else []
             task_data["recurring"] = bool(task_data["recurring"])
+            task_data['include_in_schedule'] = bool(task_data['include_in_schedule'])
             task_data["behind_schedule"] = bool(task_data["behind_schedule"])
 
             task = Task(**task_data)
@@ -908,7 +889,7 @@ class TaskManager:
                     time_estimate, time_chunk_size, time_of_day_preference, time_logged, count_required, 
                     count_chunk_size, count_completed, subtasks, dependencies, status, flexibility, 
                     effort_level, priority, previous_priority, preferred_work_days, progress, urgency, 
-                    milestones, global_weight, schedule_weight, behind_schedule
+                    include_in_schedule, global_weight, schedule_weight, behind_schedule
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.name,
@@ -942,7 +923,7 @@ class TaskManager:
                 json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
                 task.progress,
                 task.urgency,
-                json.dumps(task.milestones) if task.milestones else None,
+                int(task.include_in_schedule),
                 task.global_weight,
                 task.schedule_weight,
                 int(task.behind_schedule)
@@ -1035,7 +1016,7 @@ class TaskManager:
                     preferred_work_days = ?,
                     progress = ?,
                     urgency = ?,
-                    milestones = ?,
+                    include_in_schedule = ?,
                     global_weight = ?,
                     schedule_weight = ?,
                     behind_schedule = ?
@@ -1072,7 +1053,7 @@ class TaskManager:
                 json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
                 task.progress,
                 task.urgency,
-                json.dumps(task.milestones) if task.milestones else None,
+                int(task.include_in_schedule),
                 task.global_weight,
                 task.schedule_weight,
                 int(task.behind_schedule),
@@ -1131,8 +1112,8 @@ class TaskManager:
             task_data["recur_every"] = json.loads(task_data["recur_every"]) if task_data.get("recur_every") else None
             task_data["subtasks"] = json.loads(task_data["subtasks"]) if task_data.get("subtasks") else []
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
-            task_data["milestones"] = json.loads(task_data["milestones"]) if task_data.get("milestones") else []
             task_data["recurring"] = bool(task_data["recurring"])
+            task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
             task_data["behind_schedule"] = bool(task_data["behind_schedule"])
 
             return Task(**task_data)
@@ -1168,8 +1149,8 @@ class TaskManager:
                 task_data["subtasks"] = json.loads(task_data["subtasks"]) if task_data.get("subtasks") else []
                 task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get(
                     "dependencies") else []
-                task_data["milestones"] = json.loads(task_data["milestones"]) if task_data.get("milestones") else []
                 task_data["recurring"] = bool(task_data["recurring"])
+                task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
                 task_data["behind_schedule"] = bool(task_data["behind_schedule"])
 
                 task = Task(**task_data)
@@ -1205,6 +1186,17 @@ class TaskManager:
             print(f"Database error while managing recurring tasks: {e}")
         except Exception as e:
             print(f"Unexpected error while managing recurring tasks: {e}")
+
+    def get_task_list_categories(self):
+        return list(self.categories.keys())
+
+    def get_all_active_task_tags(self):
+        tags = set()
+        for task_list in self.task_lists:
+            if not task_list.archived and not task_list.in_trash:
+                for task in task_list.tasks:
+                    tags.update(task.tags)
+        return list(tags)
 
     def __del__(self):
         self.conn.close()
