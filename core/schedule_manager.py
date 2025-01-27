@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import datetime, date, time, timedelta
 import random
-from core.task_manager import TaskManager
+from core.task_manager import *
 
 
 class ScheduleSettings:
@@ -20,9 +20,9 @@ class ScheduleSettings:
             CREATE TABLE IF NOT EXISTS schedule_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 day_start TEXT,
-                ideal_sleep_duration INTEGER,
+                ideal_sleep_duration REAL,
                 overtime_flexibility TEXT,
-                hours_of_day_available INTEGER,
+                hours_of_day_available REAL,
                 peak_productivity_start TEXT,
                 peak_productivity_end TEXT,
                 off_peak_start TEXT,
@@ -56,9 +56,9 @@ class ScheduleSettings:
             self.task_status_popup_frequency = row[10]
         else:
             self.day_start = time(4, 0)
-            self.ideal_sleep_duration = 8
+            self.ideal_sleep_duration = 8.0
             self.overtime_flexibility = "auto"
-            self.hours_of_day_available = None
+            self.hours_of_day_available = float(24.0 - self.ideal_sleep_duration)
             self.peak_productivity_hours = (time(17, 0), time(19, 0))
             self.off_peak_hours = (time(22, 0), time(6, 0))
             self.task_notifications = True
@@ -152,25 +152,21 @@ class TimeBlock:
     def __init__(
             self,
             block_id=None,
-            task_manager_instance=None,
             name="",
             schedule=None,
             list_categories=None,
             task_tags=None,
             tasks=None,
             block_type="user_defined",
-            color=None,
-            duration=0.0
+            color=None
     ):
         self.id = block_id if block_id else uuid.uuid4().int
-        self.task_manager_instance = task_manager_instance
         self.name = name
         self.schedule = schedule if schedule else {}
         self.list_categories = list_categories if list_categories else {"include": [], "exclude": []}
         self.task_tags = task_tags if task_tags else {"include": [], "exclude": []}
         self.tasks_dict = tasks if tasks else {"include": [], "exclude": []}
         self.block_type = block_type
-        self.duration = float(duration)
         if color and isinstance(color, tuple) and len(color) == 3 and all(isinstance(c, int) for c in color):
             self.color = color
         elif block_type == "system_defined":
@@ -185,26 +181,17 @@ class TimeBlock:
 
         self.start_time = None
         self.end_time = None
+        self.duration = None
 
-    # def load_tasks(self):
-    #     if not self.task_manager_instance:
-    #         raise ValueError("task_manager_instance must be defined")
-    #     for category in self.list_categories["include"]:
-    #         self.tasks.extend(self.task_manager_instance.get_tasks_by_category(category))
-    #     for tag in self.task_tags["include"]:
-    #         self.tasks.extend(self.task_manager_instance.get_tasks_by_tag(tag))
-    #     for task_id in self.tasks_dict["include"]:
-    #         task = self.task_manager_instance.get_task(task_id)
-    #         if task and task not in self.tasks:
-    #             self.tasks.append(task)
-    #     self.tasks = [
-    #         task for task in self.tasks
-    #         if not any(cat in self.list_categories["exclude"] for cat in task.categories)
-    #            and not any(tag in self.task_tags["exclude"] for tag in task.tags)
-    #            and task.id not in self.tasks_dict["exclude"] and task.include_in_schedule
-    #     ]
-    #     for task in self.tasks:
-    #         task.currently_in_schedule = True
+    def add_task_if_time_available(self, task_to_add: Task):
+        if self.duration is None:
+            return False
+
+        if duration - sum(task.time_estimate for task in self.tasks) < task_to_add.time_estimate:
+            return False
+
+        self.tasks.append(task_to_add)
+        return True
 
 
 class ScheduleManager:
@@ -238,17 +225,13 @@ class ScheduleManager:
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS time_blocks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    schedule_id INTEGER,
                     name TEXT DEFAULT '',
-                    start_time TEXT NOT NULL,
-                    end_time TEXT NOT NULL,
                     schedule TEXT DEFAULT '{}',
                     list_categories TEXT DEFAULT '{"include": [], "exclude": []}',
                     task_tags TEXT DEFAULT '{"include": [], "exclude": []}',
                     tasks TEXT DEFAULT '{"include": [], "exclude": []}',
                     block_type TEXT DEFAULT 'system_defined',
                     color TEXT DEFAULT '',
-                    duration REAL DEFAULT 0.0,
                     FOREIGN KEY (schedule_id) REFERENCES day_schedule (id)
                 )
             """)
@@ -263,261 +246,280 @@ class ScheduleManager:
                 )
             """)
 
-    # ---------------------
-    # MAIN SCHEDULE METHODS
-    # ---------------------
-
-    def generate_schedule(self, target_date: date):
+    def load_time_blocks(self):
         """
-        1) Checks if a schedule for target_date exists.
-           - If it does, returns it as-is, or optionally overwrite if needed.
-        2) If not, it creates a fresh DaySchedule for 'target_date'.
-        3) Assigns tasks (which may push some tasks out).
-        4) Saves the final block structure in the schedules table.
-        5) Returns the created or loaded DaySchedule.
+        Load time blocks from the database and create TimeBlock objects.
+        Converts stored JSON strings back into Python dictionaries.
         """
-        existing_schedule = self._load_schedule_from_db(target_date)
-        if existing_schedule:
-            # If you want to forcibly overwrite:
-            # self.reset_schedule(target_date)  # optional
-            # else just return the existing schedule
-            return self.load_schedule(target_date)
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM time_blocks")
+            rows = cursor.fetchall()
 
-        # 1) Build the day schedule with relevant blocks.
-        #    Possibly build from self.time_blocks or day-specific logic
-        day_schedule = DaySchedule(
-            date=target_date,
-            time_blocks=self._get_time_blocks_for_day(target_date),
-            task_manager_instance=self.task_manager_instance,
-            schedule_settings=self.schedule_settings
-        )
+            self.time_blocks = []
 
-        # 2) Assign tasks to blocks
-        day_schedule.assign_schedule_weights()
+            for row in rows:
+                # Convert JSON strings back to dictionaries
+                schedule = json.loads(row['schedule'])
+                list_categories = json.loads(row['list_categories'])
+                task_tags = json.loads(row['task_tags'])
+                tasks = json.loads(row['tasks'])
 
-        # 3) Save the final schedule to DB
-        self._save_schedule_to_db(target_date, day_schedule)
+                # Convert color string to tuple
+                color_str = row['color']
+                if color_str:
+                    color = tuple(map(int, color_str.strip('()').split(',')))
+                else:
+                    color = None
 
-        return day_schedule
+                # Create TimeBlock object
+                time_block = TimeBlock(
+                    block_id=row['id'],
+                    name=row['name'],
+                    schedule=schedule,
+                    list_categories=list_categories,
+                    task_tags=task_tags,
+                    tasks=tasks,
+                    block_type=row['block_type'],
+                    color=color
+                )
 
-    def load_schedule(self, target_date: date):
+                # Convert schedule times from strings to time objects
+                for day, times in time_block.schedule.items():
+                    if isinstance(times, tuple) and len(times) == 2:
+                        start_str, end_str = times
+                        if isinstance(start_str, str) and isinstance(end_str, str):
+                            try:
+                                # Parse time strings in format "HH:MM"
+                                start_time = datetime.strptime(start_str, "%H:%M").time()
+                                end_time = datetime.strptime(end_str, "%H:%M").time()
+                                time_block.schedule[day] = (start_time, end_time)
+                            except ValueError:
+                                print(f"Warning: Invalid time format for {day} in block {time_block.id}")
+
+                self.time_blocks.append(time_block)
+
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+        except Exception as e:
+            print(f"Error loading time blocks: {e}")
+        finally:
+            cursor.close()
+
+    def add_time_block(self, time_block: TimeBlock):
         """
-        Loads an existing schedule from the DB and reconstructs it
-        as a DaySchedule object, or None if not found.
+        Add a TimeBlock object to memory and persist it to the database.
+
+        Args:
+            time_block (TimeBlock): The TimeBlock object to add
+
+        Returns:
+            int: The ID of the newly added time block
         """
-        schedule_data = self._load_schedule_from_db(target_date)
-        if not schedule_data:
-            return None
+        try:
+            # Convert time objects in schedule to string format for storage
+            schedule_for_storage = {}
+            for day, times in time_block.schedule.items():
+                if isinstance(times, tuple) and len(times) == 2:
+                    start_time, end_time = times
+                    if isinstance(start_time, time) and isinstance(end_time, time):
+                        schedule_for_storage[day] = (
+                            start_time.strftime("%H:%M"),
+                            end_time.strftime("%H:%M")
+                        )
+                    else:
+                        schedule_for_storage[day] = times
 
-        # Rebuild the time blocks
-        time_blocks_dict = json.loads(schedule_data["time_blocks"])
-        time_blocks = []
-        for block_info in time_blocks_dict:
-            tb = TimeBlock(
-                block_id=block_info["id"],
-                name=block_info["name"],
-                schedule=block_info["schedule"],
-                list_categories=block_info["list_categories"],
-                task_tags=block_info["task_tags"],
-                tasks=block_info["tasks"],
-                block_type=block_info["block_type"],
-                color=tuple(block_info["color"]) if isinstance(block_info["color"], list) else (47, 47, 47),
-                duration=block_info["duration"]
-            )
-            time_blocks.append(tb)
+            # Convert color tuple to string
+            color_str = str(time_block.color) if time_block.color else ""
 
-        # Build the DaySchedule
-        loaded_schedule = DaySchedule(
-            date=target_date,
-            time_blocks=time_blocks,
-            task_manager_instance=self.task_manager_instance,
-            schedule_settings=self.schedule_settings
-        )
-
-        return loaded_schedule
-
-    def reset_schedule(self, target_date: date):
-        """
-        Resets the schedule for target_date and all future dates (not past).
-        This means:
-         - Setting tasks' schedule_weight=0 and currently_in_schedule=0
-           for tasks scheduled on these days.
-         - Removing entries from 'schedules' table for these days.
-        """
-        # 1) Identify all schedules from target_date onward
-        self.conn.execute("""
-            DELETE FROM schedules
-            WHERE schedule_date >= ?
-        """, (target_date.isoformat(),))
-
-        # 2) Reset tasks that had schedule_weight != 0 and were assigned
-        #    to dates >= target_date. If you store scheduled_date in tasks, do:
-        #    WHERE scheduled_date >= ?
-        #    For now, we reset all tasks that have schedule_weight != 0
-        self.conn.execute("""
-            UPDATE tasks
-            SET schedule_weight = 0,
-                currently_in_schedule = 0
-            WHERE schedule_weight != 0
-        """)
-
-        self.conn.commit()
-
-    # ---------------------------------------
-    # HELPER METHODS FOR SCHEDULE PERSISTENCE
-    # ---------------------------------------
-
-    def _save_schedule_to_db(self, target_date: date, day_schedule):
-        """
-        Serializes 'DaySchedule' time_blocks into JSON and stores
-        it in 'schedules' table for 'target_date'.
-        """
-
-        def serialize_schedule(schedule):
-            """Convert schedule's time objects to string."""
-            serialized = {}
-            for day, times in schedule.items():
-                start_time, end_time = times
-                serialized[day] = (start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
-            return serialized
-
-        blocks_to_store = []
-        for block in day_schedule.time_blocks:
-            block_dict = {
-                "id": block.id,
-                "name": block.name,
-                "schedule": serialize_schedule(block.schedule),  # Serialize the schedule
-                "list_categories": block.list_categories,
-                "task_tags": block.task_tags,
-                "tasks": block.tasks_dict,  # or you might store the actual tasks
-                "block_type": block.block_type,
-                "color": list(block.color) if block.color else [47, 47, 47],
-                "duration": block.duration
-            }
-            blocks_to_store.append(block_dict)
-
-        with self.conn:
-            self.conn.execute("""
-                INSERT INTO schedules (schedule_date, time_blocks)
-                VALUES (?, ?)
-            """, (
-                target_date.isoformat(),
-                json.dumps(blocks_to_store)
-            ))
-
-    def _load_schedule_from_db(self, target_date):
-        """
-        Fetches the schedule for the given date from the database.
-        Converts target_date to a date object if it's provided as a string.
-        """
-        if isinstance(target_date, str):
-            try:
-                target_date = datetime.fromisoformat(target_date).date()
-            except ValueError:
-                raise ValueError(f"Invalid date string format: {target_date}. Expected ISO 8601 format.")
-
-        if not isinstance(target_date, date):
-            raise TypeError(f"target_date must be a date or ISO-formatted string, got {type(target_date)}.")
-
-        cursor = self.conn.execute("""
-            SELECT * FROM schedules
-            WHERE schedule_date = ?
-        """, (target_date.isoformat(),))
-        return cursor.fetchone()
-
-    def _get_time_blocks_for_day(self, target_date: date):
-        to_return = []
-        target_day = target_date.strftime('%A').lower()
-
-        for timeblock in self.time_blocks:
-            if timeblock.schedule and target_day in timeblock.schedule:
-                to_return.append(timeblock)
-
-        return to_return
-
-    def add_time_block(self, time_block):
-        with self.conn:
-            self.conn.execute("""
+            # Insert into database
+            cursor = self.conn.cursor()
+            cursor.execute("""
                 INSERT INTO time_blocks (
-                    name, start_time, end_time, schedule, 
-                    list_categories, task_tags, tasks, block_type, color, duration
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    name, 
+                    schedule, 
+                    list_categories, 
+                    task_tags, 
+                    tasks, 
+                    block_type, 
+                    color
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 time_block.name,
-                json.dumps(time_block.schedule),
+                json.dumps(schedule_for_storage),
                 json.dumps(time_block.list_categories),
                 json.dumps(time_block.task_tags),
                 json.dumps(time_block.tasks_dict),
                 time_block.block_type,
-                json.dumps(time_block.color),
-                time_block.duration
+                color_str
             ))
 
-    def remove_time_block(self, time_block_id):
-        with self.conn:
-            self.conn.execute("DELETE FROM time_blocks WHERE id = ?", (time_block_id,))
+            # Commit the transaction
+            self.conn.commit()
 
-    def update_time_block(self, time_block_id, updated_time_block):
-        with self.conn:
-            self.conn.execute("""
-                UPDATE time_blocks
-                SET 
-                    schedule_id = ?,
-                    name = ?,
-                    start_time = ?,
-                    end_time = ?,
+            # Update the time block's ID with the one assigned by the database
+            time_block.id = cursor.lastrowid
+
+            # Add to in-memory list
+            self.time_blocks.append(time_block)
+
+            cursor.close()
+            return time_block.id
+
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            self.conn.rollback()
+            raise
+        except Exception as e:
+            print(f"Error adding time block: {e}")
+            self.conn.rollback()
+            raise
+
+    def remove_time_block(self, block_id: int):
+        """
+        Remove a TimeBlock from memory and the database.
+
+        Args:
+            block_id (int): The ID of the time block to remove
+
+        Returns:
+            bool: True if successful, False if block not found
+
+        Raises:
+            sqlite3.Error: If there's a database error
+        """
+        try:
+            # First check if the block exists in memory
+            block_to_remove = None
+            for block in self.time_blocks:
+                if block.id == block_id:
+                    block_to_remove = block
+                    break
+
+            if not block_to_remove:
+                print(f"Time block with ID {block_id} not found in memory")
+                return False
+
+            # Remove from database
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM time_blocks WHERE id = ?", (block_id,))
+
+            # Check if any rows were affected
+            if cursor.rowcount == 0:
+                print(f"Time block with ID {block_id} not found in database")
+                return False
+
+            # Commit the transaction
+            self.conn.commit()
+
+            # Remove from memory
+            self.time_blocks.remove(block_to_remove)
+
+            cursor.close()
+            return True
+
+        except sqlite3.Error as e:
+            print(f"Database error while removing time block: {e}")
+            self.conn.rollback()
+            raise
+        except ValueError as e:
+            print(f"Error removing time block from memory: {e}")
+            self.conn.rollback()
+            raise
+        except Exception as e:
+            print(f"Unexpected error removing time block: {e}")
+            self.conn.rollback()
+            raise
+
+    def update_time_block(self, time_block: TimeBlock):
+        """
+        Update an existing TimeBlock in both memory and database.
+
+        Args:
+            time_block (TimeBlock): The TimeBlock object with updated values
+
+        Returns:
+            bool: True if successful, False if block not found
+
+        Raises:
+            sqlite3.Error: If there's a database error
+        """
+        try:
+            # First check if the block exists in memory
+            existing_block = None
+            for idx, block in enumerate(self.time_blocks):
+                if block.id == time_block.id:
+                    existing_block = idx
+                    break
+
+            if existing_block is None:
+                print(f"Time block with ID {time_block.id} not found")
+                return False
+
+            # Convert time objects in schedule to string format for storage
+            schedule_for_storage = {}
+            for day, times in time_block.schedule.items():
+                if isinstance(times, tuple) and len(times) == 2:
+                    start_time, end_time = times
+                    if isinstance(start_time, time) and isinstance(end_time, time):
+                        schedule_for_storage[day] = (
+                            start_time.strftime("%H:%M"),
+                            end_time.strftime("%H:%M")
+                        )
+                    else:
+                        schedule_for_storage[day] = times
+
+            # Convert color tuple to string
+            color_str = str(time_block.color) if time_block.color else ""
+
+            # Update database
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                UPDATE time_blocks 
+                SET name = ?,
                     schedule = ?,
                     list_categories = ?,
                     task_tags = ?,
                     tasks = ?,
                     block_type = ?,
-                    color = ?,
-                    duration = ?
+                    color = ?
                 WHERE id = ?
             """, (
-                updated_time_block.schedule_manager.id if updated_time_block.schedule_manager else None,
-                updated_time_block.name,
-                json.dumps(updated_time_block.schedule),
-                json.dumps(updated_time_block.list_categories),
-                json.dumps(updated_time_block.task_tags),
-                json.dumps(updated_time_block.tasks_dict),
-                updated_time_block.block_type,
-                json.dumps(updated_time_block.color),
-                updated_time_block.duration,
-                time_block_id
+                time_block.name,
+                json.dumps(schedule_for_storage),
+                json.dumps(time_block.list_categories),
+                json.dumps(time_block.task_tags),
+                json.dumps(time_block.tasks_dict),
+                time_block.block_type,
+                color_str,
+                time_block.id
             ))
 
-    def load_time_blocks(self):
-        self.time_blocks = []
-        cursor = self.conn.execute("SELECT * FROM time_blocks")
-        rows = cursor.fetchall()
-        for row in rows:
-            self.time_blocks.append(self._row_to_time_block(row))
+            # Check if any rows were affected
+            if cursor.rowcount == 0:
+                print(f"Time block with ID {time_block.id} not found in database")
+                return False
 
-    def get_time_block(self, time_block_id):
-        cursor = self.conn.execute("SELECT * FROM time_blocks WHERE id = ?", (time_block_id,))
-        row = cursor.fetchone()
-        if row:
-            return self._row_to_time_block(row)
-        return None
+            # Commit the transaction
+            self.conn.commit()
 
-    @staticmethod
-    def _row_to_time_block(row):
-        return TimeBlock(
-            block_id=row["id"],
-            name=row["name"],
-            schedule=json.loads(row["schedule"]),
-            list_categories=json.loads(row["list_categories"]),
-            task_tags=json.loads(row["task_tags"]),
-            tasks=json.loads(row["tasks"]),
-            block_type=row["block_type"],
-            color=tuple(json.loads(row["color"])),
-            duration=row["duration"]
-        )
+            # Update in-memory list
+            self.time_blocks[existing_block] = time_block
 
-    # ---------------------------
-    # GLOBAL WEIGHT CALCULATIONS
-    # ---------------------------
+            cursor.close()
+            return True
+
+        except sqlite3.Error as e:
+            print(f"Database error while updating time block: {e}")
+            self.conn.rollback()
+            raise
+        except Exception as e:
+            print(f"Error updating time block: {e}")
+            self.conn.rollback()
+            raise
 
     def task_weight_formula(self, task, max_added_time, max_time_estimate):
         priority_weight = self.alpha * task.priority
@@ -551,27 +553,14 @@ class ScheduleManager:
         else:
             time_logged_weight = 0
 
-        workday_preference_weight = self.theta * (
-            1 if datetime.now().strftime('%A') in task.preferred_work_days else 0
-        )
-
         return (
                 priority_weight + urgency_weight + flexibility_weight + added_time_weight +
                 effort_weight + time_estimate_weight + time_logged_weight + workday_preference_weight
         )
 
     def update_task_global_weights(self):
-        cursor = self.conn.execute("""
-            SELECT * FROM tasks
-            WHERE include_in_schedule = 1
-              AND status != 'Completed'
-        """)
-        rows = cursor.fetchall()
 
-        if not rows:
-            return
-
-        tasks = [Task(**dict(row)) for row in rows]
+        tasks = self.task_manager_instance.get_active_tasks()
 
         max_added_time = max(
             (datetime.now() - task.added_date_time).total_seconds()
@@ -591,7 +580,8 @@ class ScheduleManager:
             global_weight = (
                     self.task_weight_formula(task, max_added_time, max_time_estimate) / total_weight
             )
-            self.conn.execute("UPDATE tasks SET global_weight = ? WHERE id = ?", (global_weight, task.id))
+            task.global_weight = global_weight
+            self.task_manager_instance.update_task(task)
 
         self.conn.commit()
 
@@ -600,11 +590,11 @@ class ScheduleManager:
         if schedule:
             return schedule
         else:
-            return self.generate_schedule(date)
+            return DaySchedule(self, date, self.time_blocks, self.task_manager_instance, self.schedule_settings)
 
 
 class DaySchedule:
-    def __init__(self, date, time_blocks, task_manager_instance, schedule_settings):
+    def __init__(self, schedule_manager_instance, date, time_blocks, task_manager_instance, schedule_settings):
         """
         :param date: A datetime.date object for which the schedule is generated
         :param time_blocks: A list of TimeBlock objects (user_defined + system_defined)
@@ -614,18 +604,13 @@ class DaySchedule:
         self.date = date
         self.time_blocks = time_blocks
         self.task_manager_instance = task_manager_instance
+        self.schedule_manager_instance = schedule_manager_instance
         self.schedule_settings = schedule_settings
-        self.time_blocks = self._generate_schedule()  # Build out final blocks (sleep + fill gaps)
+        self.time_blocks = self.generate_schedule()
 
-    def _generate_schedule(self):
-        """
-        Inserts a 'sleep' block at the start of the day, plus system-defined blocks for gaps.
-        Returns the final list of TimeBlock objects (both user_defined and system_defined).
-        """
+    def generate_schedule(self):
         day_start = datetime.combine(self.date, self.schedule_settings.day_start)
         sleep_duration = timedelta(hours=self.schedule_settings.ideal_sleep_duration)
-        sleep_end = day_start + sleep_duration
-
         target_day_str = self.date.strftime('%A').lower()
 
         # Filter user-defined blocks that apply to this day
@@ -633,207 +618,163 @@ class DaySchedule:
             block for block in self.time_blocks
             if block.schedule and target_day_str in block.schedule and block.block_type == 'user_defined'
         ]
-        user_blocks.sort(key=lambda b: b.schedule[target_day_str][0])  # Sort by start time in that day's schedule
+        user_blocks.sort(key=lambda b: b.schedule[target_day_str][0])  # Sort by start time
 
         final_blocks = []
         current_time = day_start
 
-        # (1) Sleep Block
-        sleep_block = TimeBlock(
-            block_id=None,
-            name="Sleep",
-            schedule={target_day_str: (day_start.time(), sleep_end.time())},
-            block_type="unavailable",
-            color=(173, 216, 230),
-            duration=self.schedule_settings.ideal_sleep_duration
-        )
-        # Set start_time/end_time
-        sleep_block.start_time = day_start.time()
-        sleep_block.end_time = sleep_end.time()
-        final_blocks.append(sleep_block)
-        current_time = sleep_end
-
-        # (2) Insert user-defined blocks, filling gaps with system-defined blocks
+        # (1) Insert user-defined blocks first
         for block in user_blocks:
             block_start_dt = datetime.combine(self.date, block.schedule[target_day_str][0])
             block_end_dt = datetime.combine(self.date, block.schedule[target_day_str][1])
 
-            # If there's a gap before the user-defined block starts, create a system-defined block
+            block.start_time = block_start_dt.time()
+            block.end_time = block_end_dt.time()
+            final_blocks.append(block)
+
+        # (2) Calculate sleep block timing
+        sleep_end = day_start
+        ideal_sleep_start = sleep_end - sleep_duration
+
+        # Find the last user-defined block that overlaps with our ideal sleep time
+        overlapping_block = None
+        for block in reversed(final_blocks):
+            block_end = datetime.combine(self.date, block.end_time)
+            if block_end > ideal_sleep_start:
+                overlapping_block = block
+                break
+
+        # Adjust sleep start time if there's an overlap
+        if overlapping_block:
+            actual_sleep_start = datetime.combine(self.date, overlapping_block.end_time)
+            adjusted_sleep_duration = (sleep_end - actual_sleep_start).total_seconds() / 3600  # in hours
+        else:
+            actual_sleep_start = ideal_sleep_start
+            adjusted_sleep_duration = self.schedule_settings.ideal_sleep_duration
+
+        # (3) Now fill gaps between user-defined blocks up until sleep start
+        filled_blocks = []
+        current_time = day_start
+
+        for block in sorted(final_blocks, key=lambda b: b.start_time):
+            block_start_dt = datetime.combine(self.date, block.start_time)
+
+            # If there's a gap before this block, add a system-defined block
             if current_time < block_start_dt:
-                gap_duration = (block_start_dt - current_time).total_seconds() / 3600
                 gap_block = TimeBlock(
                     block_id=None,
                     name="Unscheduled",
                     schedule={target_day_str: (current_time.time(), block_start_dt.time())},
                     block_type="system_defined",
-                    color=(200, 200, 200),
-                    duration=gap_duration
+                    color=(200, 200, 200)
                 )
                 gap_block.start_time = current_time.time()
                 gap_block.end_time = block_start_dt.time()
-                final_blocks.append(gap_block)
+                filled_blocks.append(gap_block)
 
-            # Update the user-defined block with actual start/end times for this date
-            block.start_time = block_start_dt.time()
-            block.end_time = block_end_dt.time()
-            final_blocks.append(block)
+            filled_blocks.append(block)
+            current_time = datetime.combine(self.date, block.end_time)
 
-            current_time = block_end_dt
-
-        # (3) If there's leftover time until day_end (24h from day_start), fill it with a system-defined block
-        day_end = day_start + timedelta(hours=24)
-        if current_time < day_end:
-            leftover_duration = (day_end - current_time).total_seconds() / 3600
+        # Fill gap between last user block and sleep start if exists
+        if current_time < actual_sleep_start:
             gap_block = TimeBlock(
                 block_id=None,
                 name="Unscheduled",
-                schedule={target_day_str: (current_time.time(), day_end.time())},
+                schedule={target_day_str: (current_time.time(), actual_sleep_start.time())},
                 block_type="system_defined",
-                color=(200, 200, 200),
-                duration=leftover_duration
+                color=(200, 200, 200)
             )
             gap_block.start_time = current_time.time()
-            gap_block.end_time = day_end.time()
-            final_blocks.append(gap_block)
+            gap_block.end_time = actual_sleep_start.time()
+            filled_blocks.append(gap_block)
 
-        return final_blocks
-
-    def assign_schedule_weights(self):
-        """
-        Populates all blocks with tasks that have not yet been scheduled
-        (schedule_weight=0), making sure tasks fit in each block’s available time.
-        """
-        tasks_to_schedule = self._get_unscheduled_tasks()
-        tasks_to_schedule = self._prioritize_tasks(tasks_to_schedule)
-
-        for block in self.time_blocks:
-            self._populate_or_reorder_block(block, tasks_to_schedule)
-
-    def _get_unscheduled_tasks(self):
-        """
-        Fetches tasks that:
-          - include_in_schedule = 1
-          - status != 'Completed'
-          - (schedule_weight is NULL or 0)
-        """
-        cursor = self.task_manager_instance.conn.execute("""
-            SELECT * FROM tasks
-            WHERE include_in_schedule = 1
-              AND status != 'Completed'
-              AND (schedule_weight IS NULL OR schedule_weight = 0)
-        """)
-        rows = cursor.fetchall()
-        return [Task(**dict(row)) for row in rows]
-
-    def _prioritize_tasks(self, tasks):
-        """
-        Sort tasks primarily by earliest due_date,
-        then by descending global_weight.
-        """
-
-        def due_date_key(t):
-            return t.due_datetime.timestamp() if t.due_datetime else float('inf')
-
-        def global_weight_key(t):
-            return -1 * (t.global_weight or 0)
-
-        tasks.sort(key=lambda x: (due_date_key(x), global_weight_key(x)))
-        return tasks
-
-    def _populate_or_reorder_block(self, block, tasks_to_schedule):
-        """
-        Reorders tasks in a user-defined block by due_date/global_weight,
-        then fills leftover time with tasks from tasks_to_schedule (peak vs off-peak).
-        """
-        # 1. For user_defined, reorder already-loaded tasks
-        if block.block_type == "user_defined":
-            block.tasks.sort(key=lambda t: (
-                t.due_datetime.timestamp() if t.due_datetime else float('inf'),
-                -1 * (t.global_weight or 0)
-            ))
-
-        # 2. Calculate leftover time
-        already_assigned_time = sum((t.time_estimate or 0) for t in block.tasks)
-        available_duration = block.duration - already_assigned_time
-        if available_duration <= 0:
-            return  # No space left in this block
-
-        self._assign_tasks_to_block(block, tasks_to_schedule, available_duration)
-
-    def _assign_tasks_to_block(self, block, tasks_list, available_duration):
-        """
-        Inserts tasks into the block, respecting peak/off-peak hours and time estimates.
-        """
-        # Check if block is fully in peak hours
-        target_day_str = self.date.strftime('%A').lower()
-        if block.schedule and target_day_str in block.schedule:
-            start_dt, end_dt = block.schedule[target_day_str]
-            is_peak = self._is_within_peak_hours(start_dt, end_dt)
-        else:
-            is_peak = False
-
-        # Sort tasks differently if peak vs off-peak
-        if is_peak:
-            tasks_list.sort(key=lambda t: -1 * self._effort_map(t.effort_level))
-        else:
-            tasks_list.sort(key=lambda t: self._effort_map(t.effort_level))
-
-        used_time = 0.0
-        i = 0
-        while i < len(tasks_list):
-            task = tasks_list[i]
-            task_duration = task.time_estimate or 0
-
-            # If block is already 70% used and task not urgent, skip it for now
-            usage_fraction = used_time / block.duration if block.duration else 1
-            if usage_fraction > 0.7 and not self._is_urgent(task):
-                i += 1
-                continue
-
-            if task_duration <= (available_duration - used_time):
-                block.tasks.append(task)
-                used_time += task_duration
-                self._mark_task_as_scheduled(task)
-                tasks_list.pop(i)
-            else:
-                i += 1
-
-            if used_time >= available_duration:
-                break
-
-    def _is_within_peak_hours(self, start_time, end_time):
-        """
-        Returns True if [start_time, end_time] is within the configured peak hours.
-        start_time/end_time are datetime.time objects.
-        """
-        peak_start, peak_end = self.schedule_settings.peak_productivity_hours
-        return (start_time >= peak_start) and (end_time <= peak_end)
-
-    def _is_urgent(self, task):
-        """A simple example: tasks due within 2 days are urgent."""
-        if not task.due_datetime:
-            return False
-        return (task.due_datetime - datetime.now()) <= timedelta(days=2)
-
-    def _effort_map(self, level):
-        """Map string effort levels to numeric values for sorting."""
-        mapping = {"Easy": 1, "Medium": 2, "Hard": 3}
-        return mapping.get(level, 2)
-
-    def _mark_task_as_scheduled(self, task):
-        """
-        Updates a task as scheduled (schedule_weight=1.0, currently_in_schedule=1).
-        """
-        task.schedule_weight = 1.0
-        task.currently_in_schedule = True
-        self.task_manager_instance.conn.execute(
-            "UPDATE tasks SET schedule_weight = ?, currently_in_schedule = 1 WHERE id = ?",
-            (task.schedule_weight, task.id)
+        # (4) Finally add the sleep block
+        sleep_block = TimeBlock(
+            block_id=None,
+            name=f"Sleep ({adjusted_sleep_duration:.1f}h)",
+            schedule={target_day_str: (actual_sleep_start.time(), sleep_end.time())},
+            block_type="unavailable",
+            color=(173, 216, 230)
         )
-        self.task_manager_instance.conn.commit()
+        sleep_block.start_time = actual_sleep_start.time()
+        sleep_block.end_time = sleep_end.time()
+        filled_blocks.append(sleep_block)
 
-    def get_time_blocks(self):
-        """
-        Returns the final list of TimeBlocks after assignment.
-        """
-        return self.time_blocks
+        return filled_blocks
+
+    def _populate_tasks(self):
+        tasks = self.task_manager_instance.get_active_tasks()
+
+        total_hours_available = self.schedule_settings.hours_of_day_available
+        total_hours_scheduled = 0.0
+
+        scheduled_tasks = []
+
+        # remove scheduled tasks
+        tasks = [task for task in tasks if task.schedule_weight is None]
+
+        # populate time blocks
+        for task in tasks:
+            user_defined = False
+            if total_hours_scheduled >= total_hours_available:
+                break
+            elif (total_hours_scheduled - total_hours_available) < task.time_estimate:
+                continue
+            for time_block in self.time_blocks:
+                if time_block.block_type == "unavailable" or time_block.block_type == "system_defined":
+                    continue
+                if time_block.block_type == "user_defined":
+                    if task.id in time_block.tasks["exclude"]:
+                        continue
+                    elif task.id in time_block.tasks["include"]:
+                        if not time_block.add_task_if_time_available(task):
+                            continue
+                        scheduled_tasks.append(task)
+                        total_hours_scheduled += task.time_estimate
+                        user_defined = True
+                        break
+                    if any(tag in time_block.task_tags["exclude"] for tag in task.tags):
+                        continue
+                    elif any(tag in time_block.task_tags["include"] for tag in task.tags):
+                        if not time_block.add_task_if_time_available(task):
+                            continue
+                        scheduled_tasks.append(task)
+                        total_hours_scheduled += task.time_estimate
+                        user_defined = True
+                        break
+                    if self.task_manager_instance.get_task_list_category_name(task.list_name) in \
+                            time_block.list_categories["exclude"]:
+                        continue
+                    elif self.task_manager_instance.get_task_list_category_name(task.list_name) in \
+                            time_block.list_categories["include"]:
+                        if not time_block.add_task_if_time_available(task):
+                            continue
+                        scheduled_tasks.append(task)
+                        total_hours_scheduled += task.time_estimate
+                        user_defined = True
+                        break
+                if not user_defined:
+                    for time_block in self.time_blocks:
+                        if time_block.block_type == "unavailable":
+                            continue
+                        elif time_block.block_type == "user_defined":
+                            if not time_block.list_categories["include"]:
+                                if task.id in time_block.tasks["exclude"]:
+                                    continue
+                                else:
+                                    if not time_block.task_tags["include"]:
+                                        if any(tag in time_block.task_tags["exclude"] for tag in task.tags):
+                                            continue
+                                        if not time_block.add_task_if_time_available(task):
+                                            continue
+                                        scheduled_tasks.append(task)
+                                        total_hours_scheduled += task.time_estimate
+                                        user_defined = True
+                                        break
+                        if time_block.block_type == "system_defined":
+                            if not time_block.add_task_if_time_available(task):
+                                continue
+                            scheduled_tasks.append(task)
+                            total_hours_scheduled += task.time_estimate
+                            user_defined = True
+                            break

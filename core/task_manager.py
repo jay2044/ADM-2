@@ -65,10 +65,12 @@ class Task:
                                                  None)  # ["Morning", "Afternoon", "Evening", "Night"]
         self.time_logged = kwargs.get("time_logged", None)
         self.count_required = kwargs.get("count_required", None)
-        self.count_chunk_size = kwargs.get("count_chunk_size", None)
+        self.count_chunk_size = kwargs.get("count_cunk_size", None)
         self.count_completed = kwargs.get("count_completed", None)
         self.subtasks = kwargs.get("subtasks", None)  # [{"order": 1, "name": "test sub task", "completed": True}]
         self.dependencies = kwargs.get("dependencies", None)
+
+        self.auto_chunk = kwargs.get("auto_chunk", True)
 
         self.status = kwargs.get("status",
                                  "Not Started")  # ["Not Started", "In Progress", "Completed", "Failed", "On Hold"]
@@ -1197,6 +1199,22 @@ class TaskManager:
                 for task in task_list.tasks:
                     tags.update(task.tags)
         return list(tags)
+
+    def get_active_tasks(self):
+        active_tasks = []
+        for task_list in self.task_lists:
+            for task in task_list.tasks:
+                if task.status != "Completed":
+                    active_tasks.append(task)
+        return active_tasks
+
+    def get_task_list_category_name(self, task_list_name):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT category FROM task_lists WHERE name = ?", (task_list_name,))
+        result = cursor.fetchone()
+        if result:
+            return result["category"]
+        return None
 
     def __del__(self):
         self.conn.close()

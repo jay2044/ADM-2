@@ -591,14 +591,12 @@ class TimeBlockManagerWidget(QWidget):
 
             if time_block_data['unavailable']:
                 new_time_block = TimeBlock(
-                    task_manager_instance=self.schedule_manager.task_manager_instance,
                     name=time_block_data['name'],
                     color=time_block_data['color'],
                     block_type="unavailable"
                 )
             else:
                 new_time_block = TimeBlock(
-                    task_manager_instance=self.schedule_manager.task_manager_instance,
                     name=time_block_data['name'],
                     schedule=time_block_data['schedule'],
                     list_categories=time_block_data['list_categories'],
