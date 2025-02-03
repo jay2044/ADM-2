@@ -303,6 +303,8 @@ class ScheduleManager:
 
         self.chunks = self.chunk_tasks()
 
+        self.generate_schedule()
+
     def create_tables(self):
         with self.conn:
             self.conn.execute("""
@@ -954,52 +956,80 @@ class DaySchedule:
 
     def generate_schedule(self):
         target_day = self.date.strftime('%A').lower()
+
+        # 1) The day starts at self.schedule_settings.day_start
         day_start = datetime.combine(self.date, self.schedule_settings.day_start)
-        day_end = datetime.combine(self.date + timedelta(days=1), time(0, 0))
-        sleep_start = day_start - timedelta(hours=self.sleep_time)
-        sleep_end = day_start
+
+        # 2) The awake period ends at (day_start + 24 - sleep_time) => sleep start
+        day_end = day_start + timedelta(hours=(24 - self.sleep_time))
+
+        # 3) Create the Sleep block from day_end -> day_end + self.sleep_time
         sleep_block = TimeBlock(
             block_id=None,
             name=f"Sleep ({self.sleep_time:.1f}h)",
             date=self.date,
             block_type="unavailable",
-            color=(173, 216, 230)
+            color=(173, 216, 230),
         )
-        sleep_block.start_time = sleep_start.time()
-        sleep_block.end_time = sleep_end.time()
-        sleep_block.duration = (sleep_end - sleep_start).total_seconds() / 3600
+        sleep_block.start_time = day_end.time()
+        sleep_block.end_time = (day_end + timedelta(hours=self.sleep_time)).time()
+        sleep_block.duration = (timedelta(hours=self.sleep_time).total_seconds()) / 3600.0
+
+        # 4) Gather user‑defined blocks for this date
         user_blocks = self.schedule_manager_instance.get_user_defined_timeblocks_for_date(self.date)
         user_blocks.sort(key=lambda b: b.start_time)
-        final_blocks = [sleep_block]
+
+        final_blocks = []
         current_dt = day_start
+
+        # 5) Insert user blocks (or unscheduled gaps) up to day_end
         for block in user_blocks:
             block_start_dt = datetime.combine(self.date, block.start_time)
+            block_end_dt = datetime.combine(self.date, block.end_time)
+
+            # If the block starts after the awake period, skip
+            if block_start_dt >= day_end:
+                break
+
+            # If user block extends beyond day_end, clamp it
+            if block_end_dt > day_end:
+                block.end_time = day_end.time()
+                block_end_dt = day_end
+
+            # Fill any gap before this block
             if current_dt < block_start_dt:
                 gap_block = TimeBlock(
                     block_id=None,
                     name="Unscheduled",
                     date=self.date,
                     block_type="system_defined",
-                    color=(200, 200, 200)
+                    color=(200, 200, 200),
                 )
                 gap_block.start_time = current_dt.time()
                 gap_block.end_time = block_start_dt.time()
                 gap_block.duration = (block_start_dt - current_dt).total_seconds() / 3600
                 final_blocks.append(gap_block)
+
             final_blocks.append(block)
-            current_dt = datetime.combine(self.date, block.end_time)
+            current_dt = block_end_dt
+
+        # 6) Fill leftover time (if any) before sleep starts
         if current_dt < day_end:
             gap_block = TimeBlock(
                 block_id=None,
                 name="Unscheduled",
                 date=self.date,
                 block_type="system_defined",
-                color=(200, 200, 200)
+                color=(200, 200, 200),
             )
             gap_block.start_time = current_dt.time()
             gap_block.end_time = day_end.time()
             gap_block.duration = (day_end - current_dt).total_seconds() / 3600
             final_blocks.append(gap_block)
+
+        # 7) Finally, add the sleep block to the schedule
+        final_blocks.append(sleep_block)
+
         return final_blocks
 
     def qualifies(self, task, block):

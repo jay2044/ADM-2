@@ -291,10 +291,12 @@ class HourCell(QWidget):
 class HourScaleWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.day_start_time = parent.schedule_manager.schedule_settings.day_start
         self.hours = [
-            f"{hour % 12 or 12} {'AM' if hour % 24 < 12 else 'PM'}"
-            for hour in range(4, 29)
+            f"{(self.day_start_time.hour + i) % 12 or 12} {'AM' if (self.day_start_time.hour + i) % 24 < 12 else 'PM'}"
+            for i in range(25)  # Covers a full 24-hour cycle plus 1 extra for visual continuity
         ]
+
         self.custom_heights = {i: 20 for i in range(len(self.hours))}
 
         self.layout = QVBoxLayout(self)
@@ -649,6 +651,10 @@ class ScheduleViewWidget(QWidget):
         self.schedule_manager = schedule_manager
         self.time_blocks = self.schedule_manager.get_day_schedule(
             date.today()).time_blocks if self.schedule_manager else []
+        for tb in self.time_blocks:
+            print(f"TimeBlock ID: {tb.id}, Name: {tb.name}, Type: {tb.block_type}, "
+                  f"Start: {tb.start_time}, End: {tb.end_time}, Duration: {tb.duration}h, "
+                  f"Tasks: {len(tb.task_chunks)}, Buffer Ratio: {tb.buffer_ratio}, Color: {tb.color}")
         self.expanded_ui_visible = False
         self.initUI()
         self.load_time_blocks()
@@ -696,7 +702,7 @@ class ScheduleViewWidget(QWidget):
         self.container = QWidget()
         self.timeAndTasksLayout = QHBoxLayout(self.container)
 
-        self.timeScaleWidget = HourScaleWidget()  # Replace with your implementation
+        self.timeScaleWidget = HourScaleWidget(self)
         self.timeBlocksLayout = QVBoxLayout()
 
         self.timeAndTasksLayout.addWidget(self.timeScaleWidget)
@@ -753,25 +759,32 @@ class ScheduleViewWidget(QWidget):
     def update_time_cell_heights(self):
         self.updateGeometry()
         QApplication.processEvents()
+        # Get the day start hour from schedule settings
+        day_start_hour = self.schedule_manager.schedule_settings.day_start.hour
         for i in range(self.timeBlocksLayout.count()):
             tb_widget = self.timeBlocksLayout.itemAt(i).widget()
             if tb_widget:
-                # Convert the hour string ("HH:MM") to integer
-                start_hour = int(tb_widget.start_time.split(':')[0])
-                end_hour = int(tb_widget.end_time.split(':')[0])
+                # Parse the block's start and end times
+                block_start_dt = datetime.strptime(tb_widget.start_time, "%H:%M")
+                block_end_dt = datetime.strptime(tb_widget.end_time, "%H:%M")
 
-                # Fix for hours < 4 AM => add 24
-                if start_hour < 4:
-                    start_hour += 24
-                if end_hour < 4:
+                start_hour = block_start_dt.hour
+                end_hour = block_end_dt.hour
+                # If the block spans midnight, adjust end hour:
+                if end_hour < start_hour:
                     end_hour += 24
 
-                # Convert to the same string format used in HourScaleWidget
-                # i.e.: f"{hour % 12 or 12} {'AM' if hour % 24 < 12 else 'PM'}"
-                start_str = f"{start_hour % 12 or 12} {'AM' if start_hour < 12 else 'PM'}"
-                end_str = f"{end_hour % 12 or 12} {'AM' if end_hour < 12 else 'PM'}"
+                # Compute relative positions from the configured day start
+                relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (
+                            24 - day_start_hour)
+                relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (
+                            24 - day_start_hour)
 
-                # Now this matches the strings in self.timeScaleWidget.hours
+                # Build strings in the same format as HourScaleWidget.hours
+                # (This assumes HourScaleWidget.hours was built starting at day_start)
+                start_str = f"{(day_start_hour + relative_start) % 12 or 12} {'AM' if (day_start_hour + relative_start) % 24 < 12 else 'PM'}"
+                end_str = f"{(day_start_hour + relative_end) % 12 or 12} {'AM' if (day_start_hour + relative_end) % 24 < 12 else 'PM'}"
+
                 self.timeScaleWidget.set_height_by_widget(start_str, end_str, tb_widget)
 
     def print_time_block_heights(self):
@@ -807,7 +820,7 @@ class ScheduleSettingsDialog(QDialog):
         self.sleep_duration_spin = QSpinBox(self)
         self.sleep_duration_spin.setMinimum(1)
         self.sleep_duration_spin.setMaximum(24)
-        self.sleep_duration_spin.setValue(self.schedule_settings.ideal_sleep_duration)
+        self.sleep_duration_spin.setValue(int(self.schedule_settings.ideal_sleep_duration))
         self.sleep_duration_spin.valueChanged.connect(self.auto_calculate_hours)
 
         self.hours_available_edit = QLineEdit(self)
