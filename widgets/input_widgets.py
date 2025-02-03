@@ -1009,3 +1009,59 @@ class AddTimeBlockDialog(QDialog):
 
         # If all validations pass
         self.accept()
+
+    def edit_mode(self, block):
+        # Set the name
+        self.name_input.setText(block["name"])
+
+        # Handle "unavailable" state
+        self.unavailable = bool(block["unavailable"])
+        if self.unavailable:
+            self.unavailable_button.setStyleSheet("background: rgb(204, 97, 65);")
+            self.category_tag_picker.setDisabled(True)
+        else:
+            self.unavailable_button.setStyleSheet("background: none;")
+            self.category_tag_picker.setDisabled(False)
+
+        # Set the color
+        self.picked_color = block["color"]  # tuple like (r, g, b)
+        self.color_picker_button.setStyleSheet(f"background-color: rgb{self.picked_color};")
+        self.schedule_picker.refresh_color(self.picked_color)
+
+        # Populate each day's schedule
+        for day, widgets in self.schedule_picker.day_widgets.items():
+            day_checkbox = widgets["checkbox"]
+            block_widget = widgets["block_widget"]
+            if day in block["schedule"]:
+                day_checkbox.setChecked(True)
+                day_checkbox.setDisabled(False)
+                block_widget.setDisabled(False)
+                from_str, to_str = block["schedule"][day]  # e.g. "09:00", "10:00"
+                from_dt = datetime.combine(self.schedule_picker.day_start_time.date(),
+                                           datetime.strptime(from_str, "%H:%M").time())
+                to_dt = datetime.combine(self.schedule_picker.day_start_time.date(),
+                                         datetime.strptime(to_str, "%H:%M").time())
+                block_widget.from_time_edit.setTime(QTime(from_dt.hour, from_dt.minute))
+                block_widget.to_time_edit.setTime(QTime(to_dt.hour, to_dt.minute))
+            else:
+                day_checkbox.setChecked(False)
+                block_widget.setDisabled(True)
+
+        # Set categories and tags
+        for item in self.category_tag_picker.category_items:
+            if item.text() in block["list_categories"]["include"]:
+                item._state = 1
+            elif item.text() in block["list_categories"]["exclude"]:
+                item._state = 2
+            else:
+                item._state = 0
+            item._update_style()
+
+        for item in self.category_tag_picker.tag_items:
+            if item.text() in block["task_tags"]["include"]:
+                item._state = 1
+            elif item.text() in block["task_tags"]["exclude"]:
+                item._state = 2
+            else:
+                item._state = 0
+            item._update_style()

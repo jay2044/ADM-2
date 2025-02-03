@@ -590,7 +590,7 @@ class TimeBlockManagerWidget(QWidget):
     def populate_time_blocks(self):
         self.timeBlockList.clear()
         for time_block in self.schedule_manager.time_blocks:
-            item = QListWidgetItem(time_block.name)
+            item = QListWidgetItem(time_block.get("name"))
             self.timeBlockList.addItem(item)
 
     def show_context_menu(self, position):
@@ -639,10 +639,46 @@ class TimeBlockManagerWidget(QWidget):
             QMessageBox.information(self, "Success", "Time block added successfully!")
 
     def open_edit_time_block_dialogue(self, time_block_name):
-        pass  # Placeholder for editing an existing time block
+        for block in self.schedule_manager.time_blocks:
+            if time_block_name == block.get("name"):
+                day_start_datetime = datetime.combine(datetime.now().date(),
+                                                      self.schedule_manager.schedule_settings.day_start)
+
+                dialog = AddTimeBlockDialog(self, day_start_time=day_start_datetime)
+                dialog.edit_mode(block)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    time_block_data = dialog.get_time_block_data()
+
+                    if not time_block_data['name']:
+                        QMessageBox.warning(self, "Invalid Input", "Name cannot be empty.")
+                        return
+
+                    if time_block_data['unavailable']:
+                        new_time_block = {
+                            "name": time_block_data['name'],
+                            "schedule": time_block_data['schedule'],
+                            "color": time_block_data['color'],
+                            "unavailable": 1
+                        }
+                    else:
+                        new_time_block = {
+                            "name": time_block_data['name'],
+                            "schedule": time_block_data['schedule'],
+                            "list_categories": time_block_data['list_categories'],
+                            "task_tags": time_block_data['task_tags'],
+                            "color": time_block_data['color'],
+                            "unavailable": 0
+                        }
+
+                    self.schedule_manager.add_time_block(new_time_block)
+                    self.populate_time_blocks()
+
+                    QMessageBox.information(self, "Success", "Time block added successfully!")
 
     def delete_time_block(self, time_block_name):
-        pass  # Placeholder for deleting an existing time block
+        for block in self.schedule_manager.time_blocks:
+            if time_block_name == block.get("name"):
+                self.schedule_manager.remove_time_block(block.get("id"))
 
 
 class ScheduleViewWidget(QWidget):
@@ -776,9 +812,9 @@ class ScheduleViewWidget(QWidget):
 
                 # Compute relative positions from the configured day start
                 relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (
-                            24 - day_start_hour)
+                        24 - day_start_hour)
                 relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (
-                            24 - day_start_hour)
+                        24 - day_start_hour)
 
                 # Build strings in the same format as HourScaleWidget.hours
                 # (This assumes HourScaleWidget.hours was built starting at day_start)

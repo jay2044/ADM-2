@@ -28,6 +28,32 @@ def convert_times_in_schedule(schedule_dict: dict) -> dict:
         new_schedule[day] = converted
     return new_schedule
 
+def parse_time_schedule(schedule_data: dict) -> dict:
+    """
+    Convert each day's [start_time_str, end_time_str] into [start_time_obj, end_time_obj].
+    """
+    parsed_schedule = {}
+    for day, time_pair in schedule_data.items():
+        if not isinstance(time_pair, (list, tuple)) or len(time_pair) != 2:
+            continue
+        start_str, end_str = time_pair
+
+        # Parse only if they're strings, otherwise keep them if they are already time objects.
+        if isinstance(start_str, str):
+            start_time = datetime.strptime(start_str, "%H:%M").time()
+        else:
+            start_time = start_str
+
+        if isinstance(end_str, str):
+            end_time = datetime.strptime(end_str, "%H:%M").time()
+        else:
+            end_time = end_str
+
+        parsed_schedule[day] = [start_time, end_time]
+
+    return parsed_schedule
+
+
 
 class ScheduleSettings:
     def __init__(self, db_path='data/adm.db'):
@@ -352,7 +378,13 @@ class ScheduleManager:
 
             for row in rows:
                 # Parse JSON fields
-                schedule = json.loads(row["schedule"]) if row["schedule"] else {}
+                schedule_json = row["schedule"]
+                if schedule_json:
+                    schedule_dict = json.loads(schedule_json)
+                    # Convert any string times into actual time objects
+                    schedule_dict = parse_time_schedule(schedule_dict)
+                else:
+                    schedule_dict = {}
                 list_categories = json.loads(row["list_categories"]) if row["list_categories"] else {
                     "include": [], "exclude": []
                 }
@@ -371,7 +403,7 @@ class ScheduleManager:
                 block = {
                     "id": row["id"],
                     "name": row["name"],
-                    "schedule": schedule,  # e.g., {"wed": ["09:00", "10:00"]}
+                    "schedule": schedule_dict,  # e.g., {"wed": ["09:00", "10:00"]}
                     "list_categories": list_categories,
                     "task_tags": task_tags,
                     "color": color,
@@ -441,6 +473,8 @@ class ScheduleManager:
             time_block["id"] = new_id
 
             # Keep a copy in memory
+            print("ok")
+            print(time_block)
             self.time_blocks.append(time_block)
 
             cursor.close()
@@ -567,16 +601,21 @@ class ScheduleManager:
         values as a list/tuple of two strings representing start and end times in "%H:%M" format.
         """
         # Get the day abbreviation in lower-case (e.g., "wed")
-        day_abbr = given_date.strftime("%a").lower()
+        day_full = given_date.strftime("%A").lower()
+        print(day_full)
         result = []
 
         # Iterate over the loaded timeblocks
+        print("before yo")
         for block in self.time_blocks:
             schedule = block.get("schedule", {})
-            if day_abbr in schedule:
-                time_range = schedule[day_abbr]
+            print(schedule)
+            if day_full in schedule:
+                time_range = schedule[day_full]
                 # Expect time_range to be a list/tuple with two items: [start_str, end_str]
+                print(time_range)
                 if isinstance(time_range, (list, tuple)) and len(time_range) == 2:
+                    print("yo")
                     start_str, end_str = time_range
                     try:
                         start_time = datetime.strptime(start_str, "%H:%M").time()
@@ -597,6 +636,9 @@ class ScheduleManager:
                     )
                     new_block.start_time = start_time
                     new_block.end_time = end_time
+                    print("TESRT!!!!!!!!!!!")
+                    print(start_time)
+                    print(end_time)
 
                     # Compute duration (in hours)
                     start_dt = datetime.combine(given_date, start_time)
