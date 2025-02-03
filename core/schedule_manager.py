@@ -165,46 +165,67 @@ class TimeBlock:
             self.color = (231, 131, 97)
         else:
             self.color = tuple(random.randint(0, 255) for _ in range(3))
-        self.task_chunks = {}  # Mapping: task.id -> { "task": task, "duration": ..., "score": ..., "auto_chunk": bool }
+        self.task_chunks = {}
         self.start_time = None
         self.end_time = None
         self.duration = None
         self.buffer_ratio = 0.0
 
-    def add_chunk(self, task, duration, score, auto_chunk=True):
+    def add_chunk(self, chunk, rating):
+        task = chunk.task
         task_id = task.id if hasattr(task, 'id') else uuid.uuid4().int
-        if task_id in self.task_chunks:
-            self.task_chunks[task_id]["duration"] += duration
-            # Optionally update score if desired.
+        if task_id in self.task_chunks and chunk.auto:
+            self.task_chunks[task_id]["chunk"].duration += chunk.duration
         else:
-            self.task_chunks[task_id] = {"task": task, "duration": duration, "score": score, "auto_chunk": auto_chunk}
-        return 0  # In this design, assume the entire duration is scheduled if free_time permits.
+            self.task_chunks[task_id] = {"chunk": chunk, "rating": rating}
 
     def remove_chunk(self, task, remove_amount):
-        """
-        Remove remove_amount of chunk time from the scheduled chunk for task.
-        If the chunk is auto-scheduled, remove only the needed amount (or the entire chunk if remove_amount >= chunk size).
-        If the chunk is manually scheduled, remove the entire chunk regardless.
-        """
         task_id = task.id if hasattr(task, 'id') else None
         if task_id and task_id in self.task_chunks:
-            chunk = self.task_chunks[task_id]
-            if not chunk.get("auto_chunk"):
-                # For manually scheduled chunks, remove the entire chunk.
+            existing_chunk = self.task_chunks[task_id]["chunk"]
+            if not existing_chunk.auto:
                 del self.task_chunks[task_id]
             else:
-                # For auto-scheduled chunks, remove only what is needed.
-                chunk["duration"] -= remove_amount
-                if chunk["duration"] <= 0:
+                existing_chunk.duration -= remove_amount
+                if existing_chunk.duration <= 0:
                     del self.task_chunks[task_id]
 
     def get_available_time(self):
-        used_time = sum(chunk["duration"] for chunk in self.task_chunks.values())
-        # Assume that self.duration is the full duration of the block.
-        # The effective capacity is reduced by the buffer_ratio.
+        used_time = sum(chunk["chunk"].duration for chunk in self.task_chunks.values())
         if self.duration is None:
             return 0
         return max(0, (self.duration * (1 - self.buffer_ratio)) - used_time)
+
+    def get_capacity(self):
+        return max(0, (self.duration * (1 - self.buffer_ratio)))
+
+
+class TaskChunk:
+    def __init__(self, task, duration, timeblock_ratings=None, auto=False, manual=False, assigned=False,
+                 flagged=False):
+        """
+        :param task: The task object this chunk belongs to.
+        :param duration: Duration of the chunk.
+        :param timeblock_ratings: Ratings associated with different timeblocks.
+        :param status: Current status of the chunk.
+        :param auto: Boolean indicating if auto-scheduling was used.
+        :param manual: Boolean indicating if manually scheduled.
+        :param assigned: Boolean indicating if the chunk has been assigned.
+        :param flagged: Boolean indicating if the chunk is flagged.
+        """
+        self.task = task
+        self.duration = duration
+        self.timeblock_ratings = timeblock_ratings
+        self.auto = auto
+        self.manual = manual
+        self.assigned = assigned
+        self.flagged = flagged
+
+    def split(self, ratios):
+        total_ratio = sum(ratios)
+        return [TaskChunk(self.task, (self.duration * r) / total_ratio, self.timeblock_ratings, self.auto, self.manual,
+                          self.assigned,
+                          self.flagged) for r in ratios]
 
 
 class ScheduleManager:
@@ -237,7 +258,9 @@ class ScheduleManager:
 
         self.day_schedules = self.load_day_schedules()
 
-        self.avg_buffer_ration = self.get_avg_buffer_ratio()
+        self.estimate_daily_buffer_ratios()
+
+        self.chunks = self.chunk_tasks()
 
     def create_tables(self):
         with self.conn:
@@ -576,14 +599,33 @@ class ScheduleManager:
             return DaySchedule(self, date)
 
     def load_day_schedules(self):
-        """Generates a schedule from today up to the farthest due date, ensuring a minimum of 21 days."""
+        """
+        Generates DaySchedule objects starting from today.
+        The schedule will span at least MIN_SCHEDULE_DAYS (21) days but not exceed MAX_SCHEDULE_DAYS (48).
+        If there is a due date among active tasks, it is used only if it falls within the allowed range.
+        """
+        MIN_SCHEDULE_DAYS = 21
+        MAX_SCHEDULE_DAYS = 48
+
         today = datetime.now().date()
-        latest_due_date = max((task.due_datetime.date() for task in self.active_tasks), default=None)
 
-        end_date = max(today + timedelta(days=20), latest_due_date) if latest_due_date else today + timedelta(days=20)
+        # Determine the latest due date among active tasks (if any)
+        latest_due_date = None
+        if self.active_tasks and any(task.due_datetime for task in self.active_tasks):
+            latest_due_date = max(task.due_datetime.date() for task in self.active_tasks if task.due_datetime)
 
-        return [DaySchedule(self, date) for date in
-                (today + timedelta(days=i) for i in range((end_date - today).days + 1))]
+        min_end_date = today + timedelta(days=MIN_SCHEDULE_DAYS - 1)
+        max_end_date = today + timedelta(days=MAX_SCHEDULE_DAYS - 1)
+
+        if latest_due_date is None or latest_due_date < min_end_date:
+            end_date = min_end_date
+        elif latest_due_date > max_end_date:
+            end_date = max_end_date
+        else:
+            end_date = latest_due_date
+
+        num_days = (end_date - today).days + 1
+        return [DaySchedule(self, today + timedelta(days=i)) for i in range(num_days)]
 
     def estimate_daily_buffer_ratios(self):
         """
@@ -620,159 +662,205 @@ class ScheduleManager:
             else:
                 day_schedule.assign_buffer_ratio(0.0)
 
-    def generate_schedule(self):
-        """
-        For each task:
-          - If the task is manually scheduled (manually_scheduled == True), assign its
-            manually scheduled chunks (from manually_scheduled_chunks) first.
-          - For the remaining time:
-              - Evaluate candidate days (only days before the task’s due date, if defined)
-                and compute a suitability rating for each.
-              - Then, if the task is auto-chunked, split the remaining time intelligently:
-                  * A task’s flexibility dictates into how many chunks it should be split.
-                  * High-rated candidate days will receive larger chunks while lower-rated days get smaller chunks.
-                  * If there is excess remaining time, try assigning additional chunks across candidate days.
-              - Else if the task is manually chunked (predefined chunks in assigned_chunks), assign each chunk to the first candidate day with enough free time.
-              - Otherwise, assign the entire remaining time to the best candidate day.
-          - Finally, flag the task if it couldn’t be fully scheduled.
-        """
-        # Clear the task-day rating matrix.
-        self.task_day_rating_matrix = {}
+    def chunk_tasks(self):
+        chunks = []
+        for task in self.active_tasks:
+            # Calculate the remaining duration for the task.
+            remaining_duration = task.time_estimate - task.time_logged
 
-        # Sort tasks by global weight (highest first)
-        tasks = sorted(self.active_tasks, key=lambda t: t.global_weight, reverse=True)
+            # Process manually scheduled tasks.
+            if task.manually_scheduled:
+                if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
+                    # Assume manually_scheduled_chunks is a list of dictionaries.
+                    for chunk_info in task.manually_scheduled_chunks:
+                        chunk_duration = chunk_info.get("duration", 0)
+                        if chunk_duration > 0:
+                            chunk = TaskChunk(
+                                task=task,
+                                duration=chunk_duration,
+                                manual=True
+                            )
+                            chunks.append(chunk)
+                            remaining_duration -= chunk_duration
 
-        for task in tasks:
-            self.task_day_rating_matrix[task.id] = {}
-            candidate_days = []
-            remaining_time = task.time_estimate - task.time_logged
-
-            # --- 1. Manually Scheduled Chunks (User-interacted chunks) ---
-            if task.manually_scheduled and hasattr(task,
-                                                   'manually_scheduled_chunks') and task.manually_scheduled_chunks:
-                for chunk in task.manually_scheduled_chunks:
-                    # Each chunk is expected as a dict with keys: 'date', 'timeblock', and 'duration'
-                    chunk_date = chunk.get('date')
-                    chunk_duration = chunk.get('duration', 0)
-                    for day in self.day_schedules:
-                        if day.date == chunk_date:
-                            day.add_task_chunk(task, chunk_duration)
-                            remaining_time -= chunk_duration
-                            break  # Process next manually scheduled chunk
-
-            # --- 2. Evaluate Candidate Days ---
-            for day in self.day_schedules:
-                # Skip days after the task’s due date, if defined.
-                if task.due_datetime and day.date > task.due_datetime.date():
-                    continue
-                rating = self.compute_suitability_rating(task, day)
-                self.task_day_rating_matrix[task.id][day.date] = rating
-                candidate_days.append((day, rating))
-            candidate_days.sort(key=lambda x: x[1], reverse=True)
-
-            if remaining_time <= 0:
-                continue  # Task fully scheduled via manual chunks.
-
-            # --- 3. Auto-Chunking Based on Flexibility and Candidate Day Ratings ---
-            if task.auto_chunk:
-                # Decide desired number of chunks based on task flexibility.
-                if task.flexibility == "Strict":
-                    desired_chunks = 1 if remaining_time <= 3 else 2
-                elif task.flexibility == "Flexible":
-                    # For flexible tasks, try splitting into roughly one chunk per 2 hours of work.
-                    desired_chunks = min(len(candidate_days), max(1, int(remaining_time // 2)))
-                elif task.flexibility == "Very Flexible":
-                    # Very flexible tasks can be split more finely.
-                    desired_chunks = min(len(candidate_days), max(1, int(remaining_time)))
-                else:
-                    desired_chunks = 1
-
-                # Select the top candidate days for initial assignment.
-                selected_candidates = candidate_days[:desired_chunks]
-                total_rating = sum(rating for _, rating in selected_candidates)
-
-                # Distribute remaining_time among selected candidate days proportionally to their rating.
-                for day, rating in selected_candidates:
-                    if total_rating > 0:
-                        proposed_chunk = remaining_time * (rating / total_rating)
+                # If any remaining duration exists.
+                if remaining_duration > 0:
+                    if task.auto_chunk:
+                        chunk = TaskChunk(
+                            task=task,
+                            duration=remaining_duration,
+                            auto=True
+                        )
+                        chunks.append(chunk)
                     else:
-                        proposed_chunk = remaining_time
-                    free_time = day.get_eat(task)
-                    chunk = min(proposed_chunk, free_time)
-                    day.add_task_chunk(task, chunk)
-                    remaining_time -= chunk
-                    total_rating -= rating
-                    if remaining_time <= 0:
-                        break
-
-                # If there is still remaining time, iterate over all candidate days to assign additional chunks.
-                if remaining_time > 0:
-                    for day, rating in candidate_days:
-                        free_time = day.get_eat(task)
-                        if free_time > 0:
-                            chunk = min(remaining_time, free_time)
-                            day.add_task_chunk(task, chunk)
-                            remaining_time -= chunk
-                        if remaining_time <= 0:
-                            break
-
-            # --- 4. Manually Chunked Tasks (Predefined chunks) ---
+                        chunk = TaskChunk(
+                            task=task,
+                            duration=remaining_duration,
+                            assigned=True
+                        )
+                        chunks.append(chunk)
+            # Process tasks that are assigned.
             elif hasattr(task, 'assigned_chunks') and task.assigned_chunks:
-                for chunk in task.assigned_chunks:
-                    chunk_assigned = False
-                    for day, rating in candidate_days:
-                        free_time = day.get_eat(task)
-                        if free_time >= chunk:
-                            day.add_task_chunk(task, chunk)
-                            remaining_time -= chunk
-                            chunk_assigned = True
-                            break
-                    if not chunk_assigned:
-                        # If a chunk cannot be assigned, break and flag the task.
-                        remaining_time = chunk
-                        break
-
-            # --- 5. Non-Chunked Tasks ---
+                for assigned_chunk in task.assigned_chunks:
+                    chunk_duration = assigned_chunk.get("duration", 0)
+                    if chunk_duration > 0:
+                        chunk = TaskChunk(
+                            task=task,
+                            duration=chunk_duration,
+                            assigned=True
+                        )
+                        chunks.append(chunk)
+            # Process tasks that are not manually scheduled and use auto chunking.
             else:
-                if candidate_days:
-                    best_day, _ = candidate_days[0]
-                    free_time = best_day.get_eat(task)
-                    if free_time >= remaining_time:
-                        best_day.add_task_chunk(task, remaining_time)
-                        remaining_time = 0
+                if task.auto_chunk:
+                    chunk = TaskChunk(
+                        task=task,
+                        duration=remaining_duration,
+                        auto=True
+                    )
+                    chunks.append(chunk)
+        return chunks
 
-            # Flag the task if it couldn’t be fully scheduled.
-            task.flagged = remaining_time > 0
-
-    def compute_suitability_rating(self, task, day):
+    # returns a bool for success
+    def assign_chunk(self, chunk, exclude_block=None, test=False):
         """
-        Compute a numeric suitability rating for scheduling a task on a given day.
-        Factors include:
-          - Task's global weight (scaled)
-          - Whether the day matches the task's preferred workdays
-          - Whether the day's effective available time can cover the task
-          - The task's priority and effort level.
+        Attempt to assign a TaskChunk (chunk) to one of the candidate timeblocks.
+
+        For auto chunks, if capacity is insufficient, it will attempt to split the chunk
+        and free capacity by reassigning lower-rated auto chunks.
+
+        For assigned (non-auto) chunks, the same candidate loop is used, but the current
+        chunk is not split; instead, lower-rated chunks are re-assigned to free space.
+
+        Returns True if the assignment is successful; otherwise, flags the chunk and returns False.
         """
-        rating = 0
-        # Base rating from global weight (scaled)
-        rating += task.global_weight * 100
+        task = chunk.task
+        if not chunk.timeblock_ratings:
+            chunk.flagged = True
+            return False
 
-        # Adjust based on preferred workdays.
-        day_name = day.date.strftime('%A')
-        if hasattr(task, 'preferred_work_days') and task.preferred_work_days:
-            rating += 20 if day_name in task.preferred_work_days else -10
+        # Sort candidate timeblocks (each a tuple: (block, rating)) by descending rating.
+        sorted_candidates = sorted(chunk.timeblock_ratings, key=lambda x: x[1], reverse=True)
 
-        # Consider available time.
-        rating += 15 if day.get_eat(task) >= task.time_estimate else -15
+        if chunk.auto:
+            FLEXIBILITY_MAP = {
+                "Strict": 1,
+                "Flexible": 2,
+                "Very Flexible": 3
+            }
+            flexibility_ratio = FLEXIBILITY_MAP[task.flexibility] / max(FLEXIBILITY_MAP.values())
+            required_capacity = task.time_estimate - task.time_logged
+            num_top_candidates = max(1, int(len(sorted_candidates) * flexibility_ratio))
 
-        # Add task priority.
-        rating += task.priority
+            # Select only the top candidates and filter out the exclude_block.
+            top_candidates = [cand for cand in sorted_candidates[:num_top_candidates]
+                              if cand[0].id != (exclude_block.id if exclude_block else None)]
 
-        # Factor in effort level.
-        effort_bonus = {"Low": 5, "Medium": 0, "High": -5}
-        rating += effort_bonus.get(task.effort_level, 0)
+            for candidate in top_candidates:
+                block, rating = candidate
+                # Gather lower-rated chunks from this block that are not manually scheduled.
+                filtered_chunks = sorted(
+                    [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating],
+                    key=lambda c: c.duration
+                )
+                filtered_chunks = [c for c in filtered_chunks if not c.manual]
 
-        return rating
+                if block.get_available_time() >= required_capacity:
+                    if not test:
+                        block.add_chunk(chunk, rating)
+                    return True
+                else:
+                    if not filtered_chunks:
+                        continue
+                    resizable_capacity = 0.0
+                    reschedule_chunk_queue = []
+                    for filtered_chunk in filtered_chunks:
+                        if filtered_chunk.assigned or filtered_chunk.auto:
+                            if self.assign_chunk(filtered_chunk, block, True):
+                                resizable_capacity += filtered_chunk.get_capacity()
+                                reschedule_chunk_queue.append(filtered_chunk)
+                        elif filtered_chunk.auto:
+                            flexibility_ratio_auto = FLEXIBILITY_MAP[filtered_chunk.task.flexibility] / max(
+                                FLEXIBILITY_MAP.values())
+                            if flexibility_ratio_auto >= flexibility_ratio:
+                                av = filtered_chunk.duration - (required_capacity - resizable_capacity)
+                                if av > 0:
+                                    sp = filtered_chunk.split([av, filtered_chunk.duration - av])
+                                    if self.assign_chunk(sp[1], block, True):
+                                        resizable_capacity += sp[1].get_capacity()
+                                        reschedule_chunk_queue.append(sp[1])
+                        # End inner loop.
+                    # Check if the freed capacity is nearly enough to accommodate the entire chunk.
+                    if resizable_capacity >= 0.9 * required_capacity:
+                        available_for_this_block = block.get_available_time() + resizable_capacity
+                        if available_for_this_block < chunk.duration:
+                            sp = chunk.split([available_for_this_block, chunk.duration - available_for_this_block])
+                            if not test:
+                                block.add_chunk(sp[0], rating)
+                            if self.assign_chunk(sp[1], exclude_block=block, test=test):
+                                return True
+                    if resizable_capacity >= required_capacity:
+                        for reschedule_chunk in reschedule_chunk_queue:
+                            block.remove_chunk(reschedule_chunk)
+                            self.assign_chunk(reschedule_chunk, block)
+                        if not test:
+                            block.add_chunk(chunk, rating)
+                        return True
+        elif chunk.assigned:
+            # For assigned chunks, the current chunk is not split.
+            for candidate in sorted_candidates:
+                block, rating = candidate
+                if exclude_block and block.id == exclude_block.id:
+                    continue
+                if block.get_available_time() >= chunk.duration:
+                    if not test:
+                        block.add_chunk(chunk, rating)
+                    return True
+                else:
+                    # Try to free capacity by reassigning lower-rated chunks.
+                    filtered_chunks = sorted(
+                        [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating],
+                        key=lambda c: c.duration
+                    )
+                    filtered_chunks = [c for c in filtered_chunks if not c.manual]
+                    if not filtered_chunks:
+                        continue
+                    resizable_capacity = 0.0
+                    reschedule_chunk_queue = []
+                    for filtered_chunk in filtered_chunks:
+                        if filtered_chunk.assigned or filtered_chunk.auto:
+                            if self.assign_chunk(filtered_chunk, block, True):
+                                resizable_capacity += filtered_chunk.get_capacity()
+                                reschedule_chunk_queue.append(filtered_chunk)
+                    if resizable_capacity >= chunk.duration:
+                        for reschedule_chunk in reschedule_chunk_queue:
+                            block.remove_chunk(reschedule_chunk)
+                            self.assign_chunk(reschedule_chunk, block)
+                        if not test:
+                            block.add_chunk(chunk, rating)
+                        return True
+        # If no candidate block can accept the chunk, flag it.
+        chunk.flagged = True
+        return False
+
+    def generate_schedule(self):
+        for chunk in self.chunks:
+            # If the chunk is manually scheduled, assume it's pre-assigned.
+            if chunk.manual:
+                # Implement custom manual assignment logic if needed.
+                # ---
+                continue
+
+            chunk.timeblock_ratings = []
+            for day in self.day_schedules:
+                if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
+                    break
+                ratings = day.get_suitable_timeblocks_with_rating(chunk)
+                chunk.timeblock_ratings.extend(ratings)
+
+            chunk.timeblock_ratings.sort(key=lambda x: x[1], reverse=True)
+
+            self.assign_chunk(chunk)
 
 
 class DaySchedule:
@@ -857,196 +945,6 @@ class DaySchedule:
 
         return final_blocks
 
-    def add_task_chunk(self, task, chunk_size):
-        """
-        Add a chunk of the task to this day's schedule.
-
-        If the task is manually scheduled and has a designated chunk for this day,
-        assign it to the specified time block.
-
-        Otherwise, for auto-chunking, select the best candidate time block(s)
-        based on the task's time_of_day_preference and effort level. In each candidate
-        block, if the block does not have enough free time, then rank the already
-        scheduled (auto-scheduled) chunks in that block and, if the current task is more
-        suitable (has a higher score), remove the lower-scoring chunks to free space.
-        Removed chunks will be re-assigned later via a recursive call.
-
-        Finally, if the block still cannot take the full chunk, the method will try
-        splitting the chunk among multiple blocks.
-
-        Manually scheduled chunks are never bumped.
-        """
-
-        def compute_time_bonus(t, interval, max_bonus, threshold=60):
-            """
-            t: a time object (the block's start_time)
-            interval: a tuple of (start_time, end_time) for the preferred period
-            max_bonus: maximum bonus to award if t is within the interval
-            threshold: minutes outside the interval over which the bonus tapers to 0.
-            Returns a bonus value between 0 and max_bonus.
-            """
-
-            # Convert time to minutes since midnight.
-            def to_minutes(t_obj):
-                return t_obj.hour * 60 + t_obj.minute
-
-            t_val = to_minutes(t)
-            start_val = to_minutes(interval[0])
-            end_val = to_minutes(interval[1])
-            # Adjust if the interval spans midnight.
-            if start_val > end_val:
-                if t_val < start_val:
-                    t_val += 24 * 60
-                end_val += 24 * 60
-
-            if start_val <= t_val <= end_val:
-                return max_bonus
-            elif t_val < start_val:
-                diff = start_val - t_val
-                if diff <= threshold:
-                    return max_bonus * (1 - diff / threshold)
-                else:
-                    return 0
-            else:  # t_val > end_val
-                diff = t_val - end_val
-                if diff <= threshold:
-                    return max_bonus * (1 - diff / threshold)
-                else:
-                    return 0
-
-        candidate_blocks = [block for block in self.time_blocks if block.block_type != "unavailable"]
-        candidate_blocks = [block for block in self.time_blocks if self.qualifies(task, block)]
-        # --- 1. If the task is manually scheduled for this day, honor its designated block ---
-        if task.manually_scheduled and isinstance(task.manually_scheduled_chunks, dict):
-            # Expecting keys: "date", "timeblock", and "duration"
-            scheduled_date = task.manually_scheduled_chunks.get("date")
-            if scheduled_date is not None and scheduled_date == self.date:
-                designated_block_name = task.manually_scheduled_chunks.get("timeblock")
-                designated_duration = task.manually_scheduled_chunks.get("duration")
-                if designated_block_name and designated_duration:
-                    scheduled_chunk = min(chunk_size, designated_duration)
-                    for block in candidate_blocks:
-                        if block.name == designated_block_name:
-                            block.add_chunk(task, scheduled_chunk, 10000, auto_chunk=False)
-                            return True
-            return False
-
-        # --- 2. Compute scores for candidate blocks for the current task ---
-        scored_blocks = []
-        # Define preferred intervals (tweak as needed)
-        preferred_intervals = {
-            "Morning": (time(6, 0), time(10, 0)),
-            "Afternoon": (time(12, 0), time(16, 0)),
-            "Evening": (time(16, 0), time(20, 0)),
-            "Night": (time(20, 0), time(23, 0))
-        }
-        for block in candidate_blocks:
-            free_time = block.get_available_time()  # Returns block.duration minus already scheduled time.
-            if free_time <= 0:
-                continue
-
-            # Base score: available free time.
-            score = free_time
-
-            # Bonus for time-of-day preference.
-            if hasattr(task, "time_of_day_preference") and task.time_of_day_preference:
-                for pref in task.time_of_day_preference:
-                    if pref in preferred_intervals:
-                        bonus = compute_time_bonus(block.start_time, preferred_intervals[pref], 50)
-                        score += bonus
-                        break
-
-            # Effort level adjustments using closeness.
-            if hasattr(task, "effort_level"):
-                if task.effort_level == "High":
-                    peak_start, peak_end = self.schedule_settings.peak_productivity_hours
-                    bonus = compute_time_bonus(block.start_time, (peak_start, peak_end), 50)
-                    score += bonus
-                elif task.effort_level == "Low":
-                    off_start, off_end = self.schedule_settings.off_peak_hours
-                    bonus = compute_time_bonus(block.start_time, (off_start, off_end), 30)
-                    score += bonus
-
-            scored_blocks.append((block, score, free_time))
-        # Sort candidate blocks by descending score.
-        scored_blocks.sort(key=lambda x: x[1], reverse=True)
-
-        remaining = chunk_size
-
-        if hasattr(task, "assigned_chunks") and task.assigned_chunks:
-            for block, score, free_time in scored_blocks:
-                if free_time >= chunk_size:
-                    block.add_chunk(task, chunk_size, score, auto_chunk=False)
-                    return True
-            return False
-
-        # --- 3. Try to assign the entire chunk in one block, possibly bumping lower-scored chunks ---
-        if task.auto_chunk:
-            for block, score, free_time in scored_blocks:
-                if remaining <= 0:
-                    break
-
-                # If there is enough free time, simply attempt to add the chunk.
-                if free_time >= remaining:
-                    block.add_chunk(task, remaining, score)
-                    break
-                else:
-                    # Not enough free time. See if we can bump some auto-scheduled (non-manually scheduled) chunks.
-                    needed = remaining - free_time
-                    # Gather removable chunks from this block.
-                    # Each scheduled chunk is assumed to be a dict with keys:
-                    # "task", "chunk_size", "score", and "manually_scheduled" (bool).
-                    removable = []
-                    for chunk in getattr(block, "task_chunks", {}):
-                        if chunk.get("auto_chunk", False):
-                            # Use the stored "score" (or compute a similar score) for the scheduled chunk.
-                            rem_score = chunk.get("score", 0)
-                            removable.append(chunk)
-                    # Sort removable chunks by score (lowest first).
-                    removable.sort(key=lambda c: c.get("score", 0))
-                    freed = 0
-                    removed_chunks = []
-                    for rchunk in removable:
-                        # Only remove if current block score (for current task) is higher.
-                        if rchunk.get("score", 0) < score:
-                            freed += rchunk["chunk_size"]
-                            removed_chunks.append(rchunk)
-                            if freed >= needed:
-                                break
-                    # If we managed to free enough space, remove those chunks.
-                    if freed >= needed:
-                        # Remove each bumped chunk from the block.
-                        for rchunk in removed_chunks:
-                            block.remove_chunk(rchunk, freed)
-                            freed -= rchunk["chunk_size"]
-                        # Now, free_time is increased by the total removed amount.
-                        new_free_time = block.get_available_time()
-                        if new_free_time >= remaining:
-                            block.add_chunk(task, remaining, score)
-                            # Attempt to reassign bumped chunks to other candidate blocks.
-                            for rchunk in removed_chunks:
-                                # Reassign the removed chunk by recursively calling add_task_chunk.
-                                self.add_task_chunk(rchunk["task"], rchunk["chunk_size"])
-                            break
-
-        # --- 4. If after checking all candidate blocks the entire chunk is not assigned,
-        # try splitting it among multiple blocks (if the task is flexible).
-        if remaining > 0 and task.flexibility != "Strict":
-            for block, score, free_time in scored_blocks:
-                if remaining <= 0:
-                    break
-                avail = block.get_available_time()
-                if avail > 0:
-                    assign = min(remaining, avail)
-                    unscheduled = block.add_chunk(task, assign)
-                    remaining = remaining - (assign - unscheduled)
-                    if remaining <= 0:
-                        break
-
-        # --- 5. Update internal mapping and return unscheduled portion (if any) ---
-        self.task_chunks[task.id] = self.task_chunks.get(task.id, 0) + (chunk_size - remaining)
-        return remaining
-
     # Helper function: determine if a task qualifies for a given block.
     def qualifies(self, task, block):
         # Check list_categories restrictions.
@@ -1095,3 +993,109 @@ class DaySchedule:
                 if block.block_type != "unavailable":
                     total_available += block.get_available_time()
             return total_available
+
+    def get_suitable_timeblocks_with_rating(self, chunk):
+        """
+        Given a TaskChunk (chunk), return a sorted list of tuples (timeblock, rating)
+        for each timeblock in this DaySchedule that is suitable for scheduling the chunk.
+
+        The rating is computed based on:
+          - Date: closer due dates boost rating; high priority tasks get bonus for days close to today.
+          - Preferred work days: if the day matches task.preferred_work_days.
+          - Preferred time of day: bonus if the block’s start_time is in a preferred interval.
+          - Productivity hours: bonus based on task.effort_level and whether the block is within peak/off-peak hours.
+          - Capacity: if not auto_chunk, a block that cannot hold the chunk duration is penalized.
+          - If auto_chunk is True, a maximum rating is assigned.
+        """
+        from datetime import datetime, time, timedelta
+
+        def compute_time_bonus(t, interval, max_bonus, threshold=60):
+            """
+            Compute a bonus based on how close time 't' (a time object) is to the given interval.
+            Returns a bonus between 0 and max_bonus.
+            """
+
+            def to_minutes(t_obj):
+                return t_obj.hour * 60 + t_obj.minute
+
+            t_val = to_minutes(t)
+            start_val = to_minutes(interval[0])
+            end_val = to_minutes(interval[1])
+            # Adjust if the interval spans midnight.
+            if start_val > end_val:
+                if t_val < start_val:
+                    t_val += 24 * 60
+                end_val += 24 * 60
+
+            if start_val <= t_val <= end_val:
+                return max_bonus
+            elif t_val < start_val:
+                diff = start_val - t_val
+                return max_bonus * (1 - diff / threshold) if diff <= threshold else 0
+            else:  # t_val > end_val
+                diff = t_val - end_val
+                return max_bonus * (1 - diff / threshold) if diff <= threshold else 0
+
+        suitable = []
+        task = chunk.task
+        today = datetime.now().date()
+
+        for block in self.time_blocks:
+            # Skip unavailable blocks.
+            if block.block_type == "unavailable":
+                continue
+            if not self.qualifies(task, block):
+                continue
+
+            # Capacity check.
+            if not task.auto_chunk:
+                if block.get_available_time() < chunk.duration:
+                    continue
+
+            rating = 0
+
+            # 1. Date factor: Boost if the task's due date is near this schedule's date.
+            if task.due_datetime:
+                days_until_due = (task.due_datetime.date() - self.date).days
+                rating += 100 / (days_until_due + 1)  # the closer, the higher the boost
+
+            # 2. Priority factor: For high priority tasks, days close to today get bonus.
+            days_from_today = (self.date - today).days
+            if task.priority >= 8:
+                rating += max(0, 100 - days_from_today * 10)
+
+            # 3. Preferred work days.
+            if hasattr(task, "preferred_work_days") and task.preferred_work_days:
+                if self.date.strftime("%A") in task.preferred_work_days:
+                    rating += 50
+
+            # 4. Preferred time of day.
+            preferred_intervals = {
+                "Morning": (time(6, 0), time(10, 0)),
+                "Afternoon": (time(12, 0), time(16, 0)),
+                "Evening": (time(16, 0), time(20, 0)),
+                "Night": (time(20, 0), time(23, 0))
+            }
+            if hasattr(task, "time_of_day_preference") and task.time_of_day_preference:
+                for pref in task.time_of_day_preference:
+                    if pref in preferred_intervals:
+                        bonus = compute_time_bonus(block.start_time, preferred_intervals[pref], 50)
+                        rating += bonus
+                        break
+
+            # 5. Productivity hours based on task effort level.
+            if hasattr(task, "effort_level"):
+                if task.effort_level == "High":
+                    peak_start, peak_end = self.schedule_settings.peak_productivity_hours
+                    bonus = compute_time_bonus(block.start_time, (peak_start, peak_end), 50)
+                    rating += bonus
+                elif task.effort_level == "Low":
+                    off_start, off_end = self.schedule_settings.off_peak_hours
+                    bonus = compute_time_bonus(block.start_time, (off_start, off_end), 30)
+                    rating += bonus
+
+            suitable.append((block, rating))
+
+        # Sort the candidate timeblocks by descending rating.
+        suitable.sort(key=lambda x: x[1], reverse=True)
+        return suitable
