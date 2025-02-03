@@ -148,15 +148,14 @@ class ScheduleSettings:
 #     'exclude': ['low-priority', 'optional']
 # }
 class TimeBlock:
-    def __init__(self, block_id=None, name="", schedule=None,
-                 list_categories=None, task_tags=None, tasks=None,
+    def __init__(self, block_id=None, name="", date=None,
+                 list_categories=None, task_tags=None,
                  block_type="user_defined", color=None):
         self.id = block_id if block_id else uuid.uuid4().int
         self.name = name
-        self.schedule = schedule if schedule else {}
+        self.date = date
         self.list_categories = list_categories if list_categories else {"include": [], "exclude": []}
         self.task_tags = task_tags if task_tags else {"include": [], "exclude": []}
-        self.tasks_dict = tasks if tasks else {"include": [], "exclude": []}
         self.block_type = block_type
         if color and isinstance(color, tuple) and len(color) == 3 and all(isinstance(c, int) for c in color):
             self.color = color
@@ -249,66 +248,48 @@ class ScheduleManager:
                     schedule TEXT DEFAULT '{}',
                     list_categories TEXT DEFAULT '{"include": [], "exclude": []}',
                     task_tags TEXT DEFAULT '{"include": [], "exclude": []}',
-                    tasks TEXT DEFAULT '{"include": [], "exclude": []}',
-                    block_type TEXT DEFAULT 'system_defined',
-                    color TEXT DEFAULT '',
-                    FOREIGN KEY (schedule_id) REFERENCES day_schedule (id)
+                    color TEXT DEFAULT ''
                 )
             """)
 
     def load_time_blocks(self):
         """
-        Load time blocks from the database and create TimeBlock objects.
-        Converts stored JSON strings back into Python dictionaries.
+        Load time blocks from the database and store them in-memory as dictionaries.
+        The schedule field is a JSON string representing a dictionary of day(s) of week and time ranges.
         """
         try:
             cursor = self.conn.cursor()
             cursor.execute("SELECT * FROM time_blocks")
             rows = cursor.fetchall()
 
-            self.time_blocks = []
+            self.time_blocks = []  # clear the in-memory structure
 
             for row in rows:
-                # Convert JSON strings back to dictionaries
-                schedule = json.loads(row['schedule'])
-                list_categories = json.loads(row['list_categories'])
-                task_tags = json.loads(row['task_tags'])
-                tasks = json.loads(row['tasks'])
+                # Parse JSON fields
+                schedule = json.loads(row['schedule']) if row['schedule'] else {}
+                list_categories = json.loads(row['list_categories']) if row['list_categories'] else {"include": [],
+                                                                                                     "exclude": []}
+                task_tags = json.loads(row['task_tags']) if row['task_tags'] else {"include": [], "exclude": []}
 
-                # Convert color string to tuple
+                # Convert color string to a tuple, if provided (e.g., "(255,200,200)")
                 color_str = row['color']
                 if color_str:
-                    color = tuple(map(int, color_str.strip('()').split(',')))
+                    try:
+                        color = tuple(map(int, color_str.strip('()').split(',')))
+                    except Exception:
+                        color = None
                 else:
                     color = None
 
-                # Create TimeBlock object
-                time_block = TimeBlock(
-                    block_id=row['id'],
-                    name=row['name'],
-                    schedule=schedule,
-                    list_categories=list_categories,
-                    task_tags=task_tags,
-                    tasks=tasks,
-                    block_type=row['block_type'],
-                    color=color
-                )
-
-                # Convert schedule times from strings to time objects
-                for day, times in time_block.schedule.items():
-                    if isinstance(times, tuple) and len(times) == 2:
-                        start_str, end_str = times
-                        if isinstance(start_str, str) and isinstance(end_str, str):
-                            try:
-                                # Parse time strings in format "HH:MM"
-                                start_time = datetime.strptime(start_str, "%H:%M").time()
-                                end_time = datetime.strptime(end_str, "%H:%M").time()
-                                time_block.schedule[day] = (start_time, end_time)
-                            except ValueError:
-                                print(f"Warning: Invalid time format for {day} in block {time_block.id}")
-
-                self.time_blocks.append(time_block)
-
+                block = {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "schedule": schedule,  # e.g., {"wed": ["09:00", "10:00"]}
+                    "list_categories": list_categories,
+                    "task_tags": task_tags,
+                    "color": color
+                }
+                self.time_blocks.append(block)
         except sqlite3.Error as e:
             print(f"Database error: {e}")
         except json.JSONDecodeError as e:
@@ -318,54 +299,49 @@ class ScheduleManager:
         finally:
             cursor.close()
 
-    def add_time_block(self, time_block: TimeBlock):
+    def add_time_block(self, time_block):
+        """
+        Insert a new time block into the database and add it to the in-memory structure.
+        The time_block object is expected to have attributes:
+          - name, schedule (a dict), list_categories, task_tags, and color.
+        """
         try:
-            # Convert time objects in schedule to string format for storage
-            schedule_for_storage = {}
-            for day, times in time_block.schedule.items():
-                if isinstance(times, tuple) and len(times) == 2:
-                    start_time, end_time = times
-                    if isinstance(start_time, time) and isinstance(end_time, time):
-                        schedule_for_storage[day] = (
-                            start_time.strftime("%H:%M"),
-                            end_time.strftime("%H:%M")
-                        )
-                    else:
-                        schedule_for_storage[day] = times
+            schedule_json = json.dumps(time_block.schedule) if hasattr(time_block, 'schedule') else json.dumps({})
+            list_cats_json = json.dumps(time_block.list_categories) if hasattr(time_block,
+                                                                               'list_categories') else json.dumps(
+                {"include": [], "exclude": []})
+            task_tags_json = json.dumps(time_block.task_tags) if hasattr(time_block, 'task_tags') else json.dumps(
+                {"include": [], "exclude": []})
+            color_str = str(time_block.color) if hasattr(time_block, 'color') and time_block.color else ""
 
-            # Convert color tuple to string
-            color_str = str(time_block.color) if time_block.color else ""
-
-            # Insert into database
             cursor = self.conn.cursor()
             cursor.execute("""
                 INSERT INTO time_blocks (
-                    name, 
-                    schedule, 
-                    list_categories, 
-                    task_tags, 
-                    tasks, 
-                    block_type, 
+                    name,
+                    schedule,
+                    list_categories,
+                    task_tags,
                     color
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?)
             """, (
                 time_block.name,
-                json.dumps(schedule_for_storage),
-                json.dumps(time_block.list_categories),
-                json.dumps(time_block.task_tags),
-                json.dumps(time_block.tasks_dict),
-                time_block.block_type,
+                schedule_json,
+                list_cats_json,
+                task_tags_json,
                 color_str
             ))
-
-            # Commit the transaction
             self.conn.commit()
 
-            # Update the time block's ID with the one assigned by the database
+            # Update the time block's ID and add it to the in-memory list
             time_block.id = cursor.lastrowid
-
-            # Add to in-memory list
-            self.time_blocks.append(time_block)
+            self.time_blocks.append({
+                "id": time_block.id,
+                "name": time_block.name,
+                "schedule": time_block.schedule,
+                "list_categories": time_block.list_categories,
+                "task_tags": time_block.task_tags,
+                "color": time_block.color
+            })
 
             cursor.close()
             return time_block.id
@@ -380,11 +356,14 @@ class ScheduleManager:
             raise
 
     def remove_time_block(self, block_id: int):
+        """
+        Remove a time block from both the database and the in-memory structure.
+        """
         try:
-            # First check if the block exists in memory
+            # Find the block in memory
             block_to_remove = None
             for block in self.time_blocks:
-                if block.id == block_id:
+                if block["id"] == block_id:
                     block_to_remove = block
                     break
 
@@ -392,21 +371,15 @@ class ScheduleManager:
                 print(f"Time block with ID {block_id} not found in memory")
                 return False
 
-            # Remove from database
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM time_blocks WHERE id = ?", (block_id,))
-
-            # Check if any rows were affected
             if cursor.rowcount == 0:
                 print(f"Time block with ID {block_id} not found in database")
                 return False
-
-            # Commit the transaction
             self.conn.commit()
 
-            # Remove from memory
+            # Remove from in-memory structure
             self.time_blocks.remove(block_to_remove)
-
             cursor.close()
             return True
 
@@ -414,79 +387,61 @@ class ScheduleManager:
             print(f"Database error while removing time block: {e}")
             self.conn.rollback()
             raise
-        except ValueError as e:
-            print(f"Error removing time block from memory: {e}")
-            self.conn.rollback()
-            raise
         except Exception as e:
             print(f"Unexpected error removing time block: {e}")
             self.conn.rollback()
             raise
 
-    def update_time_block(self, time_block: TimeBlock):
+    def update_time_block(self, updated_block):
+        """
+        Update an existing time block in both the database and the in-memory structure.
+        The updated_block is a dictionary that must include the "id" key.
+        """
         try:
-            # First check if the block exists in memory
-            existing_block = None
-            for idx, block in enumerate(self.time_blocks):
-                if block.id == time_block.id:
-                    existing_block = idx
+            block_id = updated_block["id"]
+            # Locate the block in the in-memory structure
+            existing_index = None
+            for i, block in enumerate(self.time_blocks):
+                if block["id"] == block_id:
+                    existing_index = i
                     break
 
-            if existing_block is None:
-                print(f"Time block with ID {time_block.id} not found")
+            if existing_index is None:
+                print(f"Time block with ID {block_id} not found in memory.")
                 return False
 
-            # Convert time objects in schedule to string format for storage
-            schedule_for_storage = {}
-            for day, times in time_block.schedule.items():
-                if isinstance(times, tuple) and len(times) == 2:
-                    start_time, end_time = times
-                    if isinstance(start_time, time) and isinstance(end_time, time):
-                        schedule_for_storage[day] = (
-                            start_time.strftime("%H:%M"),
-                            end_time.strftime("%H:%M")
-                        )
-                    else:
-                        schedule_for_storage[day] = times
+            schedule_json = json.dumps(updated_block.get("schedule", {}))
+            list_cats_json = json.dumps(updated_block.get("list_categories", {"include": [], "exclude": []}))
+            task_tags_json = json.dumps(updated_block.get("task_tags", {"include": [], "exclude": []}))
+            color_str = str(updated_block.get("color")) if updated_block.get("color") else ""
 
-            # Convert color tuple to string
-            color_str = str(time_block.color) if time_block.color else ""
-
-            # Update database
             cursor = self.conn.cursor()
             cursor.execute("""
-                UPDATE time_blocks 
-                SET name = ?,
+                UPDATE time_blocks
+                SET
+                    name = ?,
                     schedule = ?,
                     list_categories = ?,
                     task_tags = ?,
-                    tasks = ?,
-                    block_type = ?,
                     color = ?
                 WHERE id = ?
             """, (
-                time_block.name,
-                json.dumps(schedule_for_storage),
-                json.dumps(time_block.list_categories),
-                json.dumps(time_block.task_tags),
-                json.dumps(time_block.tasks_dict),
-                time_block.block_type,
+                updated_block.get("name", ""),
+                schedule_json,
+                list_cats_json,
+                task_tags_json,
                 color_str,
-                time_block.id
+                block_id
             ))
-
-            # Check if any rows were affected
             if cursor.rowcount == 0:
-                print(f"Time block with ID {time_block.id} not found in database")
+                print(f"Time block with ID {block_id} not found in database.")
                 return False
 
-            # Commit the transaction
             self.conn.commit()
-
-            # Update in-memory list
-            self.time_blocks[existing_block] = time_block
-
             cursor.close()
+
+            # Update the in-memory record
+            self.time_blocks[existing_index] = updated_block
             return True
 
         except sqlite3.Error as e:
@@ -497,6 +452,59 @@ class ScheduleManager:
             print(f"Error updating time block: {e}")
             self.conn.rollback()
             raise
+
+    def get_user_defined_timeblocks_for_date(self, given_date):
+        """
+        Given a date (a datetime.date object), check the in-memory time_blocks
+        (each a dictionary with keys: name, schedule, list_categories, task_tags, color, etc.)
+        and for each user-defined block that has an entry for the day of the week,
+        initialize and return a list of TimeBlock objects for that day.
+
+        The schedule field is expected to be a dict with day keys (e.g., "wed") and
+        values as a list/tuple of two strings representing start and end times in "%H:%M" format.
+        """
+        # Get the day abbreviation in lower-case (e.g., "wed")
+        day_abbr = given_date.strftime("%a").lower()
+        result = []
+
+        # Iterate over the loaded timeblocks
+        for block in self.time_blocks:
+            schedule = block.get("schedule", {})
+            if day_abbr in schedule:
+                time_range = schedule[day_abbr]
+                # Expect time_range to be a list/tuple with two items: [start_str, end_str]
+                if isinstance(time_range, (list, tuple)) and len(time_range) == 2:
+                    start_str, end_str = time_range
+                    try:
+                        start_time = datetime.strptime(start_str, "%H:%M").time()
+                        end_time = datetime.strptime(end_str, "%H:%M").time()
+                    except Exception as e:
+                        print(f"Error parsing time in block {block.get('id')}: {e}")
+                        continue
+
+                    # Initialize a new TimeBlock object for the given date.
+                    new_block = TimeBlock(
+                        block_id=None,  # Unique id will be assigned automatically.
+                        name=block.get("name", ""),
+                        date=given_date,
+                        list_categories=block.get("list_categories"),
+                        task_tags=block.get("task_tags"),
+                        block_type="user_defined",
+                        color=block.get("color")
+                    )
+                    new_block.start_time = start_time
+                    new_block.end_time = end_time
+
+                    # Compute duration (in hours)
+                    start_dt = datetime.combine(given_date, start_time)
+                    end_dt = datetime.combine(given_date, end_time)
+                    # Handle cases where the end time might be past midnight.
+                    if end_dt < start_dt:
+                        end_dt += timedelta(days=1)
+                    new_block.duration = (end_dt - start_dt).total_seconds() / 3600.0
+
+                    result.append(new_block)
+        return result
 
     def task_weight_formula(self, task, max_added_time, max_time_estimate):
         priority_weight = self.alpha * task.priority
@@ -807,17 +815,7 @@ class DaySchedule:
         sleep_block.duration = (sleep_end - sleep_start).total_seconds() / 3600
 
         # Filter user-defined blocks for the awake period (from day_start to day_end)
-        user_blocks = []
-        for block in self.schedule_manager_instance.time_blocks:
-            if block.schedule and target_day_str in block.schedule and block.block_type == 'user_defined':
-                block_start_time, block_end_time = block.schedule[target_day_str]
-                block_start_dt = datetime.combine(self.date, block_start_time)
-                block_end_dt = datetime.combine(self.date, block_end_time)
-                if block_start_dt >= day_start and block_end_dt <= day_end:
-                    block.start_time = block_start_time
-                    block.end_time = block_end_time
-                    block.duration = (block_end_dt - block_start_dt).total_seconds() / 3600
-                    user_blocks.append(block)
+        user_blocks = self.schedule_manager_instance.get_user_defined_timeblocks_for_date(self.date)
         user_blocks.sort(key=lambda b: b.start_time)
 
         final_blocks = []
