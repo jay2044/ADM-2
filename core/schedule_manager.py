@@ -17,82 +17,72 @@ class ScheduleSettings:
         self.load_settings()
 
     def create_table(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS schedule_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                day_start TEXT,
-                ideal_sleep_duration REAL,
-                overtime_flexibility TEXT,
-                hours_of_day_available REAL,
-                peak_productivity_start TEXT,
-                peak_productivity_end TEXT,
-                off_peak_start TEXT,
-                off_peak_end TEXT,
-                task_notifications INTEGER,
-                task_status_popup_frequency INTEGER
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS schedule_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    day_start TEXT,
+                    ideal_sleep_duration REAL,
+                    overtime_flexibility TEXT,
+                    hours_of_day_available REAL,
+                    peak_productivity_start TEXT,
+                    peak_productivity_end TEXT,
+                    off_peak_start TEXT,
+                    off_peak_end TEXT,
+                    task_notifications INTEGER,
+                    task_status_popup_frequency INTEGER
+                )
+            ''')
 
     def load_settings(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM schedule_settings LIMIT 1")
-        row = cursor.fetchone()
-        if row:
-            self.day_start = self.parse_time(row[1])
-            self.ideal_sleep_duration = row[2]
-            self.overtime_flexibility = row[3]
-            self.hours_of_day_available = row[4]
-            self.peak_productivity_hours = (
-                self.parse_time(row[5]),
-                self.parse_time(row[6]),
-            )
-            self.off_peak_hours = (
-                self.parse_time(row[7]),
-                self.parse_time(row[8]),
-            )
-            self.task_notifications = bool(row[9])
-            self.task_status_popup_frequency = row[10]
-        else:
-            self.day_start = time(4, 0)
-            self.ideal_sleep_duration = 8.0
-            self.overtime_flexibility = "auto"
-            self.hours_of_day_available = float(24.0 - self.ideal_sleep_duration)
-            self.peak_productivity_hours = (time(17, 0), time(19, 0))
-            self.off_peak_hours = (time(22, 0), time(6, 0))
-            self.task_notifications = True
-            self.task_status_popup_frequency = 20
-            self.save_settings()
-        conn.close()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM schedule_settings LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                self.day_start = self.parse_time(row[1])
+                self.ideal_sleep_duration = row[2]
+                self.overtime_flexibility = row[3]
+                self.hours_of_day_available = row[4]
+                self.peak_productivity_hours = (self.parse_time(row[5]), self.parse_time(row[6]))
+                self.off_peak_hours = (self.parse_time(row[7]), self.parse_time(row[8]))
+                self.task_notifications = bool(row[9])
+                self.task_status_popup_frequency = row[10]
+            else:
+                self.day_start = time(4, 0)
+                self.ideal_sleep_duration = 8.0
+                self.overtime_flexibility = "auto"
+                self.hours_of_day_available = 24.0 - self.ideal_sleep_duration
+                self.peak_productivity_hours = (time(17, 0), time(19, 0))
+                self.off_peak_hours = (time(22, 0), time(6, 0))
+                self.task_notifications = True
+                self.task_status_popup_frequency = 20
+                self.save_settings()
 
     def save_settings(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM schedule_settings")
-        cursor.execute('''
-            INSERT INTO schedule_settings (
-                day_start, ideal_sleep_duration, overtime_flexibility,
-                hours_of_day_available, peak_productivity_start, peak_productivity_end,
-                off_peak_start, off_peak_end, task_notifications, task_status_popup_frequency
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            self.day_start.strftime("%H:%M"),
-            self.ideal_sleep_duration,
-            self.overtime_flexibility,
-            self.hours_of_day_available,
-            self.peak_productivity_hours[0].strftime("%H:%M"),
-            self.peak_productivity_hours[1].strftime("%H:%M"),
-            self.off_peak_hours[0].strftime("%H:%M"),
-            self.off_peak_hours[1].strftime("%H:%M"),
-            int(self.task_notifications),
-            self.task_status_popup_frequency
-        ))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM schedule_settings")
+            cursor.execute('''
+                INSERT INTO schedule_settings (
+                    day_start, ideal_sleep_duration, overtime_flexibility,
+                    hours_of_day_available, peak_productivity_start, peak_productivity_end,
+                    off_peak_start, off_peak_end, task_notifications, task_status_popup_frequency
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                self.day_start.strftime("%H:%M"),
+                self.ideal_sleep_duration,
+                self.overtime_flexibility,
+                self.hours_of_day_available,
+                self.peak_productivity_hours[0].strftime("%H:%M"),
+                self.peak_productivity_hours[1].strftime("%H:%M"),
+                self.off_peak_hours[0].strftime("%H:%M"),
+                self.off_peak_hours[1].strftime("%H:%M"),
+                int(self.task_notifications),
+                self.task_status_popup_frequency
+            ))
+            conn.commit()
 
     @staticmethod
     def parse_time(time_str):
@@ -134,19 +124,6 @@ class ScheduleSettings:
         self.save_settings()
 
 
-# Example of how the dictionaries might look:
-# schedule = {
-#     'monday': (time(8, 0), time(9, 0)),
-#     'thursday': (time(17, 0), time(18, 0))
-# }
-# list_categories = {
-#     'include': ['Work', 'Personal'],
-#     'exclude': ['Errands']
-# }
-# task_tags = {
-#     'include': ['urgent', 'high-priority'],
-#     'exclude': ['low-priority', 'optional']
-# }
 class TimeBlock:
     def __init__(self, block_id=None, name="", date=None,
                  list_categories=None, task_tags=None,
@@ -191,13 +168,13 @@ class TimeBlock:
                     del self.task_chunks[task_id]
 
     def get_available_time(self):
-        used_time = sum(chunk["chunk"].duration for chunk in self.task_chunks.values())
+        used_time = sum(info["chunk"].duration for info in self.task_chunks.values())
         if self.duration is None:
             return 0
         return max(0, (self.duration * (1 - self.buffer_ratio)) - used_time)
 
     def get_capacity(self):
-        return max(0, (self.duration * (1 - self.buffer_ratio)))
+        return max(0, self.duration * (1 - self.buffer_ratio))
 
 
 class TaskChunk:
@@ -207,7 +184,6 @@ class TaskChunk:
         :param task: The task object this chunk belongs to.
         :param duration: Duration of the chunk.
         :param timeblock_ratings: Ratings associated with different timeblocks.
-        :param status: Current status of the chunk.
         :param auto: Boolean indicating if auto-scheduling was used.
         :param manual: Boolean indicating if manually scheduled.
         :param assigned: Boolean indicating if the chunk has been assigned.
@@ -222,10 +198,40 @@ class TaskChunk:
         self.flagged = flagged
 
     def split(self, ratios):
+        """
+        Splits this chunk into sub-chunks according to the given ratios while ensuring that
+        each resulting sub-chunk is at least task.min_chunk_size and at most task.max_chunk_size.
+        If the task does not define these attributes, they default to 0 and infinity, respectively.
+        """
         total_ratio = sum(ratios)
-        return [TaskChunk(self.task, (self.duration * r) / total_ratio, self.timeblock_ratings, self.auto, self.manual,
-                          self.assigned,
-                          self.flagged) for r in ratios]
+        # Initial split based on the ratios.
+        subchunks = [TaskChunk(
+            self.task,
+            (self.duration * r) / total_ratio,
+            self.timeblock_ratings,
+            self.auto,
+            self.manual,
+            self.assigned,
+            self.flagged
+        ) for r in ratios]
+        # Get minimum and maximum allowed chunk sizes from the task.
+        min_chunk = getattr(self.task, 'min_chunk_size', 0)
+        max_chunk = getattr(self.task, 'max_chunk_size', float('inf'))
+
+        # Adjust each sub-chunk's duration to lie within the bounds.
+        for sc in subchunks:
+            if sc.duration < min_chunk:
+                sc.duration = min_chunk
+            elif sc.duration > max_chunk:
+                sc.duration = max_chunk
+
+        # (Optional) Normalize so that the total duration remains the same.
+        total_adjusted = sum(sc.duration for sc in subchunks)
+        if total_adjusted > 0 and total_adjusted != self.duration:
+            factor = self.duration / total_adjusted
+            for sc in subchunks:
+                sc.duration *= factor
+        return subchunks
 
 
 class ScheduleManager:
@@ -724,22 +730,29 @@ class ScheduleManager:
     # returns a bool for success
     def assign_chunk(self, chunk, exclude_block=None, test=False):
         """
-        Attempt to assign a TaskChunk (chunk) to one of the candidate timeblocks.
+        Attempt to assign the given TaskChunk (chunk) to a candidate timeblock.
 
-        For auto chunks, if capacity is insufficient, it will attempt to split the chunk
-        and free capacity by reassigning lower-rated auto chunks.
+        For auto chunks:
+          - If the candidate block has enough free capacity, assign the chunk.
+          - Otherwise, iterate over lower-rated (and non-manual) chunks in the candidate block,
+            attempting to free capacity by recursively reassigning or splitting those chunks.
+          - If nearly enough capacity is freed (>=90% of required), split the current chunk (respecting task.min_chunk_size and task.max_chunk_size)
+            so that one part fits in the candidate block and recursively assign the remainder.
 
-        For assigned (non-auto) chunks, the same candidate loop is used, but the current
-        chunk is not split; instead, lower-rated chunks are re-assigned to free space.
+        For assigned (non-auto) chunks:
+          - The same candidate loop is used, but the current chunk is not split;
+            lower‑rated chunks are re‐assigned to free capacity, and if the entire chunk fits, it is assigned.
 
-        Returns True if the assignment is successful; otherwise, flags the chunk and returns False.
+        Returns True if assignment is successful; otherwise, flags the chunk and returns False.
         """
         task = chunk.task
-        if not chunk.timeblock_ratings:
+
+        # Safety: If no candidate ratings exist or they are not a list, flag the chunk.
+        if not chunk.timeblock_ratings or not isinstance(chunk.timeblock_ratings, list):
             chunk.flagged = True
             return False
 
-        # Sort candidate timeblocks (each a tuple: (block, rating)) by descending rating.
+        # Sort candidate timeblocks (each a tuple: (block, rating)) in descending order.
         sorted_candidates = sorted(chunk.timeblock_ratings, key=lambda x: x[1], reverse=True)
 
         if chunk.auto:
@@ -748,21 +761,20 @@ class ScheduleManager:
                 "Flexible": 2,
                 "Very Flexible": 3
             }
-            flexibility_ratio = FLEXIBILITY_MAP[task.flexibility] / max(FLEXIBILITY_MAP.values())
+            flexibility_ratio = FLEXIBILITY_MAP.get(task.flexibility, 1) / max(FLEXIBILITY_MAP.values())
             required_capacity = task.time_estimate - task.time_logged
+            if required_capacity <= 0:
+                return True  # Nothing left to schedule.
             num_top_candidates = max(1, int(len(sorted_candidates) * flexibility_ratio))
 
-            # Select only the top candidates and filter out the exclude_block.
+            # Select top candidates, excluding the provided block if needed.
             top_candidates = [cand for cand in sorted_candidates[:num_top_candidates]
-                              if cand[0].id != (exclude_block.id if exclude_block else None)]
+                              if exclude_block is None or cand[0].id != exclude_block.id]
 
             for candidate in top_candidates:
                 block, rating = candidate
-                # Gather lower-rated chunks from this block that are not manually scheduled.
-                filtered_chunks = sorted(
-                    [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating],
-                    key=lambda c: c.duration
-                )
+                # Get lower-rated chunks (non-manual) from this block.
+                filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
                 filtered_chunks = [c for c in filtered_chunks if not c.manual]
 
                 if block.get_available_time() >= required_capacity:
@@ -775,30 +787,43 @@ class ScheduleManager:
                     resizable_capacity = 0.0
                     reschedule_chunk_queue = []
                     for filtered_chunk in filtered_chunks:
-                        if filtered_chunk.assigned or filtered_chunk.auto:
+                        # Safety: Skip chunks with non-positive duration.
+                        if filtered_chunk.duration <= 0:
+                            continue
+                        if filtered_chunk.assigned:
                             if self.assign_chunk(filtered_chunk, block, True):
                                 resizable_capacity += filtered_chunk.get_capacity()
                                 reschedule_chunk_queue.append(filtered_chunk)
                         elif filtered_chunk.auto:
-                            flexibility_ratio_auto = FLEXIBILITY_MAP[filtered_chunk.task.flexibility] / max(
+                            flexibility_ratio_auto = FLEXIBILITY_MAP.get(filtered_chunk.task.flexibility, 1) / max(
                                 FLEXIBILITY_MAP.values())
                             if flexibility_ratio_auto >= flexibility_ratio:
                                 av = filtered_chunk.duration - (required_capacity - resizable_capacity)
                                 if av > 0:
                                     sp = filtered_chunk.split([av, filtered_chunk.duration - av])
-                                    if self.assign_chunk(sp[1], block, True):
-                                        resizable_capacity += sp[1].get_capacity()
-                                        reschedule_chunk_queue.append(sp[1])
-                        # End inner loop.
-                    # Check if the freed capacity is nearly enough to accommodate the entire chunk.
+                                    if sp and len(sp) >= 2:
+                                        if self.assign_chunk(sp[1], block, True):
+                                            resizable_capacity += sp[1].get_capacity()
+                                            reschedule_chunk_queue.append(sp[1])
+                            elif filtered_chunk.duration <= required_capacity:
+                                if self.assign_chunk(filtered_chunk, block, True):
+                                    resizable_capacity += filtered_chunk.get_capacity()
+                                    reschedule_chunk_queue.append(filtered_chunk)
+                        # End inner loop iteration.
+                        # Optionally break early if capacity is already freed.
+                        if resizable_capacity >= required_capacity:
+                            break
+                    # After processing lower-rated chunks, check if freed capacity is nearly enough.
                     if resizable_capacity >= 0.9 * required_capacity:
                         available_for_this_block = block.get_available_time() + resizable_capacity
                         if available_for_this_block < chunk.duration:
                             sp = chunk.split([available_for_this_block, chunk.duration - available_for_this_block])
-                            if not test:
-                                block.add_chunk(sp[0], rating)
-                            if self.assign_chunk(sp[1], exclude_block=block, test=test):
-                                return True
+                            if sp and len(sp) >= 2:
+                                if not test:
+                                    block.add_chunk(sp[0], rating)
+                                if self.assign_chunk(sp[1], exclude_block=block, test=test):
+                                    return True
+                    # If sufficient capacity is freed, reassign lower-rated chunks and assign current chunk.
                     if resizable_capacity >= required_capacity:
                         for reschedule_chunk in reschedule_chunk_queue:
                             block.remove_chunk(reschedule_chunk)
@@ -806,8 +831,9 @@ class ScheduleManager:
                         if not test:
                             block.add_chunk(chunk, rating)
                         return True
+            # End candidate loop for auto chunk.
         elif chunk.assigned:
-            # For assigned chunks, the current chunk is not split.
+            # For assigned (non-auto) chunks: do not split the current chunk.
             for candidate in sorted_candidates:
                 block, rating = candidate
                 if exclude_block and block.id == exclude_block.id:
@@ -817,11 +843,7 @@ class ScheduleManager:
                         block.add_chunk(chunk, rating)
                     return True
                 else:
-                    # Try to free capacity by reassigning lower-rated chunks.
-                    filtered_chunks = sorted(
-                        [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating],
-                        key=lambda c: c.duration
-                    )
+                    filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
                     filtered_chunks = [c for c in filtered_chunks if not c.manual]
                     if not filtered_chunks:
                         continue
@@ -832,6 +854,8 @@ class ScheduleManager:
                             if self.assign_chunk(filtered_chunk, block, True):
                                 resizable_capacity += filtered_chunk.get_capacity()
                                 reschedule_chunk_queue.append(filtered_chunk)
+                        if resizable_capacity >= chunk.duration:
+                            break
                     if resizable_capacity >= chunk.duration:
                         for reschedule_chunk in reschedule_chunk_queue:
                             block.remove_chunk(reschedule_chunk)
@@ -867,12 +891,10 @@ class DaySchedule:
     def __init__(self, schedule_manager_instance, date):
         self.date = date
         self.schedule_manager_instance = schedule_manager_instance
-        self.task_manager_instance = self.schedule_manager_instance.task_manager_instance
-        self.schedule_settings = self.schedule_manager_instance.schedule_settings
-
+        self.task_manager_instance = schedule_manager_instance.task_manager_instance
+        self.schedule_settings = schedule_manager_instance.schedule_settings
         self.sleep_time = self.schedule_settings.ideal_sleep_duration
         self.time_blocks = self.generate_schedule()
-
         self.buffer_ratio = 0.0
         self.reserved_time = 0.0
 
@@ -882,35 +904,24 @@ class DaySchedule:
             block.buffer_ratio = buffer_ratio
 
     def generate_schedule(self):
-        target_day_str = self.date.strftime('%A').lower()
-        # day_start is the user's wake time (e.g., 8:00 AM)
+        target_day = self.date.strftime('%A').lower()
         day_start = datetime.combine(self.date, self.schedule_settings.day_start)
-        # Define day_end as midnight (start of next day)
         day_end = datetime.combine(self.date + timedelta(days=1), time(0, 0))
-
-        # Set sleep block using self.sleep_time: sleep from (day_start - sleep_time) to day_start
         sleep_start = day_start - timedelta(hours=self.sleep_time)
         sleep_end = day_start
         sleep_block = TimeBlock(
             block_id=None,
             name=f"Sleep ({self.sleep_time:.1f}h)",
-            schedule={target_day_str: (sleep_start.time(), sleep_end.time())},
+            schedule={target_day: (sleep_start.time(), sleep_end.time())},
             block_type="unavailable",
             color=(173, 216, 230)
         )
         sleep_block.start_time = sleep_start.time()
         sleep_block.end_time = sleep_end.time()
         sleep_block.duration = (sleep_end - sleep_start).total_seconds() / 3600
-
-        # Filter user-defined blocks for the awake period (from day_start to day_end)
         user_blocks = self.schedule_manager_instance.get_user_defined_timeblocks_for_date(self.date)
         user_blocks.sort(key=lambda b: b.start_time)
-
-        final_blocks = []
-        # First, add the sleep block (from sleep_start to day_start)
-        final_blocks.append(sleep_block)
-
-        # Now fill the awake period with user-defined blocks and system-defined gap blocks
+        final_blocks = [sleep_block]
         current_dt = day_start
         for block in user_blocks:
             block_start_dt = datetime.combine(self.date, block.start_time)
@@ -918,7 +929,7 @@ class DaySchedule:
                 gap_block = TimeBlock(
                     block_id=None,
                     name="Unscheduled",
-                    schedule={target_day_str: (current_dt.time(), block_start_dt.time())},
+                    schedule={target_day: (current_dt.time(), block_start_dt.time())},
                     block_type="system_defined",
                     color=(200, 200, 200)
                 )
@@ -928,13 +939,11 @@ class DaySchedule:
                 final_blocks.append(gap_block)
             final_blocks.append(block)
             current_dt = datetime.combine(self.date, block.end_time)
-
-        # Fill any remaining gap until day_end with a system-defined block
         if current_dt < day_end:
             gap_block = TimeBlock(
                 block_id=None,
                 name="Unscheduled",
-                schedule={target_day_str: (current_dt.time(), day_end.time())},
+                schedule={target_day: (current_dt.time(), day_end.time())},
                 block_type="system_defined",
                 color=(200, 200, 200)
             )
@@ -942,135 +951,81 @@ class DaySchedule:
             gap_block.end_time = day_end.time()
             gap_block.duration = (day_end - current_dt).total_seconds() / 3600
             final_blocks.append(gap_block)
-
         return final_blocks
 
-    # Helper function: determine if a task qualifies for a given block.
     def qualifies(self, task, block):
-        # Check list_categories restrictions.
-        if block.list_categories:
-            include_cats = block.list_categories.get("include", [])
-            exclude_cats = block.list_categories.get("exclude", [])
-            # Assume task.list_name represents its category.
-            cat = self.task_manager_instance.get_task_list_category_name(task.list_name)
-            if include_cats and cat not in include_cats:
-                return False
-            if exclude_cats and cat in exclude_cats:
-                return False
-
-        # Check task_tags restrictions.
-        if block.task_tags:
-            include_tags = block.task_tags.get("include", [])
-            exclude_tags = block.task_tags.get("exclude", [])
-            # Assume task.tags is a list of tag strings.
-            if include_tags and not any(tag in include_tags for tag in task.tags):
-                return False
-            if exclude_tags and any(tag in exclude_tags for tag in task.tags):
-                return False
-
+        inc = block.list_categories.get("include", [])
+        exc = block.list_categories.get("exclude", [])
+        cat = self.task_manager_instance.get_task_list_category_name(task.list_name)
+        if inc and cat not in inc:
+            return False
+        if exc and cat in exc:
+            return False
+        inc_tags = block.task_tags.get("include", [])
+        exc_tags = block.task_tags.get("exclude", [])
+        if inc_tags and not any(tag in inc_tags for tag in task.tags):
+            return False
+        if exc_tags and any(tag in exc_tags for tag in task.tags):
+            return False
         return True
 
     def get_eat(self, task=None):
-        """
-        Calculate Effective Available Time (EAT) as the sum of durations of all blocks
-        where tasks can be scheduled (i.e., blocks not marked as "unavailable").
-        If a task is provided, only consider blocks that the task qualifies for,
-        taking into account restrictions on list categories, tags, and task IDs.
-        """
+        total = 0.0
         if task:
-            candidate_total = 0.0
             for block in self.time_blocks:
                 if block.block_type == "unavailable":
                     continue
-                duration = block.get_available_time()
                 if self.qualifies(task, block):
-                    candidate_total += duration
-
-            return candidate_total
+                    total += block.get_available_time()
         else:
-            total_available = 0.0
             for block in self.time_blocks:
                 if block.block_type != "unavailable":
-                    total_available += block.get_available_time()
-            return total_available
+                    total += block.get_available_time()
+        return total
 
     def get_suitable_timeblocks_with_rating(self, chunk):
-        """
-        Given a TaskChunk (chunk), return a sorted list of tuples (timeblock, rating)
-        for each timeblock in this DaySchedule that is suitable for scheduling the chunk.
-
-        The rating is computed based on:
-          - Date: closer due dates boost rating; high priority tasks get bonus for days close to today.
-          - Preferred work days: if the day matches task.preferred_work_days.
-          - Preferred time of day: bonus if the block’s start_time is in a preferred interval.
-          - Productivity hours: bonus based on task.effort_level and whether the block is within peak/off-peak hours.
-          - Capacity: if not auto_chunk, a block that cannot hold the chunk duration is penalized.
-          - If auto_chunk is True, a maximum rating is assigned.
-        """
         from datetime import datetime, time, timedelta
-
         def compute_time_bonus(t, interval, max_bonus, threshold=60):
-            """
-            Compute a bonus based on how close time 't' (a time object) is to the given interval.
-            Returns a bonus between 0 and max_bonus.
-            """
-
             def to_minutes(t_obj):
                 return t_obj.hour * 60 + t_obj.minute
 
             t_val = to_minutes(t)
             start_val = to_minutes(interval[0])
             end_val = to_minutes(interval[1])
-            # Adjust if the interval spans midnight.
             if start_val > end_val:
                 if t_val < start_val:
                     t_val += 24 * 60
                 end_val += 24 * 60
-
             if start_val <= t_val <= end_val:
                 return max_bonus
             elif t_val < start_val:
                 diff = start_val - t_val
                 return max_bonus * (1 - diff / threshold) if diff <= threshold else 0
-            else:  # t_val > end_val
+            else:
                 diff = t_val - end_val
                 return max_bonus * (1 - diff / threshold) if diff <= threshold else 0
 
         suitable = []
         task = chunk.task
         today = datetime.now().date()
-
         for block in self.time_blocks:
-            # Skip unavailable blocks.
             if block.block_type == "unavailable":
                 continue
             if not self.qualifies(task, block):
                 continue
-
-            # Capacity check.
-            if not task.auto_chunk:
-                if block.get_available_time() < chunk.duration:
-                    continue
-
+            if not task.auto_chunk and block.get_available_time() < chunk.duration:
+                continue
             rating = 0
-
-            # 1. Date factor: Boost if the task's due date is near this schedule's date.
             if task.due_datetime:
                 days_until_due = (task.due_datetime.date() - self.date).days
-                rating += 100 / (days_until_due + 1)  # the closer, the higher the boost
-
-            # 2. Priority factor: For high priority tasks, days close to today get bonus.
+                rating += 100 / (days_until_due + 1)
             days_from_today = (self.date - today).days
             if task.priority >= 8:
                 rating += max(0, 100 - days_from_today * 10)
-
-            # 3. Preferred work days.
             if hasattr(task, "preferred_work_days") and task.preferred_work_days:
                 if self.date.strftime("%A") in task.preferred_work_days:
                     rating += 50
-
-            # 4. Preferred time of day.
-            preferred_intervals = {
+            pref_intervals = {
                 "Morning": (time(6, 0), time(10, 0)),
                 "Afternoon": (time(12, 0), time(16, 0)),
                 "Evening": (time(16, 0), time(20, 0)),
@@ -1078,12 +1033,10 @@ class DaySchedule:
             }
             if hasattr(task, "time_of_day_preference") and task.time_of_day_preference:
                 for pref in task.time_of_day_preference:
-                    if pref in preferred_intervals:
-                        bonus = compute_time_bonus(block.start_time, preferred_intervals[pref], 50)
+                    if pref in pref_intervals:
+                        bonus = compute_time_bonus(block.start_time, pref_intervals[pref], 50)
                         rating += bonus
                         break
-
-            # 5. Productivity hours based on task effort level.
             if hasattr(task, "effort_level"):
                 if task.effort_level == "High":
                     peak_start, peak_end = self.schedule_settings.peak_productivity_hours
@@ -1093,9 +1046,6 @@ class DaySchedule:
                     off_start, off_end = self.schedule_settings.off_peak_hours
                     bonus = compute_time_bonus(block.start_time, (off_start, off_end), 30)
                     rating += bonus
-
             suitable.append((block, rating))
-
-        # Sort the candidate timeblocks by descending rating.
         suitable.sort(key=lambda x: x[1], reverse=True)
         return suitable
