@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import datetime, date, time, timedelta
 import random
-
+import math
 from pyarrow import duration
 
 from core.task_manager import *
@@ -255,6 +255,12 @@ class ScheduleManager:
         self.zeta = 0.3
         self.eta = 0.2
         self.theta = 0.1
+        # K: Fixed boost weight for quick tasks.
+        # T_q: Decay time constant (in seconds).
+        # C: Very high constant ensuring manual tasks always appear at the top.
+        self.K = 100
+        self.T_q = 3600
+        self.C = 1000
 
         self.time_blocks = []
         self.load_time_blocks()
@@ -536,6 +542,7 @@ class ScheduleManager:
         return result
 
     def task_weight_formula(self, task, max_added_time, max_time_estimate):
+        # W = αP + β(1/ max(1,D)) + γF + δ(A/M_A) + εE + ζ(T/M_T) + η(L/T) + Q + M
         priority_weight = self.alpha * task.priority
 
         if task.due_datetime:
@@ -548,9 +555,7 @@ class ScheduleManager:
         flexibility_weight = self.gamma * flexibility_map.get(task.flexibility, 1)
 
         if task.added_date_time:
-            added_time_weight = self.delta * (
-                    (datetime.now() - task.added_date_time).total_seconds() / max_added_time
-            )
+            added_time_weight = self.delta * ((datetime.now() - task.added_date_time).total_seconds() / max_added_time)
         else:
             added_time_weight = self.delta * 0.5
 
@@ -567,10 +572,19 @@ class ScheduleManager:
         else:
             time_logged_weight = 0
 
-        return (
-                priority_weight + urgency_weight + flexibility_weight + added_time_weight +
-                effort_weight + time_estimate_weight + time_logged_weight + workday_preference_weight
-        )
+        # Quick task weight Q = K * exp(-t / T_q)
+        if hasattr(task, 'quick') and task.quick:
+            t = (datetime.now() - task.added_date_time).total_seconds() if task.added_date_time else 0
+            quick_task_weight = self.K * math.exp(-t / self.T_q)
+        else:
+            quick_task_weight = 0
+
+        # Manually scheduled weight M = C if task is manually scheduled
+        manually_weight = self.C if hasattr(task, 'manually_scheduled') and task.manually_scheduled else 0
+
+        return (priority_weight + urgency_weight + flexibility_weight + added_time_weight +
+                effort_weight + time_estimate_weight + time_logged_weight +
+                quick_task_weight + manually_weight)
 
     def update_task_global_weights(self):
 
