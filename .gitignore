@@ -1,0 +1,17 @@
+# Ignore PyCharm settings
+.idea/
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore database files
+*.db
+
+# Ignore environment files
+.env
+.venv/
+
+# Ignore logs and system files
+*.log
