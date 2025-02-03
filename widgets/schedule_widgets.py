@@ -29,10 +29,15 @@ class DatePickerCalendar(QWidget):
 
 
 class ScheduleTaskWidget(QWidget):
-    def __init__(self, task_list_manager: TaskManager, task):
+    def __init__(self, task_list_manager: TaskManager, task_or_chunk):
         super().__init__()
         self.task_list_manager = task_list_manager
-        self.task = task
+        if isinstance(task_or_chunk, TaskChunk):
+            self.chunk = task_or_chunk
+            self.task = task_or_chunk.task
+        else:
+            self.task = task_or_chunk
+            self.chunk = None
         self.is_dragging = False
         self.no_context = False
         self.setup_ui()
@@ -433,14 +438,16 @@ class TimeBlockWidget(QWidget):
         # self.frame.setFixedHeight(self.base_height)
 
         self.schedule_manager = parent.schedule_manager if parent and hasattr(parent, 'schedule_manager') else None
-        self.tasks = self.time_block.tasks
 
         if not self.time_block.block_type == "unavailable":
             self.init_ui_time_block_with_tasks()
         elif self.time_block.block_type == "unavailable":
             self.init_ui_unavailable()
 
-        if self.tasks:
+        self.chunks = ([entry["chunk"] for entry in self.time_block.task_chunks.values()]
+                       if hasattr(self.time_block, "task_chunks") else [])
+
+        if self.chunks:
             self.load_tasks()
 
     def setup_frame(self, name, color):
@@ -473,11 +480,29 @@ class TimeBlockWidget(QWidget):
         self.setup_frame("Unavailable", (231, 131, 97))
 
     def load_tasks(self):
-        for task in self.tasks:
-            self.add_task(task)
+        for chunk in self.chunks:
+            # Create the ScheduleTaskWidget using the chunk
+            task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager, chunk)
+            item = QListWidgetItem()
+            item.setSizeHint(task_widget.sizeHint())
+            self.task_list.addItem(item)
+            self.task_list.setItemWidget(item, task_widget)
+        self.resize_frame_and_hour_cells()
 
-    def add_task(self, task):
-        task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager, task)
+    def add_task(self, task_or_chunk):
+        # Wrap raw Task objects in a default time-based TaskChunk
+        if not isinstance(task_or_chunk, TaskChunk):
+            remaining = task_or_chunk.time_estimate - task_or_chunk.time_logged
+            chunk = TaskChunk(task=task_or_chunk, duration=remaining, auto=True, chunk_type="time")
+        else:
+            chunk = task_or_chunk
+
+        # Optionally, add the chunk to the underlying time block:
+        self.time_block.add_chunk(chunk, rating=9999)  # or appropriate rating
+
+        # Then update the UI list
+        self.chunks.append(chunk)
+        task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager, chunk)
         item = QListWidgetItem()
         item.setSizeHint(task_widget.sizeHint())
         self.task_list.addItem(item)
@@ -623,7 +648,7 @@ class ScheduleViewWidget(QWidget):
         super().__init__()
         self.schedule_manager = schedule_manager
         self.time_blocks = self.schedule_manager.get_day_schedule(
-            date.today()).get_time_blocks() if self.schedule_manager else []
+            date.today()).time_blocks if self.schedule_manager else []
         self.expanded_ui_visible = False
         self.initUI()
         self.load_time_blocks()
@@ -731,12 +756,23 @@ class ScheduleViewWidget(QWidget):
         for i in range(self.timeBlocksLayout.count()):
             tb_widget = self.timeBlocksLayout.itemAt(i).widget()
             if tb_widget:
+                # Convert the hour string ("HH:MM") to integer
                 start_hour = int(tb_widget.start_time.split(':')[0])
                 end_hour = int(tb_widget.end_time.split(':')[0])
 
-                self.timeScaleWidget.set_height_by_widget(
-                    f"{start_hour - 12 if start_hour > 12 else start_hour} {"AM" if start_hour < 12 else "PM"}",
-                    f"{end_hour - 12 if end_hour > 12 else end_hour} {"AM" if end_hour < 12 else "PM"}", tb_widget)
+                # Fix for hours < 4 AM => add 24
+                if start_hour < 4:
+                    start_hour += 24
+                if end_hour < 4:
+                    end_hour += 24
+
+                # Convert to the same string format used in HourScaleWidget
+                # i.e.: f"{hour % 12 or 12} {'AM' if hour % 24 < 12 else 'PM'}"
+                start_str = f"{start_hour % 12 or 12} {'AM' if start_hour < 12 else 'PM'}"
+                end_str = f"{end_hour % 12 or 12} {'AM' if end_hour < 12 else 'PM'}"
+
+                # Now this matches the strings in self.timeScaleWidget.hours
+                self.timeScaleWidget.set_height_by_widget(start_str, end_str, tb_widget)
 
     def print_time_block_heights(self):
         for i in range(self.timeBlocksLayout.count()):

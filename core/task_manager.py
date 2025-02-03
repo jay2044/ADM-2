@@ -69,13 +69,11 @@ class Task:
         self.max_chunk_size = kwargs.get("max_chunk_size", None)
 
         self.manually_scheduled = kwargs.get("manually_scheduled", False)
-        self.manually_scheduled_chunks = kwargs.get("manually_scheduled_chunks", [
-            {"date": None, "timeblock": None, "size": 0.0,
-             "type": None}])  # eg: {"date": datetime obj, "timeblock": "timeblock name", "size": 0.0, "type": either count or time}
+        self.manually_scheduled_chunks = kwargs.get("manually_scheduled_chunks", [])  # eg: {"date": datetime obj, "timeblock": "timeblock name", "size": 0.0, "type": either count or time}
 
         self.assigned = kwargs.get("assigned", False)
         self.assigned_chunks = kwargs.get("assigned_chunks",
-                                          [{"date": None, "timeblock": None, "size": 0.0, "type": None}])
+                                          [])
 
         self.subtasks = kwargs.get("subtasks", None)  # [{"order": 1, "name": "test sub task", "completed": True}]
         self.dependencies = kwargs.get("dependencies", None)
@@ -470,10 +468,10 @@ class TaskManager:
                 max_chunk_size REAL,
 
                 manually_scheduled BOOLEAN NOT NULL CHECK (manually_scheduled IN (0,1)) DEFAULT 0,
-                manually_scheduled_chunks TEXT DEFAULT '[{"date": null, "timeblock": null, "size": 0.0, "type": null}]',
+                manually_scheduled_chunks TEXT DEFAULT '[]',
 
                 assigned BOOLEAN NOT NULL CHECK (assigned IN (0,1)) DEFAULT 0,
-                assigned_chunks TEXT DEFAULT '[{"date": null, "timeblock": null, "size": 0.0, "type": null}]',
+                assigned_chunks TEXT DEFAULT '[]',
 
                 subtasks TEXT,
                 dependencies TEXT,

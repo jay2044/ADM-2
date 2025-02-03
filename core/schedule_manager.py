@@ -178,60 +178,89 @@ class TimeBlock:
 
 
 class TaskChunk:
-    def __init__(self, task, duration, timeblock_ratings=None, auto=False, manual=False, assigned=False,
-                 flagged=False):
+    def __init__(self, task, duration=None, quantity=None, timeblock_ratings=None, auto=False, manual=False,
+                 assigned=False, flagged=False, chunk_type="time", active=True):
         """
         :param task: The task object this chunk belongs to.
-        :param duration: Duration of the chunk.
-        :param timeblock_ratings: Ratings associated with different timeblocks.
-        :param auto: Boolean indicating if auto-scheduling was used.
-        :param manual: Boolean indicating if manually scheduled.
-        :param assigned: Boolean indicating if the chunk has been assigned.
-        :param flagged: Boolean indicating if the chunk is flagged.
+        :param duration: Duration (for time‑based tasks).
+        :param quantity: Count/quantity (for count‑based tasks).
+        :param chunk_type: "time" for time‑based tasks or "count" for count‑based tasks.
+        :param active: Indicates if this chunk is the current (active) recurrence.
         """
         self.task = task
-        self.duration = duration
+        self.chunk_type = chunk_type  # "time" or "count"
+        if self.chunk_type == "time":
+            self.duration = duration
+        elif self.chunk_type == "count":
+            self.quantity = quantity
         self.timeblock_ratings = timeblock_ratings
         self.auto = auto
         self.manual = manual
         self.assigned = assigned
         self.flagged = flagged
+        self.active = active
+        # For recurring tasks, we’ll store the recurrence date (if applicable)
+        self.recurrence_date = None
 
     def split(self, ratios):
-        """
-        Splits this chunk into sub-chunks according to the given ratios while ensuring that
-        each resulting sub-chunk is at least task.min_chunk_size and at most task.max_chunk_size.
-        If the task does not define these attributes, they default to 0 and infinity, respectively.
-        """
         total_ratio = sum(ratios)
-        # Initial split based on the ratios.
-        subchunks = [TaskChunk(
-            self.task,
-            (self.duration * r) / total_ratio,
-            self.timeblock_ratings,
-            self.auto,
-            self.manual,
-            self.assigned,
-            self.flagged
-        ) for r in ratios]
-        # Get minimum and maximum allowed chunk sizes from the task.
-        min_chunk = getattr(self.task, 'min_chunk_size', 0)
-        max_chunk = getattr(self.task, 'max_chunk_size', float('inf'))
-
-        # Adjust each sub-chunk's duration to lie within the bounds.
-        for sc in subchunks:
-            if sc.duration < min_chunk:
-                sc.duration = min_chunk
-            elif sc.duration > max_chunk:
-                sc.duration = max_chunk
-
-        # (Optional) Normalize so that the total duration remains the same.
-        total_adjusted = sum(sc.duration for sc in subchunks)
-        if total_adjusted > 0 and total_adjusted != self.duration:
-            factor = self.duration / total_adjusted
+        if self.chunk_type == "time":
+            subchunks = [
+                TaskChunk(
+                    self.task,
+                    duration=(self.duration * r) / total_ratio,
+                    timeblock_ratings=self.timeblock_ratings,
+                    auto=self.auto,
+                    manual=self.manual,
+                    assigned=self.assigned,
+                    flagged=self.flagged,
+                    chunk_type="time",
+                    active=self.active
+                )
+                for r in ratios
+            ]
+            min_chunk = getattr(self.task, 'min_chunk_size', 0)
+            max_chunk = getattr(self.task, 'max_chunk_size', float('inf'))
             for sc in subchunks:
-                sc.duration *= factor
-        return subchunks
+                if sc.duration < min_chunk:
+                    sc.duration = min_chunk
+                elif sc.duration > max_chunk:
+                    sc.duration = max_chunk
+            total_adjusted = sum(sc.duration for sc in subchunks)
+            if total_adjusted > 0 and total_adjusted != self.duration:
+                factor = self.duration / total_adjusted
+                for sc in subchunks:
+                    sc.duration *= factor
+            return subchunks
+        elif self.chunk_type == "count":
+            subchunks = [
+                TaskChunk(
+                    self.task,
+                    quantity=(self.quantity * r) / total_ratio,
+                    timeblock_ratings=self.timeblock_ratings,
+                    auto=self.auto,
+                    manual=self.manual,
+                    assigned=self.assigned,
+                    flagged=self.flagged,
+                    chunk_type="count",
+                    active=self.active
+                )
+                for r in ratios
+            ]
+            # For count‐based tasks, assume a minimum chunk size of 1
+            min_chunk = 1
+            max_chunk = self.quantity
+            for sc in subchunks:
+                if sc.quantity < min_chunk:
+                    sc.quantity = min_chunk
+                elif sc.quantity > max_chunk:
+                    sc.quantity = max_chunk
+            total_adjusted = sum(sc.quantity for sc in subchunks)
+            if total_adjusted > 0 and total_adjusted != self.quantity:
+                factor = self.quantity / total_adjusted
+                for sc in subchunks:
+                    sc.quantity *= factor
+            return subchunks
 
 
 class ScheduleManager:
@@ -593,7 +622,10 @@ class ScheduleManager:
             for task in self.active_tasks if task.added_date_time
         ) if any(task.added_date_time for task in self.active_tasks) else 1
 
-        max_time_estimate = max(task.time_estimate for task in self.active_tasks if task.time_estimate) or 1
+        max_time_estimate = max(
+            (task.time_estimate for task in self.active_tasks if task.time_estimate),
+            default=1
+        )
 
         total_weight = sum(
             self.task_weight_formula(task, max_added_time, max_time_estimate) for task in self.active_tasks
@@ -612,11 +644,9 @@ class ScheduleManager:
         self.conn.commit()
 
     def get_day_schedule(self, date):
-        schedule = self.load_schedule(date)
-        if schedule:
-            return schedule
-        else:
-            return DaySchedule(self, date)
+        for schedule in self.day_schedules:
+            if schedule.date == date:
+                return schedule
 
     def load_day_schedules(self):
         """
@@ -684,92 +714,120 @@ class ScheduleManager:
 
     def chunk_tasks(self):
         chunks = []
+        today = datetime.now().date()
         for task in self.active_tasks:
-            remaining_duration = task.time_estimate - task.time_logged
-            if task.manually_scheduled:
-                if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
-                    for chunk_info in task.manually_scheduled_chunks:
-                        chunk_duration = chunk_info.get("duration", 0)
-                        if chunk_duration > 0:
-                            chunk = TaskChunk(task=task, duration=chunk_duration, manual=True)
-                            for day in self.day_schedules:
-                                if chunk_info.get("date") == day.date:
-                                    target_block_name = chunk_info.get("timeblock", "")
-                                    for tb in day.time_blocks:
-                                        if tb.name == target_block_name:
-                                            tb.add_chunk(chunk, rating=9999)
-                                            break
-                            remaining_duration -= chunk_duration
-                if remaining_duration > 0:
-                    if task.auto_chunk:
-                        chunk = TaskChunk(task=task, duration=remaining_duration, auto=True)
+            if task.recurring:
+                recurrence_days = []
+                if isinstance(task.recur_every, int):
+                    base_date = (
+                        task.last_completed_date.date() if task.last_completed_date else task.added_date_time.date())
+                    for day_schedule in self.day_schedules:
+                        day = day_schedule.date
+                        if (day - base_date).days % task.recur_every == 0 and day >= base_date:
+                            recurrence_days.append(day)
+                elif isinstance(task.recur_every, list):
+                    for day_schedule in self.day_schedules:
+                        day = day_schedule.date
+                        if day.strftime("%A") in task.recur_every:
+                            recurrence_days.append(day)
+                if task.count_required is not None:
+                    remaining = task.count_required - task.count_completed
+                    for day in recurrence_days:
+                        is_active = (day == min([d for d in recurrence_days if d >= today]) if any(
+                            d >= today for d in recurrence_days) else False)
+                        chunk = TaskChunk(task=task, quantity=remaining, auto=True, chunk_type="count",
+                                          active=is_active)
+                        chunk.recurrence_date = day
                         chunks.append(chunk)
-                    else:
-                        chunk = TaskChunk(task=task, duration=remaining_duration, assigned=True)
-                        chunks.append(chunk)
-            elif hasattr(task, 'assigned_chunks') and task.assigned_chunks:
-                for assigned_chunk in task.assigned_chunks:
-                    chunk_duration = assigned_chunk.get("duration", 0)
-                    if chunk_duration > 0:
-                        chunk = TaskChunk(task=task, duration=chunk_duration, assigned=True)
+                else:
+                    remaining = task.time_estimate - task.time_logged
+                    for day in recurrence_days:
+                        is_active = (day == min([d for d in recurrence_days if d >= today]) if any(
+                            d >= today for d in recurrence_days) else False)
+                        chunk = TaskChunk(task=task, duration=remaining, auto=True, chunk_type="time", active=is_active)
+                        chunk.recurrence_date = day
                         chunks.append(chunk)
             else:
-                if task.auto_chunk:
-                    chunk = TaskChunk(task=task, duration=remaining_duration, auto=True)
-                    chunks.append(chunk)
+                # Non-recurring tasks
+                if task.count_required is not None:
+                    remaining = task.count_required - task.count_completed
+                    if task.manually_scheduled:
+                        if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
+                            for chunk_info in task.manually_scheduled_chunks:
+                                chunk_quantity = chunk_info.get("quantity", 0)
+                                if chunk_quantity > 0:
+                                    chunk = TaskChunk(task=task, quantity=chunk_quantity, manual=True,
+                                                      chunk_type="count")
+                                    for day in self.day_schedules:
+                                        if chunk_info.get("date") == day.date:
+                                            target_block_name = chunk_info.get("timeblock", "")
+                                            for tb in day.time_blocks:
+                                                if tb.name == target_block_name:
+                                                    tb.add_chunk(chunk, rating=9999)
+                                                    break
+                                    remaining -= chunk_quantity
+                    if remaining > 0:
+                        if task.auto_chunk:
+                            chunk = TaskChunk(task=task, quantity=remaining, auto=True, chunk_type="count")
+                            chunks.append(chunk)
+                        else:
+                            chunk = TaskChunk(task=task, quantity=remaining, assigned=True, chunk_type="count")
+                            chunks.append(chunk)
+                else:
+                    remaining = task.time_estimate - task.time_logged
+                    if task.manually_scheduled:
+                        if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
+                            for chunk_info in task.manually_scheduled_chunks:
+                                chunk_duration = chunk_info.get("duration", 0)
+                                if chunk_duration > 0:
+                                    chunk = TaskChunk(task=task, duration=chunk_duration, manual=True)
+                                    for day in self.day_schedules:
+                                        if chunk_info.get("date") == day.date:
+                                            target_block_name = chunk_info.get("timeblock", "")
+                                            for tb in day.time_blocks:
+                                                if tb.name == target_block_name:
+                                                    tb.add_chunk(chunk, rating=9999)
+                                                    break
+                                    remaining -= chunk_duration
+                    if remaining > 0:
+                        if task.auto_chunk:
+                            chunk = TaskChunk(task=task, duration=remaining, auto=True)
+                            chunks.append(chunk)
+                        else:
+                            chunk = TaskChunk(task=task, duration=remaining, assigned=True)
+                            chunks.append(chunk)
         return chunks
 
     # returns a bool for success
     def assign_chunk(self, chunk, exclude_block=None, test=False):
-        """
-        Attempt to assign the given TaskChunk (chunk) to a candidate timeblock.
-
-        For auto chunks:
-          - If the candidate block has enough free capacity, assign the chunk.
-          - Otherwise, iterate over lower-rated (and non-manual) chunks in the candidate block,
-            attempting to free capacity by recursively reassigning or splitting those chunks.
-          - If nearly enough capacity is freed (>=90% of required), split the current chunk (respecting task.min_chunk_size and task.max_chunk_size)
-            so that one part fits in the candidate block and recursively assign the remainder.
-
-        For assigned (non-auto) chunks:
-          - The same candidate loop is used, but the current chunk is not split;
-            lower‑rated chunks are re‐assigned to free capacity, and if the entire chunk fits, it is assigned.
-
-        Returns True if assignment is successful; otherwise, flags the chunk and returns False.
-        """
         task = chunk.task
 
-        # Safety: If no candidate ratings exist or they are not a list, flag the chunk.
         if not chunk.timeblock_ratings or not isinstance(chunk.timeblock_ratings, list):
             chunk.flagged = True
             return False
 
-        # Sort candidate timeblocks (each a tuple: (block, rating)) in descending order.
         sorted_candidates = sorted(chunk.timeblock_ratings, key=lambda x: x[1], reverse=True)
 
-        if chunk.auto:
-            FLEXIBILITY_MAP = {
-                "Strict": 1,
-                "Flexible": 2,
-                "Very Flexible": 3
-            }
-            flexibility_ratio = FLEXIBILITY_MAP.get(task.flexibility, 1) / max(FLEXIBILITY_MAP.values())
-            required_capacity = task.time_estimate - task.time_logged
-            if required_capacity <= 0:
-                return True  # Nothing left to schedule.
-            num_top_candidates = max(1, int(len(sorted_candidates) * flexibility_ratio))
+        # Determine required capacity based on chunk type.
+        if chunk.chunk_type == "time":
+            required_capacity = chunk.duration
+        elif chunk.chunk_type == "count":
+            required_capacity = chunk.quantity
 
-            # Select top candidates, excluding the provided block if needed.
+        if chunk.auto:
+            FLEXIBILITY_MAP = {"Strict": 1, "Flexible": 2, "Very Flexible": 3}
+            flexibility_ratio = FLEXIBILITY_MAP.get(task.flexibility, 1) / max(FLEXIBILITY_MAP.values())
+            if required_capacity <= 0:
+                return True
+            num_top_candidates = max(1, int(len(sorted_candidates) * flexibility_ratio))
             top_candidates = [cand for cand in sorted_candidates[:num_top_candidates]
                               if exclude_block is None or cand[0].id != exclude_block.id]
-
             for candidate in top_candidates:
                 block, rating = candidate
-                # Get lower-rated chunks (non-manual) from this block.
                 filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
                 filtered_chunks = [c for c in filtered_chunks if not c.manual]
-
-                if block.get_available_time() >= required_capacity:
+                available = (block.get_available_time() if chunk.chunk_type == "time" else block.get_available_count())
+                if available >= required_capacity:
                     if not test:
                         block.add_chunk(chunk, rating)
                     return True
@@ -779,43 +837,43 @@ class ScheduleManager:
                     resizable_capacity = 0.0
                     reschedule_chunk_queue = []
                     for filtered_chunk in filtered_chunks:
-                        # Safety: Skip chunks with non-positive duration.
-                        if filtered_chunk.duration <= 0:
+                        cap = filtered_chunk.duration if filtered_chunk.chunk_type == "time" else filtered_chunk.quantity
+                        if cap <= 0:
                             continue
                         if filtered_chunk.assigned:
                             if self.assign_chunk(filtered_chunk, block, True):
-                                resizable_capacity += filtered_chunk.get_capacity()
+                                resizable_capacity += cap
                                 reschedule_chunk_queue.append(filtered_chunk)
                         elif filtered_chunk.auto:
                             flexibility_ratio_auto = FLEXIBILITY_MAP.get(filtered_chunk.task.flexibility, 1) / max(
                                 FLEXIBILITY_MAP.values())
                             if flexibility_ratio_auto >= flexibility_ratio:
-                                av = filtered_chunk.duration - (required_capacity - resizable_capacity)
+                                av = (
+                                         filtered_chunk.duration if filtered_chunk.chunk_type == "time" else filtered_chunk.quantity) - (
+                                             required_capacity - resizable_capacity)
                                 if av > 0:
-                                    sp = filtered_chunk.split([av, filtered_chunk.duration - av])
+                                    sp = filtered_chunk.split([av, cap - av])
                                     if sp and len(sp) >= 2:
                                         if self.assign_chunk(sp[1], block, True):
-                                            resizable_capacity += sp[1].get_capacity()
+                                            cap_sub = sp[1].duration if sp[1].chunk_type == "time" else sp[1].quantity
+                                            resizable_capacity += cap_sub
                                             reschedule_chunk_queue.append(sp[1])
-                            elif filtered_chunk.duration <= required_capacity:
+                            elif cap <= required_capacity:
                                 if self.assign_chunk(filtered_chunk, block, True):
-                                    resizable_capacity += filtered_chunk.get_capacity()
+                                    resizable_capacity += cap
                                     reschedule_chunk_queue.append(filtered_chunk)
-                        # End inner loop iteration.
-                        # Optionally break early if capacity is already freed.
                         if resizable_capacity >= required_capacity:
                             break
-                    # After processing lower-rated chunks, check if freed capacity is nearly enough.
                     if resizable_capacity >= 0.9 * required_capacity:
-                        available_for_this_block = block.get_available_time() + resizable_capacity
-                        if available_for_this_block < chunk.duration:
-                            sp = chunk.split([available_for_this_block, chunk.duration - available_for_this_block])
+                        available_for_this_block = available + resizable_capacity
+                        total = chunk.duration if chunk.chunk_type == "time" else chunk.quantity
+                        if available_for_this_block < total:
+                            sp = chunk.split([available_for_this_block, total - available_for_this_block])
                             if sp and len(sp) >= 2:
                                 if not test:
                                     block.add_chunk(sp[0], rating)
                                 if self.assign_chunk(sp[1], exclude_block=block, test=test):
                                     return True
-                    # If sufficient capacity is freed, reassign lower-rated chunks and assign current chunk.
                     if resizable_capacity >= required_capacity:
                         for reschedule_chunk in reschedule_chunk_queue:
                             block.remove_chunk(reschedule_chunk)
@@ -825,12 +883,13 @@ class ScheduleManager:
                         return True
             # End candidate loop for auto chunk.
         elif chunk.assigned:
-            # For assigned (non-auto) chunks: do not split the current chunk.
             for candidate in sorted_candidates:
                 block, rating = candidate
                 if exclude_block and block.id == exclude_block.id:
                     continue
-                if block.get_available_time() >= chunk.duration:
+                available = (block.get_available_time() if chunk.chunk_type == "time" else block.get_available_count())
+                total = chunk.duration if chunk.chunk_type == "time" else chunk.quantity
+                if available >= total:
                     if not test:
                         block.add_chunk(chunk, rating)
                     return True
@@ -844,18 +903,18 @@ class ScheduleManager:
                     for filtered_chunk in filtered_chunks:
                         if filtered_chunk.assigned or filtered_chunk.auto:
                             if self.assign_chunk(filtered_chunk, block, True):
-                                resizable_capacity += filtered_chunk.get_capacity()
+                                cap_sub = filtered_chunk.duration if filtered_chunk.chunk_type == "time" else filtered_chunk.quantity
+                                resizable_capacity += cap_sub
                                 reschedule_chunk_queue.append(filtered_chunk)
-                        if resizable_capacity >= chunk.duration:
+                        if resizable_capacity >= total:
                             break
-                    if resizable_capacity >= chunk.duration:
+                    if resizable_capacity >= total:
                         for reschedule_chunk in reschedule_chunk_queue:
                             block.remove_chunk(reschedule_chunk)
                             self.assign_chunk(reschedule_chunk, block)
                         if not test:
                             block.add_chunk(chunk, rating)
                         return True
-        # If no candidate block can accept the chunk, flag it.
         chunk.flagged = True
         return False
 
@@ -902,7 +961,7 @@ class DaySchedule:
         sleep_block = TimeBlock(
             block_id=None,
             name=f"Sleep ({self.sleep_time:.1f}h)",
-            schedule={target_day: (sleep_start.time(), sleep_end.time())},
+            date=self.date,
             block_type="unavailable",
             color=(173, 216, 230)
         )
@@ -919,7 +978,7 @@ class DaySchedule:
                 gap_block = TimeBlock(
                     block_id=None,
                     name="Unscheduled",
-                    schedule={target_day: (current_dt.time(), block_start_dt.time())},
+                    date=self.date,
                     block_type="system_defined",
                     color=(200, 200, 200)
                 )
@@ -933,7 +992,7 @@ class DaySchedule:
             gap_block = TimeBlock(
                 block_id=None,
                 name="Unscheduled",
-                schedule={target_day: (current_dt.time(), day_end.time())},
+                date=self.date,
                 block_type="system_defined",
                 color=(200, 200, 200)
             )
