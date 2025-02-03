@@ -942,7 +942,7 @@ class AddTimeBlockDialog(QDialog):
             self.unavailable_button.setStyleSheet("background: rgb(204, 97, 65);")
         else:
             self.unavailable_button.setStyleSheet("background: none;")
-        self.schedule_picker.setDisabled(self.unavailable)
+        # self.schedule_picker.setDisabled(self.unavailable)
         self.category_tag_picker.setDisabled(self.unavailable)
 
     def get_time_block_data(self):
@@ -952,6 +952,7 @@ class AddTimeBlockDialog(QDialog):
             return {
                 'unavailable': True,
                 'name': name,
+                'schedule': self.schedule_picker.get_schedule(),
                 'color': self.picked_color
             }
 
@@ -988,17 +989,18 @@ class AddTimeBlockDialog(QDialog):
             QMessageBox.warning(self, "Validation Error", "Name is required.")
             return
 
-        if not self.unavailable:
-            # Validate schedule
-            if not data['schedule']:
-                QMessageBox.warning(self, "Validation Error", "A schedule is required.")
-                return
+        # Validate schedule
+        if not data['schedule']:
+            QMessageBox.warning(self, "Validation Error", "A schedule is required.")
+            return
 
-            # Validate schedule ranges
-            schedule_error = self.validate_schedule(data['schedule'])
-            if schedule_error:
-                QMessageBox.warning(self, "Validation Error", schedule_error)
-                return
+        # Validate schedule ranges
+        schedule_error = self.validate_schedule(data['schedule'])
+        if schedule_error:
+            QMessageBox.warning(self, "Validation Error", schedule_error)
+            return
+
+        if not self.unavailable:
 
             # Validate categories or tags
             if not (data['list_categories']['include'] or data['task_tags']['include']):

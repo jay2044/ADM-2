@@ -590,7 +590,7 @@ class TimeBlockManagerWidget(QWidget):
     def populate_time_blocks(self):
         self.timeBlockList.clear()
         for time_block in self.schedule_manager.time_blocks:
-            item = QListWidgetItem(time_block.name)  # Assuming time_block has a 'name' attribute
+            item = QListWidgetItem(time_block.name)
             self.timeBlockList.addItem(item)
 
     def show_context_menu(self, position):
@@ -617,22 +617,22 @@ class TimeBlockManagerWidget(QWidget):
                 return
 
             if time_block_data['unavailable']:
-                new_time_block = TimeBlock(
-                    name=time_block_data['name'],
-                    color=time_block_data['color'],
-                    block_type="unavailable"
-                )
+                new_time_block = {
+                    "name": time_block_data['name'],
+                    "schedule": time_block_data['schedule'],
+                    "color": time_block_data['color'],
+                    "unavailable": 1
+                }
             else:
-                new_time_block = TimeBlock(
-                    name=time_block_data['name'],
-                    schedule=time_block_data['schedule'],
-                    list_categories=time_block_data['list_categories'],
-                    task_tags=time_block_data['task_tags'],
-                    color=time_block_data['color'],
-                    block_type="user_defined"
-                )
+                new_time_block = {
+                    "name": time_block_data['name'],
+                    "schedule": time_block_data['schedule'],
+                    "list_categories": time_block_data['list_categories'],
+                    "task_tags": time_block_data['task_tags'],
+                    "color": time_block_data['color'],
+                    "unavailable": 0
+                }
 
-            self.schedule_manager.time_blocks.append(new_time_block)
             self.schedule_manager.add_time_block(new_time_block)
             self.populate_time_blocks()
 

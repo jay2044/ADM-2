@@ -10,6 +10,25 @@ from pyarrow import duration
 from core.task_manager import *
 
 
+def time_to_string(t: time) -> str:
+    return t.strftime("%H:%M")
+
+
+def convert_times_in_schedule(schedule_dict: dict) -> dict:
+    new_schedule = {}
+    for day, times in schedule_dict.items():
+        # Each day has a list/tuple of [start_time, end_time]
+        # Convert each to string if necessary.
+        converted = []
+        for t in times:
+            if isinstance(t, time):
+                converted.append(time_to_string(t))
+            else:
+                converted.append(t)
+        new_schedule[day] = converted
+    return new_schedule
+
+
 class ScheduleSettings:
     def __init__(self, db_path='data/adm.db'):
         self.db_path = db_path
@@ -314,7 +333,8 @@ class ScheduleManager:
                     schedule TEXT DEFAULT '{}',
                     list_categories TEXT DEFAULT '{"include": [], "exclude": []}',
                     task_tags TEXT DEFAULT '{"include": [], "exclude": []}',
-                    color TEXT DEFAULT ''
+                    color TEXT DEFAULT '',
+                    unavailable INTEGER DEFAULT 0
                 )
             """)
 
@@ -332,16 +352,17 @@ class ScheduleManager:
 
             for row in rows:
                 # Parse JSON fields
-                schedule = json.loads(row['schedule']) if row['schedule'] else {}
-                list_categories = json.loads(row['list_categories']) if row['list_categories'] else {"include": [],
-                                                                                                     "exclude": []}
-                task_tags = json.loads(row['task_tags']) if row['task_tags'] else {"include": [], "exclude": []}
+                schedule = json.loads(row["schedule"]) if row["schedule"] else {}
+                list_categories = json.loads(row["list_categories"]) if row["list_categories"] else {
+                    "include": [], "exclude": []
+                }
+                task_tags = json.loads(row["task_tags"]) if row["task_tags"] else {"include": [], "exclude": []}
 
-                # Convert color string to a tuple, if provided (e.g., "(255,200,200)")
-                color_str = row['color']
+                # Convert color string to a tuple
+                color_str = row["color"]
                 if color_str:
                     try:
-                        color = tuple(map(int, color_str.strip('()').split(',')))
+                        color = tuple(map(int, color_str.strip("()").split(",")))
                     except Exception:
                         color = None
                 else:
@@ -353,9 +374,11 @@ class ScheduleManager:
                     "schedule": schedule,  # e.g., {"wed": ["09:00", "10:00"]}
                     "list_categories": list_categories,
                     "task_tags": task_tags,
-                    "color": color
+                    "color": color,
+                    "unavailable": int(row["unavailable"]) if row["unavailable"] else 0
                 }
                 self.time_blocks.append(block)
+
         except sqlite3.Error as e:
             print(f"Database error: {e}")
         except json.JSONDecodeError as e:
@@ -365,20 +388,34 @@ class ScheduleManager:
         finally:
             cursor.close()
 
-    def add_time_block(self, time_block):
+    def add_time_block(self, time_block: dict):
         """
         Insert a new time block into the database and add it to the in-memory structure.
-        The time_block object is expected to have attributes:
-          - name, schedule (a dict), list_categories, task_tags, and color.
+        'time_block' is a dictionary with keys:
+          name, schedule, list_categories, task_tags, color, unavailable.
         """
         try:
-            schedule_json = json.dumps(time_block.schedule) if hasattr(time_block, 'schedule') else json.dumps({})
-            list_cats_json = json.dumps(time_block.list_categories) if hasattr(time_block,
-                                                                               'list_categories') else json.dumps(
-                {"include": [], "exclude": []})
-            task_tags_json = json.dumps(time_block.task_tags) if hasattr(time_block, 'task_tags') else json.dumps(
-                {"include": [], "exclude": []})
-            color_str = str(time_block.color) if hasattr(time_block, 'color') and time_block.color else ""
+            # Convert each field to JSON or string as needed
+            if "schedule" in time_block:
+                schedule_dict = time_block["schedule"]
+                # Convert any datetime.time objects to strings
+                schedule_dict = convert_times_in_schedule(schedule_dict)
+                schedule_json = json.dumps(schedule_dict)
+            else:
+                schedule_json = "{}"
+            list_cats_json = json.dumps(
+                time_block["list_categories"]) if "list_categories" in time_block else json.dumps({
+                "include": [], "exclude": []
+            })
+            task_tags_json = json.dumps(time_block["task_tags"]) if "task_tags" in time_block else json.dumps({
+                "include": [], "exclude": []
+            })
+
+            color_str = ""
+            if "color" in time_block and time_block["color"]:
+                color_str = str(time_block["color"])  # e.g. "(255, 200, 200)"
+
+            unavailable = time_block.get("unavailable", 0)
 
             cursor = self.conn.cursor()
             cursor.execute("""
@@ -387,30 +424,27 @@ class ScheduleManager:
                     schedule,
                     list_categories,
                     task_tags,
-                    color
-                ) VALUES (?, ?, ?, ?, ?)
+                    color,
+                    unavailable
+                ) VALUES (?, ?, ?, ?, ?, ?)
             """, (
-                time_block.name,
+                time_block["name"],
                 schedule_json,
                 list_cats_json,
                 task_tags_json,
-                color_str
+                color_str,
+                unavailable
             ))
             self.conn.commit()
 
-            # Update the time block's ID and add it to the in-memory list
-            time_block.id = cursor.lastrowid
-            self.time_blocks.append({
-                "id": time_block.id,
-                "name": time_block.name,
-                "schedule": time_block.schedule,
-                "list_categories": time_block.list_categories,
-                "task_tags": time_block.task_tags,
-                "color": time_block.color
-            })
+            new_id = cursor.lastrowid
+            time_block["id"] = new_id
+
+            # Keep a copy in memory
+            self.time_blocks.append(time_block)
 
             cursor.close()
-            return time_block.id
+            return new_id
 
         except sqlite3.Error as e:
             print(f"Database error: {e}")
@@ -426,7 +460,6 @@ class ScheduleManager:
         Remove a time block from both the database and the in-memory structure.
         """
         try:
-            # Find the block in memory
             block_to_remove = None
             for block in self.time_blocks:
                 if block["id"] == block_id:
@@ -444,7 +477,6 @@ class ScheduleManager:
                 return False
             self.conn.commit()
 
-            # Remove from in-memory structure
             self.time_blocks.remove(block_to_remove)
             cursor.close()
             return True
@@ -454,24 +486,24 @@ class ScheduleManager:
             self.conn.rollback()
             raise
         except Exception as e:
-            print(f"Unexpected error removing time block: {e}")
+            print(f"Unexpected error while removing time block: {e}")
             self.conn.rollback()
             raise
 
-    def update_time_block(self, updated_block):
+    def update_time_block(self, updated_block: dict):
         """
         Update an existing time block in both the database and the in-memory structure.
         The updated_block is a dictionary that must include the "id" key.
         """
         try:
             block_id = updated_block["id"]
-            # Locate the block in the in-memory structure
+
+            # Find the existing block in memory
             existing_index = None
             for i, block in enumerate(self.time_blocks):
                 if block["id"] == block_id:
                     existing_index = i
                     break
-
             if existing_index is None:
                 print(f"Time block with ID {block_id} not found in memory.")
                 return False
@@ -479,7 +511,10 @@ class ScheduleManager:
             schedule_json = json.dumps(updated_block.get("schedule", {}))
             list_cats_json = json.dumps(updated_block.get("list_categories", {"include": [], "exclude": []}))
             task_tags_json = json.dumps(updated_block.get("task_tags", {"include": [], "exclude": []}))
-            color_str = str(updated_block.get("color")) if updated_block.get("color") else ""
+            color_str = ""
+            if "color" in updated_block and updated_block["color"]:
+                color_str = str(updated_block["color"])
+            unavailable = updated_block.get("unavailable", 0)
 
             cursor = self.conn.cursor()
             cursor.execute("""
@@ -489,7 +524,8 @@ class ScheduleManager:
                     schedule = ?,
                     list_categories = ?,
                     task_tags = ?,
-                    color = ?
+                    color = ?,
+                    unavailable = ?
                 WHERE id = ?
             """, (
                 updated_block.get("name", ""),
@@ -497,6 +533,7 @@ class ScheduleManager:
                 list_cats_json,
                 task_tags_json,
                 color_str,
+                unavailable,
                 block_id
             ))
             if cursor.rowcount == 0:
