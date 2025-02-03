@@ -685,59 +685,37 @@ class ScheduleManager:
     def chunk_tasks(self):
         chunks = []
         for task in self.active_tasks:
-            # Calculate the remaining duration for the task.
             remaining_duration = task.time_estimate - task.time_logged
-
-            # Process manually scheduled tasks.
             if task.manually_scheduled:
                 if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
-                    # Assume manually_scheduled_chunks is a list of dictionaries.
                     for chunk_info in task.manually_scheduled_chunks:
                         chunk_duration = chunk_info.get("duration", 0)
                         if chunk_duration > 0:
-                            chunk = TaskChunk(
-                                task=task,
-                                duration=chunk_duration,
-                                manual=True
-                            )
-                            chunks.append(chunk)
+                            chunk = TaskChunk(task=task, duration=chunk_duration, manual=True)
+                            for day in self.day_schedules:
+                                if chunk_info.get("date") == day.date:
+                                    target_block_name = chunk_info.get("timeblock", "")
+                                    for tb in day.time_blocks:
+                                        if tb.name == target_block_name:
+                                            tb.add_chunk(chunk, rating=9999)
+                                            break
                             remaining_duration -= chunk_duration
-
-                # If any remaining duration exists.
                 if remaining_duration > 0:
                     if task.auto_chunk:
-                        chunk = TaskChunk(
-                            task=task,
-                            duration=remaining_duration,
-                            auto=True
-                        )
+                        chunk = TaskChunk(task=task, duration=remaining_duration, auto=True)
                         chunks.append(chunk)
                     else:
-                        chunk = TaskChunk(
-                            task=task,
-                            duration=remaining_duration,
-                            assigned=True
-                        )
+                        chunk = TaskChunk(task=task, duration=remaining_duration, assigned=True)
                         chunks.append(chunk)
-            # Process tasks that are assigned.
             elif hasattr(task, 'assigned_chunks') and task.assigned_chunks:
                 for assigned_chunk in task.assigned_chunks:
                     chunk_duration = assigned_chunk.get("duration", 0)
                     if chunk_duration > 0:
-                        chunk = TaskChunk(
-                            task=task,
-                            duration=chunk_duration,
-                            assigned=True
-                        )
+                        chunk = TaskChunk(task=task, duration=chunk_duration, assigned=True)
                         chunks.append(chunk)
-            # Process tasks that are not manually scheduled and use auto chunking.
             else:
                 if task.auto_chunk:
-                    chunk = TaskChunk(
-                        task=task,
-                        duration=remaining_duration,
-                        auto=True
-                    )
+                    chunk = TaskChunk(task=task, duration=remaining_duration, auto=True)
                     chunks.append(chunk)
         return chunks
 
@@ -885,8 +863,6 @@ class ScheduleManager:
         for chunk in self.chunks:
             # If the chunk is manually scheduled, assume it's pre-assigned.
             if chunk.manual:
-                # Implement custom manual assignment logic if needed.
-                # ---
                 continue
 
             chunk.timeblock_ratings = []

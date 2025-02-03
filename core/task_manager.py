@@ -60,17 +60,25 @@ class Task:
         self.recurrences = kwargs.get("recurrences", 0)
 
         self.time_estimate = kwargs.get("time_estimate", None)
-        self.time_chunk_size = kwargs.get("time_chunk_size", None)
-        self.time_of_day_preference = kwargs.get("time_of_day_preference",
-                                                 None)  # ["Morning", "Afternoon", "Evening", "Night"]
         self.time_logged = kwargs.get("time_logged", None)
         self.count_required = kwargs.get("count_required", None)
-        self.count_chunk_size = kwargs.get("count_cunk_size", None)
         self.count_completed = kwargs.get("count_completed", None)
-        self.subtasks = kwargs.get("subtasks", None)  # [{"order": 1, "name": "test sub task", "completed": True}]
-        self.dependencies = kwargs.get("dependencies", None)
 
         self.auto_chunk = kwargs.get("auto_chunk", True)
+        self.min_chunk_size = kwargs.get("min_chunk_size", None)
+        self.max_chunk_size = kwargs.get("max_chunk_size", None)
+
+        self.manually_scheduled = kwargs.get("manually_scheduled", False)
+        self.manually_scheduled_chunks = kwargs.get("manually_scheduled_chunks", [
+            {"date": None, "timeblock": None, "size": 0.0,
+             "type": None}])  # eg: {"date": datetime obj, "timeblock": "timeblock name", "size": 0.0, "type": either count or time}
+
+        self.assigned = kwargs.get("assigned", False)
+        self.assigned_chunks = kwargs.get("assigned_chunks",
+                                          [{"date": None, "timeblock": None, "size": 0.0, "type": None}])
+
+        self.subtasks = kwargs.get("subtasks", None)  # [{"order": 1, "name": "test sub task", "completed": True}]
+        self.dependencies = kwargs.get("dependencies", None)
 
         self.status = kwargs.get("status",
                                  "Not Started")  # ["Not Started", "In Progress", "Completed", "Failed", "On Hold"]
@@ -79,16 +87,14 @@ class Task:
         self.priority = kwargs.get("priority", 0)  # (0-10)
         self.previous_priority = kwargs.get("previous_priority", self.priority)
         self.preferred_work_days = kwargs.get("preferred_work_days", [])  # ["Monday", "Wednesday", ...]
+        self.time_of_day_preference = kwargs.get("time_of_day_preference",
+                                                 None)  # ["Morning", "Afternoon", "Evening", "Night"]
 
         self.progress = self.calculate_progress()
-        self.urgency = self.calculate_urgency()
 
         self.include_in_schedule = kwargs.get("include_in_schedule", False)
-        self.currently_in_schedule = False
 
         self.global_weight = kwargs.get("global_weight", None)
-        self.schedule_weight = kwargs.get("schedule_weight", None)
-        self.behind_schedule = kwargs.get("behind_schedule", False)
 
     @staticmethod
     def _parse_date(date_str, formats):
@@ -132,29 +138,6 @@ class Task:
             return (self.time_logged / self.time_estimate) * 100 if self.time_estimate > 0 else 0
 
         return 0
-
-    def calculate_urgency(self):
-        urgency = 0
-
-        # Base
-        urgency += self.priority * 10
-
-        # calculating how close the task is to the due date
-        if self.due_datetime:
-            days_to_due = (self.due_datetime - datetime.now()).total_seconds() / (24 * 60 * 60)
-            if days_to_due <= 0:
-                urgency += 50  # overdue
-            elif days_to_due <= 3:
-                urgency += 30
-            elif days_to_due <= 7:
-                urgency += 20
-
-        if self.flexibility == "Flexible":
-            urgency *= 0.75
-        elif self.flexibility == "Very Flexible":
-            urgency *= 0.5
-
-        return urgency
 
     def set_attribute(self, attribute_name, value):
         if hasattr(self, attribute_name):
@@ -459,45 +442,56 @@ class TaskManager:
         """
 
         create_tasks_table = """
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            notes TEXT,
-            tags TEXT,
-            resources TEXT,
-            start_date TEXT,
-            due_datetime TEXT,
-            added_date_time TEXT,
-            last_completed_date TEXT,
-            list_order INTEGER DEFAULT 0,
-            list_name TEXT NOT NULL,
-            recurring BOOLEAN NOT NULL CHECK (recurring IN (0, 1)) DEFAULT 0,
-            recur_every TEXT,
-            recurrences INTEGER DEFAULT 0,
-            time_estimate REAL,
-            time_chunk_size REAL,
-            time_of_day_preference TEXT,
-            time_logged REAL DEFAULT 0,
-            count_required INTEGER DEFAULT 0,
-            count_chunk_size INTEGER DEFAULT 1,
-            count_completed INTEGER DEFAULT 0,
-            subtasks TEXT,
-            dependencies TEXT,
-            status TEXT DEFAULT 'Not Started',
-            flexibility TEXT DEFAULT 'Flexible',
-            effort_level TEXT DEFAULT 'Medium',
-            priority INTEGER DEFAULT 0,
-            previous_priority INTEGER DEFAULT 0,
-            preferred_work_days TEXT,
-            progress REAL DEFAULT 0,
-            urgency REAL DEFAULT 0,
-            include_in_schedule BOOLEAN NOT NULL CHECK (include_in_schedule IN (0, 1)) DEFAULT 0,
-            global_weight REAL,
-            schedule_weight REAL,
-            behind_schedule BOOLEAN NOT NULL CHECK (behind_schedule IN (0, 1)) DEFAULT 0,
-            FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                notes TEXT,
+                tags TEXT DEFAULT '[]',
+                resources TEXT DEFAULT '[]',
+                start_date TEXT,
+                due_datetime TEXT,
+                added_date_time TEXT,
+                last_completed_date TEXT,
+                list_order INTEGER DEFAULT 0,
+                list_name TEXT NOT NULL,
+
+                recurring BOOLEAN NOT NULL CHECK (recurring IN (0,1)) DEFAULT 0,
+                recur_every TEXT,
+                recurrences INTEGER DEFAULT 0,
+
+                time_estimate REAL,
+                time_logged REAL,
+                count_required INTEGER,
+                count_completed INTEGER,
+
+                auto_chunk BOOLEAN NOT NULL CHECK (auto_chunk IN (0,1)) DEFAULT 1,
+                min_chunk_size REAL,
+                max_chunk_size REAL,
+
+                manually_scheduled BOOLEAN NOT NULL CHECK (manually_scheduled IN (0,1)) DEFAULT 0,
+                manually_scheduled_chunks TEXT DEFAULT '[{"date": null, "timeblock": null, "size": 0.0, "type": null}]',
+
+                assigned BOOLEAN NOT NULL CHECK (assigned IN (0,1)) DEFAULT 0,
+                assigned_chunks TEXT DEFAULT '[{"date": null, "timeblock": null, "size": 0.0, "type": null}]',
+
+                subtasks TEXT,
+                dependencies TEXT,
+
+                status TEXT DEFAULT 'Not Started',
+                flexibility TEXT DEFAULT 'Flexible',
+                effort_level TEXT DEFAULT 'Medium',
+                priority INTEGER DEFAULT 0,
+                previous_priority INTEGER DEFAULT 0,
+                preferred_work_days TEXT DEFAULT '[]',
+                time_of_day_preference TEXT,
+
+                progress REAL DEFAULT 0,
+                include_in_schedule BOOLEAN NOT NULL CHECK (include_in_schedule IN (0,1)) DEFAULT 0,
+                global_weight REAL,
+
+                FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
+            );
         """
 
         try:
@@ -550,7 +544,6 @@ class TaskManager:
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
             task_data["recurring"] = bool(task_data["recurring"])
             task_data['include_in_schedule'] = bool(task_data['include_in_schedule'])
-            task_data["behind_schedule"] = bool(task_data["behind_schedule"])
 
             task = Task(**task_data)
             tasks.append(task)
@@ -886,13 +879,50 @@ class TaskManager:
 
             cursor.execute("""
                 INSERT INTO tasks (
-                    name, description, notes, tags, resources, start_date, due_datetime, added_date_time, 
-                    last_completed_date, list_order, list_name, recurring, recur_every, recurrences, 
-                    time_estimate, time_chunk_size, time_of_day_preference, time_logged, count_required, 
-                    count_chunk_size, count_completed, subtasks, dependencies, status, flexibility, 
-                    effort_level, priority, previous_priority, preferred_work_days, progress, urgency, 
-                    include_in_schedule, global_weight, schedule_weight, behind_schedule
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    name,
+                    description,
+                    notes,
+                    tags,
+                    resources,
+                    start_date,
+                    due_datetime,
+                    added_date_time,
+                    last_completed_date,
+                    list_order,
+                    list_name,
+
+                    recurring,
+                    recur_every,
+                    recurrences,
+                    time_estimate,
+                    time_logged,
+                    count_required,
+                    count_completed,
+
+                    auto_chunk,
+                    min_chunk_size,
+                    max_chunk_size,
+
+                    manually_scheduled,
+                    manually_scheduled_chunks,
+
+                    assigned,
+                    assigned_chunks,
+
+                    subtasks,
+                    dependencies,
+
+                    status,
+                    flexibility,
+                    effort_level,
+                    priority,
+                    previous_priority,
+                    preferred_work_days,
+                    time_of_day_preference,
+                    progress,
+                    include_in_schedule,
+                    global_weight
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.name,
                 task.description,
@@ -905,30 +935,38 @@ class TaskManager:
                 task.last_completed_date.strftime("%Y-%m-%d %H:%M") if task.last_completed_date else None,
                 task.list_order,
                 task.list_name,
+
                 int(task.recurring),
                 json.dumps(task.recur_every) if task.recur_every else None,
                 task.recurrences,
                 task.time_estimate,
-                task.time_chunk_size,
-                task.time_of_day_preference,
                 task.time_logged,
                 task.count_required,
-                task.count_chunk_size,
                 task.count_completed,
+
+                int(task.auto_chunk),
+                task.min_chunk_size,
+                task.max_chunk_size,
+
+                int(task.manually_scheduled),
+                json.dumps(task.manually_scheduled_chunks) if task.manually_scheduled_chunks else None,
+
+                int(task.assigned),
+                json.dumps(task.assigned_chunks) if task.assigned_chunks else None,
+
                 json.dumps(task.subtasks) if task.subtasks else None,
                 json.dumps(task.dependencies) if task.dependencies else None,
+
                 task.status,
                 task.flexibility,
                 task.effort_level,
                 task.priority,
                 task.previous_priority,
                 json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
+                task.time_of_day_preference,
                 task.progress,
-                task.urgency,
                 int(task.include_in_schedule),
-                task.global_weight,
-                task.schedule_weight,
-                int(task.behind_schedule)
+                task.global_weight
             ))
 
             self.conn.commit()
@@ -986,7 +1024,7 @@ class TaskManager:
 
             cursor.execute("""
                 UPDATE tasks
-                SET 
+                SET
                     name = ?,
                     description = ?,
                     notes = ?,
@@ -998,30 +1036,41 @@ class TaskManager:
                     last_completed_date = ?,
                     list_order = ?,
                     list_name = ?,
+
                     recurring = ?,
                     recur_every = ?,
                     recurrences = ?,
+
                     time_estimate = ?,
-                    time_chunk_size = ?,
-                    time_of_day_preference = ?,
                     time_logged = ?,
                     count_required = ?,
-                    count_chunk_size = ?,
                     count_completed = ?,
+
+                    auto_chunk = ?,
+                    min_chunk_size = ?,
+                    max_chunk_size = ?,
+
+                    manually_scheduled = ?,
+                    manually_scheduled_chunks = ?,
+
+                    assigned = ?,
+                    assigned_chunks = ?,
+
                     subtasks = ?,
                     dependencies = ?,
+
                     status = ?,
                     flexibility = ?,
                     effort_level = ?,
                     priority = ?,
                     previous_priority = ?,
                     preferred_work_days = ?,
+                    time_of_day_preference = ?,
+
                     progress = ?,
-                    urgency = ?,
                     include_in_schedule = ?,
-                    global_weight = ?,
-                    schedule_weight = ?,
-                    behind_schedule = ?
+                    global_weight = ?
+
                 WHERE id = ?
             """, (
                 task.name,
@@ -1035,30 +1084,41 @@ class TaskManager:
                 task.last_completed_date.isoformat() if task.last_completed_date else None,
                 task.list_order,
                 task.list_name,
+
                 int(task.recurring),
                 json.dumps(task.recur_every) if task.recur_every else None,
                 task.recurrences,
+
                 task.time_estimate,
-                task.time_chunk_size,
-                task.time_of_day_preference,
                 task.time_logged,
                 task.count_required,
-                task.count_chunk_size,
                 task.count_completed,
+
+                int(task.auto_chunk),
+                task.min_chunk_size,
+                task.max_chunk_size,
+
+                int(task.manually_scheduled),
+                json.dumps(task.manually_scheduled_chunks) if task.manually_scheduled_chunks else None,
+
+                int(task.assigned),
+                json.dumps(task.assigned_chunks) if task.assigned_chunks else None,
+
                 json.dumps(task.subtasks) if task.subtasks else None,
                 json.dumps(task.dependencies) if task.dependencies else None,
+
                 task.status,
                 task.flexibility,
                 task.effort_level,
                 task.priority,
                 task.previous_priority,
                 json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
+                task.time_of_day_preference,
+
                 task.progress,
-                task.urgency,
                 int(task.include_in_schedule),
                 task.global_weight,
-                task.schedule_weight,
-                int(task.behind_schedule),
+
                 task.id
             ))
 
@@ -1066,9 +1126,10 @@ class TaskManager:
                 raise ValueError(f"Task with ID {task.id} does not exist.")
 
             self.conn.commit()
+
             # Update task list references in-place
             if old_list_name:
-                # If task moved to different list
+                # If the task moved to a different list
                 if old_list_name != task.list_name:
                     # Remove from old list
                     old_task_list = next((tl for tl in self.task_lists if tl.name == old_list_name), None)
@@ -1080,13 +1141,14 @@ class TaskManager:
                     if new_task_list:
                         new_task_list.tasks.append(task)
                 else:
-                    # Update task in same list
+                    # Update task in the same list
                     task_list = next((tl for tl in self.task_lists if tl.name == task.list_name), None)
                     if task_list:
                         for i, t in enumerate(task_list.tasks):
                             if t.id == task.id:
                                 task_list.tasks[i] = task
                                 break
+
             print(f"Task with ID {task.id} successfully updated.")
         except sqlite3.Error as e:
             print(f"Database error while updating task with ID {task.id}: {e}")
@@ -1116,7 +1178,6 @@ class TaskManager:
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
             task_data["recurring"] = bool(task_data["recurring"])
             task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
-            task_data["behind_schedule"] = bool(task_data["behind_schedule"])
 
             return Task(**task_data)
 
@@ -1153,7 +1214,6 @@ class TaskManager:
                     "dependencies") else []
                 task_data["recurring"] = bool(task_data["recurring"])
                 task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
-                task_data["behind_schedule"] = bool(task_data["behind_schedule"])
 
                 task = Task(**task_data)
 
