@@ -383,6 +383,642 @@ class TimeEstimateWidget(QWidget):
         self.minutes_spinbox.setValue(min(59, max(0, minutes)))
 
 
+# --- FlowLayout definition (for wrapping custom chunks) ---
+class FlowLayout(QLayout):
+    def __init__(self, parent=None, margin=0, spacing=5):
+        super().__init__(parent)
+        self.itemList = []
+        self.setContentsMargins(margin, margin, margin, margin)
+        self._spacing = spacing
+
+    def __del__(self):
+        while self.count():
+            item = self.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def addItem(self, item):
+        self.itemList.append(item)
+
+    def count(self):
+        return len(self.itemList)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self.doLayout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self.doLayout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.itemList:
+            size = size.expandedTo(item.minimumSize())
+        margin = self.contentsMargins()
+        size += QSize(margin.left() + margin.right(), margin.top() + margin.bottom())
+        return size
+
+    def doLayout(self, rect, testOnly):
+        x = rect.x()
+        y = rect.y()
+        lineHeight = 0
+
+        for item in self.itemList:
+            wid = item.widget()
+            spaceX = self._spacing
+            spaceY = self._spacing
+            nextX = x + wid.sizeHint().width() + spaceX
+            if nextX > rect.right() and lineHeight > 0:
+                # Wrap to next line
+                x = rect.x()
+                y = y + lineHeight + spaceY
+                nextX = x + wid.sizeHint().width() + spaceX
+                lineHeight = 0
+
+            if not testOnly:
+                item.setGeometry(QRect(QPoint(x, y), wid.sizeHint()))
+
+            x = nextX
+            lineHeight = max(lineHeight, wid.sizeHint().height())
+
+        return y + lineHeight - rect.y()
+
+
+class ChunkingSelectionWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        # Main layout (Vertical)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(2)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        ### Time Assignment Layout ###
+        self.time_assignment_layout = QHBoxLayout()
+        self.time_assignment_layout.setSpacing(3)
+        self.time_assignment_layout.setContentsMargins(0, 0, 0, 0)
+        self.time_assignment_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.te_label = QLabel("Time Estimate:")
+        self.te_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.te_label.setMaximumWidth(self.te_label.sizeHint().width())
+
+        self.time_estimate_selector = TimeEstimateWidget(self)
+        self.time_estimate_selector.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        # Default to 15 min
+        self.time_estimate_selector.set_time_estimate(0, 15)
+
+        # Connect changes
+        self.time_estimate_selector.hours_spinbox.valueChanged.connect(self._onTimeEstimateChanged)
+        self.time_estimate_selector.minutes_spinbox.valueChanged.connect(self._onTimeEstimateChanged)
+
+        # Quick Time Selection Buttons
+        quick_time_select_layout = QHBoxLayout()
+        quick_time_select_layout.setSpacing(2)
+        quick_time_select_layout.setContentsMargins(0, 0, 0, 0)
+        self.quick_time_select = QButtonGroup(self)
+        self.quick_time_select.setExclusive(True)
+        self.quick_times_map = {
+            "15 min": (0, 15),
+            "30 min": (0, 30),
+            "1 hr": (1, 0),
+            "2 hr": (2, 0),
+            "3 hr": (3, 0),
+        }
+        for option, (hrs, mins) in self.quick_times_map.items():
+            btn = QPushButton(option)
+            btn.setCheckable(True)
+            btn.setFixedWidth(60)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.quick_time_select.addButton(btn)
+            quick_time_select_layout.addWidget(btn)
+            btn.toggled.connect(lambda checked, o=option: self._handleQuickTimeSelection(o, checked))
+
+        quick_time_container = QWidget()
+        quick_time_container.setLayout(quick_time_select_layout)
+        quick_time_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        quick_time_container.setMaximumWidth(len(self.quick_times_map) * 60)
+
+        # Count Selection
+        count_layout = QHBoxLayout()
+        count_layout.setSpacing(8)
+        count_layout.setContentsMargins(0, 0, 0, 0)
+        self.count_lb = QLabel("Count:")
+        self.count_lb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.count_selector = QSpinBox(self)
+        self.count_selector.setRange(0, 999999)
+        self.count_selector.setFixedWidth(75)
+        self.count_selector.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.count_selector.valueChanged.connect(self._updateChunkSpinboxes)
+        count_layout.addWidget(self.count_lb)
+        count_layout.addWidget(self.count_selector)
+
+        # Assemble Time Assignment Layout
+        self.time_assignment_layout.addWidget(self.te_label)
+        self.time_assignment_layout.addWidget(self.time_estimate_selector)
+        self.time_assignment_layout.addSpacing(5)
+        self.time_assignment_layout.addWidget(quick_time_container)
+        self.time_assignment_layout.addSpacing(8)
+        self.time_assignment_layout.addLayout(count_layout)
+        self.main_layout.addLayout(self.time_assignment_layout)
+
+        ### Chunking Style (Auto / Assigned / Single) ###
+        self.chunking_style_layout = QHBoxLayout()
+        self.chunking_style_layout.setSpacing(2)
+        self.chunking_style_layout.setContentsMargins(0, 0, 0, 0)
+        self.chunking_style_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.chunking_style_group = QButtonGroup(self)
+        self.chunking_buttons_container = QWidget()
+        self.chunking_buttons_layout = QHBoxLayout(self.chunking_buttons_container)
+        self.chunking_buttons_layout.setSpacing(2)
+        self.chunking_buttons_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.auto_chunk_btn = QPushButton("Auto")
+        self.assigned_chunk_btn = QPushButton("Assigned")
+        self.single_chunk_btn = QPushButton("Single")
+
+        for btn in [self.auto_chunk_btn, self.assigned_chunk_btn, self.single_chunk_btn]:
+            btn.setCheckable(True)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.chunking_style_group.addButton(btn)
+            self.chunking_buttons_layout.addWidget(btn)
+
+        self.chunking_style_layout.addWidget(self.chunking_buttons_container)
+        self.main_layout.addLayout(self.chunking_style_layout)
+
+        ### Chunking Method (Time / Count) ###
+        self.chunking_method_layout = QHBoxLayout()
+        self.chunking_method_layout.setSpacing(2)
+        self.chunking_method_layout.setContentsMargins(0, 0, 0, 0)
+        self.chunking_method_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.chunking_method_group = QButtonGroup(self)
+        self.chunking_method_container = QWidget()
+        self.chunking_method_buttons_layout = QHBoxLayout(self.chunking_method_container)
+        self.chunking_method_buttons_layout.setSpacing(2)
+        self.chunking_method_buttons_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.time_chunk_btn = QPushButton("Time")
+        self.count_chunk_btn = QPushButton("Count")
+
+        for btn in [self.time_chunk_btn, self.count_chunk_btn]:
+            btn.setCheckable(True)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.chunking_method_group.addButton(btn)
+            self.chunking_method_buttons_layout.addWidget(btn)
+
+        self.chunking_method_layout.addWidget(self.chunking_method_container)
+        self.main_layout.addLayout(self.chunking_method_layout)
+
+        ### Chunking Configuration for "Auto" ###
+        self.chunking_config_layout = QHBoxLayout()
+        self.chunking_config_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.chunking_config_layout.setSpacing(5)
+        self.chunking_config_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.addLayout(self.chunking_config_layout)
+
+        self.min_label = QLabel("Min Time:")
+        self.min_spinbox = QSpinBox()
+        self.min_spinbox.setRange(1, 999999)
+        self.min_spinbox.setFixedWidth(75)
+        self.min_spinbox.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        self.max_label = QLabel("Max Time:")
+        self.max_spinbox = QSpinBox()
+        self.max_spinbox.setRange(1, 999999)
+        self.max_spinbox.setFixedWidth(75)
+        self.max_spinbox.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        self.chunking_config_layout.addWidget(self.min_label)
+        self.chunking_config_layout.addWidget(self.min_spinbox)
+        self.chunking_config_layout.addWidget(self.max_label)
+        self.chunking_config_layout.addWidget(self.max_spinbox)
+
+        ### Assigned Chunks UI (Visible only if 'Assigned') ###
+        self.assigned_widget = QWidget()
+        assigned_v = QVBoxLayout(self.assigned_widget)
+        assigned_v.setContentsMargins(0, 0, 0, 0)
+        assigned_v.setSpacing(5)
+
+        # Sub-mode radio buttons
+        self.split_evenly_btn = QRadioButton("Split Evenly")
+        self.custom_assigned_btn = QRadioButton("Custom")
+        self.split_evenly_btn.setChecked(True)
+        self.mode_layout = QHBoxLayout()
+        self.mode_layout.addWidget(self.split_evenly_btn)
+        self.mode_layout.addWidget(self.custom_assigned_btn)
+        assigned_v.addLayout(self.mode_layout)
+
+        # Split Evenly container
+        self.assigned_evenly_container = QWidget()
+        self.assigned_evenly_layout = QHBoxLayout(self.assigned_evenly_container)
+        self.assigned_evenly_layout.setSpacing(5)
+
+        self.split_evenly_label = QLabel("Number of Chunks:")
+        self.split_evenly_spinbox = QSpinBox()
+        self.split_evenly_spinbox.setRange(1, 9999)
+        self.split_evenly_spinbox.setValue(2)
+
+        self.evenly_preview_label = QLabel("")
+        self.assigned_evenly_layout.addWidget(self.split_evenly_label)
+        self.assigned_evenly_layout.addWidget(self.split_evenly_spinbox)
+        self.assigned_evenly_layout.addWidget(self.evenly_preview_label)
+        self.assigned_evenly_container.setLayout(self.assigned_evenly_layout)
+
+        assigned_v.addWidget(self.assigned_evenly_container)
+
+        # Custom container
+        self.assigned_custom_container = QWidget()
+        self.assigned_custom_layout = QVBoxLayout(self.assigned_custom_container)
+        self.assigned_custom_layout.setSpacing(3)
+        self.assigned_custom_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.custom_controls_layout = QHBoxLayout()
+        self.btn_add_chunk = QPushButton("Add Chunk")
+        self.btn_add_chunk.clicked.connect(self._onAddCustomChunk)
+        self.custom_controls_layout.addWidget(self.btn_add_chunk)
+        self.assigned_custom_layout.addLayout(self.custom_controls_layout)
+
+        # A scrollable area containing the FlowLayout
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setWidgetResizable(True)
+
+        self.custom_chunks_flow = FlowLayout(spacing=8)
+        # We'll put the flow in a container:
+        self.custom_chunks_container = QWidget()
+        self.custom_chunks_container.setLayout(self.custom_chunks_flow)
+        self.scroll_area.setWidget(self.custom_chunks_container)
+
+        self.assigned_custom_layout.addWidget(self.scroll_area)
+        self.assigned_custom_container.setLayout(self.assigned_custom_layout)
+        assigned_v.addWidget(self.assigned_custom_container)
+
+        self.main_layout.addWidget(self.assigned_widget)
+
+        # Ensure assigned-widget is hidden on startup
+        self.assigned_widget.setVisible(False)
+
+        # Initialize floating chunk for custom mode
+        self._floating_chunk_widget = None
+        self._createFloatingChunk()
+
+        # --- Connect signals ---
+        self.split_evenly_spinbox.valueChanged.connect(self._updateEvenlyPreview)
+        self.split_evenly_btn.toggled.connect(self._updateAssignedVisibility)
+        self.custom_assigned_btn.toggled.connect(self._updateAssignedVisibility)
+
+        self.auto_chunk_btn.toggled.connect(self.update_chunking_config)
+        self.assigned_chunk_btn.toggled.connect(self.update_chunking_config)
+        self.single_chunk_btn.toggled.connect(self.update_chunking_config)
+
+        self.time_chunk_btn.toggled.connect(self.update_chunking_method)
+        self.count_chunk_btn.toggled.connect(self.update_chunking_method)
+
+        self.time_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
+        self.count_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
+        self.auto_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
+        self.assigned_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
+        self.single_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
+
+        # Default selections
+        self.auto_chunk_btn.setChecked(True)
+        self.time_chunk_btn.setChecked(True)
+        self.update_chunking_method()
+        self.update_chunking_config()
+        self._updateChunkSpinboxes()
+        self._updateAssignedVisibility()
+        self._updateEvenlyPreview()
+
+        self.assigned_custom_container.setVisible(False)
+
+    # ----------------- Public API ----------------- #
+    def get_chunking_style(self):
+        if self.auto_chunk_btn.isChecked():
+            return "auto"
+        elif self.assigned_chunk_btn.isChecked():
+            return "assigned"
+        else:
+            return "single"
+
+    def get_chunking_method(self):
+        return "time" if self.time_chunk_btn.isChecked() else "count"
+
+    def get_chunk_sizes(self):
+        if self.get_chunking_style() == "auto":
+            return (self.min_spinbox.value(), self.max_spinbox.value())
+        return (0, 0)
+
+    def get_assigned_chunks(self):
+        if self.get_chunking_style() != "assigned":
+            return []
+        if self.split_evenly_btn.isChecked():
+            n = self.split_evenly_spinbox.value()
+            total = self._getTotalEstimate()
+            if total <= 0 or n <= 0:
+                return []
+            chunk_size = total // n
+            leftover = total % n
+            chunks = []
+            for i in range(n):
+                c = chunk_size + (1 if i < leftover else 0)
+                chunks.append(c)
+            return chunks
+        else:
+            results = []
+            count_items = self.custom_chunks_flow.count()
+            for i in range(count_items):
+                item = self.custom_chunks_flow.itemAt(i)
+                w = item.widget()
+                if w and w.property("chunk_data"):
+                    data = w.property("chunk_data")
+                    chunk_type = data["type"]
+                    val = self._getChunkValue(chunk_type, data["widget"])
+                    if val > 0:
+                        results.append(val)
+            return results
+
+    # ----------------- Internal Updates ----------------- #
+    def update_chunking_config(self):
+        is_auto = self.auto_chunk_btn.isChecked()
+        is_assigned = self.assigned_chunk_btn.isChecked()
+        self.min_label.setVisible(is_auto)
+        self.min_spinbox.setVisible(is_auto)
+        self.max_label.setVisible(is_auto)
+        self.max_spinbox.setVisible(is_auto)
+        self.assigned_widget.setVisible(is_assigned)
+
+    def update_chunking_method(self):
+        if self.time_chunk_btn.isChecked():
+            self.min_label.setText("Min Time:")
+            self.max_label.setText("Max Time:")
+        else:
+            self.min_label.setText("Min Count:")
+            self.max_label.setText("Max Count:")
+
+    def _updateChunkSpinboxes(self):
+        if self.get_chunking_style() != "auto":
+            return
+        total = self._getTotalEstimate()
+        if total <= 0:
+            self.min_spinbox.setValue(1)
+            self.max_spinbox.setValue(1)
+            return
+        if self.get_chunking_method() == "time":
+            min_val = 15 if total <= 30 else 30
+            max_val = max(total, min_val)
+            self.min_spinbox.setValue(min_val)
+            self.max_spinbox.setValue(max_val)
+        else:
+            min_val = max(1, int(total * 0.2))
+            max_val = max(total, min_val)
+            self.min_spinbox.setValue(min_val)
+            self.max_spinbox.setValue(max_val)
+
+    def _updateAssignedVisibility(self):
+        """ Show/Hide assigned sub-mode UI and reset the floating chunk properly."""
+        if not self.assigned_chunk_btn.isChecked():
+            self.assigned_widget.setVisible(False)
+            return
+
+        self.assigned_widget.setVisible(True)
+
+        use_split_evenly = self.split_evenly_btn.isChecked()
+        self.assigned_evenly_container.setVisible(use_split_evenly)
+        self.assigned_custom_container.setVisible(not use_split_evenly)
+
+        if self.custom_assigned_btn.isChecked():
+            self._createFloatingChunk()  # Ensure floating chunk starts with total
+            self._adjustFloatingChunkSize()
+
+        self._updateEvenlyPreview()
+
+    def _updateEvenlyPreview(self):
+        if not self.assigned_chunk_btn.isChecked() or not self.split_evenly_btn.isChecked():
+            self.evenly_preview_label.setText("")
+            return
+        n = self.split_evenly_spinbox.value()
+        total = self._getTotalEstimate()
+        if n <= 0 or total <= 0:
+            self.evenly_preview_label.setText("(No valid chunks)")
+            return
+        chunk_size = total // n
+        leftover = total % n
+        if self.get_chunking_method() == "time":
+            self.evenly_preview_label.setText(f"Each ≈ {chunk_size} min (+ leftover={leftover})")
+        else:
+            self.evenly_preview_label.setText(f"Each ≈ {chunk_size} (+ leftover={leftover})")
+
+    # ------------------ Custom Approach ------------------ #
+    def _createFloatingChunk(self):
+        """Create the floating chunk with the correct total estimate."""
+        total = self._getTotalEstimate()
+        if self._floating_chunk_widget:
+            self._floating_chunk_widget.setRange(0, total)
+            self._floating_chunk_widget.setValue(total)
+            return
+
+        chunk_type = "time" if self.get_chunking_method() == "time" else "count"
+
+        container = QWidget()
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(5)
+
+        spin = QSpinBox(self)
+        spin.setRange(0, total)
+        spin.setValue(total)
+        spin.setFixedWidth(80)
+
+        container_layout.addWidget(spin)
+        container.setProperty("chunk_data", {"type": chunk_type, "widget": spin, "floating": True})
+
+        self._floating_chunk_widget = spin
+        self.custom_chunks_flow.addWidget(container)
+
+    def _onAddCustomChunk(self):
+        """Add a chunk, splitting from the floating chunk.
+           Prevent adding if leftover is 0 or less.
+        """
+        leftover = self._getLeftover()
+        if leftover <= 0:
+            return  # Don't allow adding if no leftover
+
+        chunk_type = "time" if self.get_chunking_method() == "time" else "count"
+
+        # We'll create a new chunk of '1' minute (or 1 count) by default,
+        # then subtract that from the floating chunk leftover.
+        new_chunk_value = 1 if leftover >= 1 else leftover  # Just in case leftover=1
+        container = QWidget()
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(5)
+
+        spin = QSpinBox(self)
+        spin.setRange(0, leftover)  # user can't exceed leftover
+        spin.setValue(new_chunk_value)
+        spin.setFixedWidth(80)
+        container_layout.addWidget(spin)
+
+        remove_btn = QPushButton("X")
+        remove_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        remove_btn.clicked.connect(lambda: self._removeCustomChunk(container))
+        container_layout.addWidget(remove_btn)
+
+        container.setProperty("chunk_data", {"type": chunk_type, "widget": spin, "floating": False})
+        self.custom_chunks_flow.addWidget(container)
+
+        # Reorder floating chunk last
+        self._reorderFloatingChunkLast()
+        # Adjust leftover
+        self._adjustFloatingChunkSize()
+
+    def _removeCustomChunk(self, container):
+        self.custom_chunks_flow.removeWidget(container)
+        container.setParent(None)
+        container.deleteLater()
+        self._adjustFloatingChunkSize()
+
+    def _reorderFloatingChunkLast(self):
+        if not self._floating_chunk_widget:
+            return
+        floating_container = None
+        for i in range(self.custom_chunks_flow.count()):
+            item = self.custom_chunks_flow.itemAt(i)
+            w = item.widget()
+            if w and w.property("chunk_data") and w.property("chunk_data")["floating"]:
+                floating_container = w
+                break
+        if floating_container:
+            self.custom_chunks_flow.removeWidget(floating_container)
+            self.custom_chunks_flow.addWidget(floating_container)
+
+    def _adjustFloatingChunkSize(self):
+        """Adjust the floating chunk so sum(all chunks) == total estimate."""
+        total_estimate = self._getTotalEstimate()
+        if total_estimate <= 0:
+            return
+
+        used_amount = 0
+        floating_w = None
+        floating_container = None
+
+        for i in range(self.custom_chunks_flow.count()):
+            item = self.custom_chunks_flow.itemAt(i)
+            w = item.widget()
+            if not w or not w.property("chunk_data"):
+                continue
+            data = w.property("chunk_data")
+            if data["floating"]:
+                floating_w = data["widget"]
+                floating_container = w
+                continue
+            used_amount += self._getChunkValue(data["type"], data["widget"])
+
+        if not floating_w:
+            # If no floating chunk exists, create one with the correct total
+            self._createFloatingChunk()
+            return
+
+        leftover = total_estimate - used_amount
+        floating_w.setRange(0, total_estimate)
+        floating_w.setValue(max(0, leftover))  # Ensure it doesn't go negative
+
+        if leftover <= 0:
+            self.custom_chunks_flow.removeWidget(floating_container)
+            floating_container.setParent(None)
+            floating_container.deleteLater()
+            self._floating_chunk_widget = None
+
+            # Make last chunk the new floating chunk if needed
+            new_count = self.custom_chunks_flow.count()
+            if new_count > 0:
+                last_item = self.custom_chunks_flow.itemAt(new_count - 1)
+                last_w = last_item.widget()
+                if last_w and last_w.property("chunk_data"):
+                    d = last_w.property("chunk_data")
+                    d["floating"] = True
+                    self._floating_chunk_widget = d["widget"]
+                    self._clearRemoveButton(last_w)
+
+    def _clearRemoveButton(self, container):
+        layout = container.layout()
+        if not layout:
+            return
+        for i in reversed(range(layout.count())):
+            item = layout.itemAt(i)
+            w = item.widget()
+            if isinstance(w, QPushButton) and w.text() == "X":
+                layout.removeWidget(w)
+                w.setParent(None)
+                w.deleteLater()
+
+    def _getLeftover(self):
+        """Return how much leftover is currently in the floating chunk."""
+        total_estimate = self._getTotalEstimate()
+        used_amount = 0
+        floating_val = 0
+        for i in range(self.custom_chunks_flow.count()):
+            item = self.custom_chunks_flow.itemAt(i)
+            w = item.widget()
+            if not w or not w.property("chunk_data"):
+                continue
+            data = w.property("chunk_data")
+            if data["floating"]:
+                floating_val = self._getChunkValue(data["type"], data["widget"])
+            else:
+                used_amount += self._getChunkValue(data["type"], data["widget"])
+        # leftover = total - used_amount is actually stored in floating
+        # so we can just sum leftover + used
+        return total_estimate - used_amount
+
+    # --------------- Helpers --------------- #
+    def _getTotalEstimate(self):
+        if self.get_chunking_method() == "time":
+            h, m = self.time_estimate_selector.get_time_estimate()
+            return h * 60 + m
+        else:
+            return self.count_selector.value()
+
+    def _getChunkValue(self, chunk_type, widget):
+        return widget.value()
+
+    # --------------- Spinbox changes --------------- #
+    def _onTimeEstimateChanged(self, _value):
+        self._uncheckQuickTimeButtons()
+        self._updateChunkSpinboxes()
+        self._updateEvenlyPreview()
+        self._adjustFloatingChunkSize()
+
+    def _uncheckQuickTimeButtons(self):
+        for btn in self.quick_time_select.buttons():
+            if btn.isChecked():
+                btn.setChecked(False)
+
+    def _handleQuickTimeSelection(self, option, checked):
+        if checked:
+            hrs, mins = self.quick_times_map[option]
+            self.time_estimate_selector.set_time_estimate(hrs, mins)
+
 
 class AddTaskDialog(QDialog):
     def __init__(self, parent=None, task_list_widget=None):
@@ -511,55 +1147,9 @@ class AddTaskDialog(QDialog):
 
         self.main_layout.addWidget(self.basic)
 
-        # Time assignment and chunking layout (Vertical)
-        self.time_count_assignment_and_chunking_layout = QVBoxLayout()
-
-        # Horizontal layout for label, time selector, and buttons
-        time_assignment_layout = QHBoxLayout()
-        time_assignment_layout.setSpacing(0)
-        time_assignment_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.te_label = QLabel("Time Estimate:")
-        self.te_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Prevents stretching
-        self.te_label.setMaximumWidth(self.te_label.sizeHint().width())  # Ensures compact width
-
-        self.time_estimate_selector = TimeEstimateWidget(self)
-        self.time_estimate_selector.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Keep it compact
-
-        # Quick time selection buttons layout
-        quick_time_select_layout = QHBoxLayout()
-        quick_time_select_layout.setSpacing(0)
-        quick_time_select_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.quick_time_select = QButtonGroup(self)
-        self.quick_time_select.setExclusive(True)
-
-        qs_list = ["15 min", "30 min", "1 hr", "2 hr", "3 hr"]
-        for option in qs_list:
-            btn = QPushButton(option)
-            btn.setCheckable(True)
-            btn.setFlat(False)
-            btn.setFixedWidth(60)
-            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Keep buttons compact
-            self.quick_time_select.addButton(btn)
-            quick_time_select_layout.addWidget(btn)
-
-        # Container to ensure buttons don’t spread
-        quick_time_container = QWidget()
-        quick_time_container.setLayout(quick_time_select_layout)
-        quick_time_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        quick_time_container.setMaximumWidth(len(qs_list) * 60)  # Keep width compact
-
-        # Add elements to the horizontal layout (ensuring no gaps)
-        time_assignment_layout.addWidget(self.te_label)
-        time_assignment_layout.addWidget(self.time_estimate_selector)
-        time_assignment_layout.addWidget(quick_time_container)
-
-        # Add the horizontal layout into the vertical layout
-        self.time_count_assignment_and_chunking_layout.addLayout(time_assignment_layout)
-
-        # Add everything to the main layout
-        self.main_layout.addLayout(self.time_count_assignment_and_chunking_layout)
+        # Chunking style selection layout (Horizontal)
+        self.time_count_chunk_selector = ChunkingSelectionWidget(self)
+        self.main_layout.addWidget(self.time_count_chunk_selector)
 
         # Connect signals
         self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
