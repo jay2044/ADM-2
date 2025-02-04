@@ -314,14 +314,18 @@ class HourScaleWidget(QWidget):
             self.layout.addWidget(cell_widget, stretch=20)
 
     def set_height(self, start_index, end_index, height):
-        """Set the height of a specific range of intervals based on pixels."""
-        height = int(height / (max(start_index, end_index) - min(start_index, end_index)))
+        range_size = (max(start_index, end_index) - min(start_index, end_index))
+        if range_size == 0:
+            # The block is effectively zero length or same hour => do nothing or pick a default
+            return
+
+        height_per_cell = int(height / range_size)
         for index in range(start_index, end_index + 1):
             if 0 <= index < len(self.hours):
-                self.custom_heights[index] = height
+                self.custom_heights[index] = height_per_cell
                 widget = self.layout.itemAt(index).widget()
-                widget.resize(widget.width(), height)
-                self.layout.setStretchFactor(widget, height)
+                widget.resize(widget.width(), height_per_cell)
+                self.layout.setStretchFactor(widget, height_per_cell)
 
     def set_height_by_widget(self, start_hour, end_hour, widget):
         """Set the height of intervals to match the height of another widget."""
@@ -637,6 +641,7 @@ class TimeBlockManagerWidget(QWidget):
             self.populate_time_blocks()
 
             QMessageBox.information(self, "Success", "Time block added successfully!")
+            global_signals.refresh_schedule_signal.emit()
 
     def open_edit_time_block_dialogue(self, time_block_name):
         for block in self.schedule_manager.time_blocks:
@@ -670,30 +675,28 @@ class TimeBlockManagerWidget(QWidget):
                             "unavailable": 0
                         }
 
-                    self.schedule_manager.add_time_block(new_time_block)
+                    self.schedule_manager.update_time_block(new_time_block)
                     self.populate_time_blocks()
 
-                    QMessageBox.information(self, "Success", "Time block added successfully!")
+                    QMessageBox.information(self, "Success", "Time block updated successfully!")
+                    global_signals.refresh_schedule_signal.emit()
+
 
     def delete_time_block(self, time_block_name):
-        for block in self.schedule_manager.time_blocks:
-            if time_block_name == block.get("name"):
-                self.schedule_manager.remove_time_block(block.get("id"))
+        self.schedule_manager.remove_time_block(time_block_name)
+        self.populate_time_blocks()
+        global_signals.refresh_schedule_signal.emit()
 
 
 class ScheduleViewWidget(QWidget):
     def __init__(self, schedule_manager=None):
         super().__init__()
         self.schedule_manager = schedule_manager
-        self.time_blocks = self.schedule_manager.get_day_schedule(
-            date.today()).time_blocks if self.schedule_manager else []
-        for tb in self.time_blocks:
-            print(f"TimeBlock ID: {tb.id}, Name: {tb.name}, Type: {tb.block_type}, "
-                  f"Start: {tb.start_time}, End: {tb.end_time}, Duration: {tb.duration}h, "
-                  f"Tasks: {len(tb.task_chunks)}, Buffer Ratio: {tb.buffer_ratio}, Color: {tb.color}")
         self.expanded_ui_visible = False
         self.initUI()
         self.load_time_blocks()
+
+        global_signals.refresh_schedule_signal.connect(self.load_time_blocks)
 
     def initUI(self):
         self.mainLayout = QHBoxLayout(self)
@@ -775,21 +778,41 @@ class ScheduleViewWidget(QWidget):
         selected_date = self.date_picker.selectedDate().toString('yyyy-MM-dd')
         self.date_label.setText(f"Selected Date: {selected_date}")
 
-    def load_time_blocks(self):
-        pass  # Add your logic for loading time blocks
-
     def open_settings_dialogue(self):
         pass  # Add your settings dialogue logic
 
     def load_time_blocks(self):
+        # 1. Refresh schedule in the schedule manager
+        self.schedule_manager.refresh_schedule()
+
+        # 2. Clear old time block widgets from the layout
+        while self.timeBlocksLayout.count():
+            item = self.timeBlocksLayout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # 3. Fetch today's time blocks (recomputed)
+        self.time_blocks = self.schedule_manager.get_day_schedule(
+            date.today()
+        ).time_blocks if self.schedule_manager else []
+
+        # 4. Debug print
+
+        # for tb in self.time_blocks:
+        #     print(f"TimeBlock ID: {tb.id}, Name: {tb.name}, Type: {tb.block_type}, "
+        #           f"Start: {tb.start_time}, End: {tb.end_time}, Duration: {tb.duration}h, "
+        #           f"Tasks: {len(tb.task_chunks)}, Buffer Ratio: {tb.buffer_ratio}, Color: {tb.color}")
+
         if not self.time_blocks:
             return
 
+        # 5. Re-add the new time block widgets
         for block in self.time_blocks:
             tb_widget = TimeBlockWidget(self, block)
             stretch_factor = tb_widget.base_height
             self.timeBlocksLayout.addWidget(tb_widget, stretch=stretch_factor)
 
+        # 6. Update time cell heights
         QTimer.singleShot(0, self.update_time_cell_heights)
 
     def update_time_cell_heights(self):

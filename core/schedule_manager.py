@@ -382,7 +382,7 @@ class ScheduleManager:
                 if schedule_json:
                     schedule_dict = json.loads(schedule_json)
                     # Convert any string times into actual time objects
-                    schedule_dict = parse_time_schedule(schedule_dict)
+                    # schedule_dict = parse_time_schedule(schedule_dict)
                 else:
                     schedule_dict = {}
                 list_categories = json.loads(row["list_categories"]) if row["list_categories"] else {
@@ -472,9 +472,6 @@ class ScheduleManager:
             new_id = cursor.lastrowid
             time_block["id"] = new_id
 
-            # Keep a copy in memory
-            print("ok")
-            print(time_block)
             self.time_blocks.append(time_block)
 
             cursor.close()
@@ -489,25 +486,25 @@ class ScheduleManager:
             self.conn.rollback()
             raise
 
-    def remove_time_block(self, block_id: int):
+    def remove_time_block(self, block_name: int):
         """
         Remove a time block from both the database and the in-memory structure.
         """
         try:
             block_to_remove = None
             for block in self.time_blocks:
-                if block["id"] == block_id:
+                if block["name"] == block_name:
                     block_to_remove = block
                     break
 
             if not block_to_remove:
-                print(f"Time block with ID {block_id} not found in memory")
+                print(f"Time block with ID {block_name} not found in memory")
                 return False
 
             cursor = self.conn.cursor()
-            cursor.execute("DELETE FROM time_blocks WHERE id = ?", (block_id,))
+            cursor.execute("DELETE FROM time_blocks WHERE name = ?", (block_name,))
             if cursor.rowcount == 0:
-                print(f"Time block with ID {block_id} not found in database")
+                print(f"Time block with ID {block_name} not found in database")
                 return False
             self.conn.commit()
 
@@ -530,19 +527,26 @@ class ScheduleManager:
         The updated_block is a dictionary that must include the "id" key.
         """
         try:
-            block_id = updated_block["id"]
+            block_name = updated_block["name"]
 
             # Find the existing block in memory
             existing_index = None
             for i, block in enumerate(self.time_blocks):
-                if block["id"] == block_id:
+                if block["name"] == block_name:
                     existing_index = i
                     break
             if existing_index is None:
-                print(f"Time block with ID {block_id} not found in memory.")
+                print(f"Time block with ID {block_name} not found in memory.")
                 return False
 
-            schedule_json = json.dumps(updated_block.get("schedule", {}))
+            # Convert each field to JSON or string as needed
+            if updated_block.get("schedule", {}):
+                schedule_dict = updated_block["schedule"]
+                # Convert any datetime.time objects to strings
+                schedule_dict = convert_times_in_schedule(schedule_dict)
+                schedule_json = json.dumps(schedule_dict)
+            else:
+                schedule_json = "{}"
             list_cats_json = json.dumps(updated_block.get("list_categories", {"include": [], "exclude": []}))
             task_tags_json = json.dumps(updated_block.get("task_tags", {"include": [], "exclude": []}))
             color_str = ""
@@ -560,18 +564,16 @@ class ScheduleManager:
                     task_tags = ?,
                     color = ?,
                     unavailable = ?
-                WHERE id = ?
             """, (
                 updated_block.get("name", ""),
                 schedule_json,
                 list_cats_json,
                 task_tags_json,
                 color_str,
-                unavailable,
-                block_id
+                unavailable
             ))
             if cursor.rowcount == 0:
-                print(f"Time block with ID {block_id} not found in database.")
+                print(f"Time block with ID {block_name} not found in database.")
                 return False
 
             self.conn.commit()
@@ -591,42 +593,30 @@ class ScheduleManager:
             raise
 
     def get_user_defined_timeblocks_for_date(self, given_date):
-        """
-        Given a date (a datetime.date object), check the in-memory time_blocks
-        (each a dictionary with keys: name, schedule, list_categories, task_tags, color, etc.)
-        and for each user-defined block that has an entry for the day of the week,
-        initialize and return a list of TimeBlock objects for that day.
-
-        The schedule field is expected to be a dict with day keys (e.g., "wed") and
-        values as a list/tuple of two strings representing start and end times in "%H:%M" format.
-        """
-        # Get the day abbreviation in lower-case (e.g., "wed")
         day_full = given_date.strftime("%A").lower()
-        print(day_full)
         result = []
 
-        # Iterate over the loaded timeblocks
-        print("before yo")
         for block in self.time_blocks:
             schedule = block.get("schedule", {})
-            print(schedule)
             if day_full in schedule:
                 time_range = schedule[day_full]
-                # Expect time_range to be a list/tuple with two items: [start_str, end_str]
-                print(time_range)
                 if isinstance(time_range, (list, tuple)) and len(time_range) == 2:
-                    print("yo")
-                    start_str, end_str = time_range
-                    try:
-                        start_time = datetime.strptime(start_str, "%H:%M").time()
-                        end_time = datetime.strptime(end_str, "%H:%M").time()
-                    except Exception as e:
-                        print(f"Error parsing time in block {block.get('id')}: {e}")
-                        continue
+                    start_val, end_val = time_range
 
-                    # Initialize a new TimeBlock object for the given date.
+                    # If we already have a time object, great. Otherwise parse string -> time
+                    if isinstance(start_val, time):
+                        start_time = start_val
+                    else:
+                        start_time = datetime.strptime(start_val, "%H:%M").time()
+
+                    if isinstance(end_val, time):
+                        end_time = end_val
+                    else:
+                        end_time = datetime.strptime(end_val, "%H:%M").time()
+
+                    # Now create your TimeBlock
                     new_block = TimeBlock(
-                        block_id=None,  # Unique id will be assigned automatically.
+                        block_id=None,
                         name=block.get("name", ""),
                         date=given_date,
                         list_categories=block.get("list_categories"),
@@ -636,14 +626,10 @@ class ScheduleManager:
                     )
                     new_block.start_time = start_time
                     new_block.end_time = end_time
-                    print("TESRT!!!!!!!!!!!")
-                    print(start_time)
-                    print(end_time)
 
                     # Compute duration (in hours)
                     start_dt = datetime.combine(given_date, start_time)
                     end_dt = datetime.combine(given_date, end_time)
-                    # Handle cases where the end time might be past midnight.
                     if end_dt < start_dt:
                         end_dt += timedelta(days=1)
                     new_block.duration = (end_dt - start_dt).total_seconds() / 3600.0
@@ -1015,6 +1001,30 @@ class ScheduleManager:
             chunk.timeblock_ratings.sort(key=lambda x: x[1], reverse=True)
 
             self.assign_chunk(chunk)
+
+    def refresh_schedule(self):
+        """
+        Refreshes the schedule by reloading tasks, recalculating
+        weights, re-building day schedules, re-chunking, and
+        assigning chunks again.
+        """
+        # 1. Reload active tasks from TaskManager
+        self.active_tasks = self.task_manager_instance.get_active_tasks()
+
+        # 2. Update each task's global weight
+        self.update_task_global_weights()
+
+        # 3. Re-build the day schedules
+        self.day_schedules = self.load_day_schedules()
+
+        # 4. Estimate daily buffer ratios
+        self.estimate_daily_buffer_ratios()
+
+        # 5. Re-chunk tasks
+        self.chunks = self.chunk_tasks()
+
+        # 6. Re-assign all chunks
+        self.generate_schedule()
 
 
 class DaySchedule:

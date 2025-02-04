@@ -1,5 +1,6 @@
 from .task_widgets import *
 import uuid
+from datetime import time
 
 
 class TagInputWidget(QWidget):
@@ -625,6 +626,37 @@ class DraggableBlockTimeScaleWidget(QWidget):
         self.to_time_edit.setTime(QTime(self.to_time.hour, self.to_time.minute))
         self.to_time_edit.blockSignals(False)
 
+    def set_schedule(self, from_time: time, to_time: time):
+        """
+        Update the draggable block to use the given from_time and to_time.
+        """
+        # Compute datetime objects based on the base date from day_start_time
+        base_date = self.day_start_time.date()
+        dt_from = datetime.combine(base_date, from_time)
+        dt_to = datetime.combine(base_date, to_time)
+        if dt_to <= dt_from:
+            dt_to += timedelta(days=1)  # allow over-midnight ranges
+
+        # Update attributes
+        self.from_time = from_time
+        self.duration_hours = (dt_to - dt_from).total_seconds() / 3600.0
+        self.duration_minutes = self.duration_hours * 60
+
+        # Calculate block_start_time relative to day_start_time (in minutes)
+        self.block_start_time = max(0, (dt_from - self.day_start_time).total_seconds() / 60)
+
+        # Reposition and resize the draggable block
+        self.draggable_block.move(self.draggable_block.x(), int(self.block_start_time * self.pixels_per_minute))
+        self.draggable_block.setFixedHeight(int(self.duration_minutes * self.pixels_per_minute))
+
+        # Update the time edits (blocking signals to avoid loops)
+        self.from_time_edit.blockSignals(True)
+        self.to_time_edit.blockSignals(True)
+        self.from_time_edit.setTime(QTime(from_time.hour, from_time.minute))
+        self.to_time_edit.setTime(QTime(to_time.hour, to_time.minute))
+        self.from_time_edit.blockSignals(False)
+        self.to_time_edit.blockSignals(False)
+
 
 class SchedulePicker(QWidget):
     def __init__(self, color=None,
@@ -766,6 +798,18 @@ class SchedulePicker(QWidget):
                     widgets["block_widget"].sync_with_widget(widget)
         else:
             self.initial_batched = False
+
+    def set_day_schedule(self, day: str, from_time: time, to_time: time):
+        """
+        For a given day (e.g., "monday" in lowercase), update the corresponding draggable block
+        with the provided from_time and to_time.
+        """
+        day = day.capitalize()
+        if day in self.day_widgets:
+            widgets = self.day_widgets[day]
+            widgets["checkbox"].setChecked(True)
+            widgets["block_widget"].setDisabled(False)
+            widgets["block_widget"].set_schedule(from_time, to_time)
 
 
 class _ClickableItem(QWidget):
@@ -1028,40 +1072,42 @@ class AddTimeBlockDialog(QDialog):
         self.color_picker_button.setStyleSheet(f"background-color: rgb{self.picked_color};")
         self.schedule_picker.refresh_color(self.picked_color)
 
-        # Populate each day's schedule
+        # Populate each day's schedule using the new set_day_schedule() helper.
+        # Here we assume block["schedule"] is a dictionary with keys as day names in lowercase
+        # and values as a tuple/list of two strings, e.g., ("09:00", "10:00").
         for day, widgets in self.schedule_picker.day_widgets.items():
-            day_checkbox = widgets["checkbox"]
-            block_widget = widgets["block_widget"]
+            day = day.lower()
             if day in block["schedule"]:
-                day_checkbox.setChecked(True)
-                day_checkbox.setDisabled(False)
-                block_widget.setDisabled(False)
-                from_str, to_str = block["schedule"][day]  # e.g. "09:00", "10:00"
-                from_dt = datetime.combine(self.schedule_picker.day_start_time.date(),
-                                           datetime.strptime(from_str, "%H:%M").time())
-                to_dt = datetime.combine(self.schedule_picker.day_start_time.date(),
-                                         datetime.strptime(to_str, "%H:%M").time())
-                block_widget.from_time_edit.setTime(QTime(from_dt.hour, from_dt.minute))
-                block_widget.to_time_edit.setTime(QTime(to_dt.hour, to_dt.minute))
+                # Parse the stored strings into time objects
+                from_str, to_str = block["schedule"][day]
+                try:
+                    from_time = datetime.strptime(from_str, "%H:%M").time()
+                    to_time = datetime.strptime(to_str, "%H:%M").time()
+                except Exception as e:
+                    print(f"Error parsing time for {day}: {e}")
+                    continue
+                # Use the new helper to set this day's schedule
+                self.schedule_picker.set_day_schedule(day, from_time, to_time)
             else:
-                day_checkbox.setChecked(False)
-                block_widget.setDisabled(True)
+                # If no schedule is stored for this day, uncheck and disable the widget.
+                widgets["checkbox"].setChecked(False)
+                widgets["block_widget"].setDisabled(True)
+        if not self.unavailable:
+            # Set categories and tags as before...
+            for item in self.category_tag_picker.category_items:
+                if item.text() in block["list_categories"]["include"]:
+                    item._state = 1
+                elif item.text() in block["list_categories"]["exclude"]:
+                    item._state = 2
+                else:
+                    item._state = 0
+                item._update_style()
 
-        # Set categories and tags
-        for item in self.category_tag_picker.category_items:
-            if item.text() in block["list_categories"]["include"]:
-                item._state = 1
-            elif item.text() in block["list_categories"]["exclude"]:
-                item._state = 2
-            else:
-                item._state = 0
-            item._update_style()
-
-        for item in self.category_tag_picker.tag_items:
-            if item.text() in block["task_tags"]["include"]:
-                item._state = 1
-            elif item.text() in block["task_tags"]["exclude"]:
-                item._state = 2
-            else:
-                item._state = 0
-            item._update_style()
+            for item in self.category_tag_picker.tag_items:
+                if item.text() in block["task_tags"]["include"]:
+                    item._state = 1
+                elif item.text() in block["task_tags"]["exclude"]:
+                    item._state = 2
+                else:
+                    item._state = 0
+                item._update_style()
