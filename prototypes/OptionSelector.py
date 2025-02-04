@@ -1,6 +1,5 @@
 from PyQt6.QtWidgets import *
 
-
 class OptionSelector(QWidget):
     def __init__(self, name: str, options: list[str], default_value: str = None, fixed_width: int = None):
         super().__init__()
@@ -36,7 +35,6 @@ class OptionSelector(QWidget):
         main_layout.addWidget(container)
 
         self.setLayout(main_layout)
-
 
 app = QApplication([])
 window = OptionSelector("Flexibility", ["Strict", "Flexible", "Very Flexible"], default_value="Flexible")

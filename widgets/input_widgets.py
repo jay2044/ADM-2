@@ -290,6 +290,100 @@ class OptionSelector(QWidget):
         self.setLayout(main_layout)
 
 
+class MultiOptionSelector(QWidget):
+    def __init__(self, options: list[str], name: str = None, default_value: str = None, fixed_width: int = None):
+        super().__init__()
+
+        main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        if name:
+            name_label = QLabel(name + ":")
+            main_layout.addWidget(name_label)
+
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(0)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.buttons = {}
+
+        for option in options:
+            btn = QPushButton(option)
+            btn.setCheckable(True)
+            btn.setFlat(False)
+            if fixed_width:
+                btn.setFixedWidth(fixed_width)
+            self.buttons[option] = btn
+            button_layout.addWidget(btn)
+
+        container = QWidget()
+        container.setLayout(button_layout)
+        main_layout.addWidget(container)
+
+        self.setLayout(main_layout)
+
+        if default_value:
+            self.set_selected([default_value])
+
+    def get_selected(self):
+        return [opt for opt, btn in self.buttons.items() if btn.isChecked()]
+
+    def set_selected(self, selected_options):
+        for opt, btn in self.buttons.items():
+            btn.setChecked(opt in selected_options)
+
+
+class TimeEstimateWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QHBoxLayout(self)
+        layout.setSpacing(0)  # No spacing
+        layout.setContentsMargins(0, 0, 0, 0)  # No margins
+
+        self.hours_label = QLabel("Hrs:")
+        self.hours_spinbox = QSpinBox()
+        self.hours_spinbox.setRange(0, 99)
+        self.hours_spinbox.setFixedWidth(75)
+
+        self.minutes_label = QLabel("Min:")
+        self.minutes_spinbox = QSpinBox()
+        self.minutes_spinbox.setRange(-1, 60)
+        self.minutes_spinbox.setFixedWidth(75)
+
+        # Prevents automatic expansion
+        for widget in [self.hours_label, self.hours_spinbox, self.minutes_label, self.minutes_spinbox]:
+            widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        self.minutes_spinbox.valueChanged.connect(self.adjust_time)
+
+        layout.addWidget(self.hours_label)
+        layout.addWidget(self.hours_spinbox)
+        layout.addWidget(self.minutes_label)
+        layout.addWidget(self.minutes_spinbox)
+
+        self.setLayout(layout)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Prevents widget from expanding
+
+    def adjust_time(self, value):
+        if value == 60 and self.hours_spinbox.value() < 99:
+            self.hours_spinbox.setValue(self.hours_spinbox.value() + 1)
+            self.minutes_spinbox.setValue(0)
+        elif value == -1 and self.hours_spinbox.value() > 0:
+            self.hours_spinbox.setValue(self.hours_spinbox.value() - 1)
+            self.minutes_spinbox.setValue(59)
+        elif value == -1 and self.hours_spinbox.value() == 0:
+            self.minutes_spinbox.setValue(0)
+
+    def get_time_estimate(self):
+        return self.hours_spinbox.value(), self.minutes_spinbox.value()
+
+    def set_time_estimate(self, hours, minutes):
+        self.hours_spinbox.setValue(hours)
+        self.minutes_spinbox.setValue(min(59, max(0, minutes)))
+
+
+
 class AddTaskDialog(QDialog):
     def __init__(self, parent=None, task_list_widget=None):
         super().__init__(parent)
@@ -302,50 +396,53 @@ class AddTaskDialog(QDialog):
         # Main layout
         self.main_layout = QVBoxLayout(self)
 
-        # Tab widget
-        self.tab_widget = QTabWidget(self)
-        self.main_layout.addWidget(self.tab_widget)
+        # Main Basic
+        self.basic = QWidget()
+        self.basic_layout = QHBoxLayout(self.basic)
+        self.basic.setLayout(self.basic_layout)
 
-        # Basic Tab
-        self.basic_tab = QWidget()
-        self.basic_layout = QFormLayout(self.basic_tab)
+        # Left side widgets and layout
+        self.left_widgets = QWidget()
+        self.left_part = QVBoxLayout(self.left_widgets)
 
-        # Basic Fields
-        self.title_edit = QLineEdit(self)
-        self.title_edit.setPlaceholderText("Enter task title")
-        self.basic_layout.addRow("Title*:", self.title_edit)
+        # Basic Fields on left side
+        self.name_edit = QLineEdit(self)
+        self.name_edit.setPlaceholderText("Enter task name")
+        self.name_layout = QHBoxLayout()
+        self.name_layout.addWidget(QLabel("Name*:"))
+        self.name_layout.addWidget(self.name_edit)
+        self.important_checkbox = QCheckBox()
+        self.name_layout.addWidget(self.important_checkbox)
+        self.left_part.addLayout(self.name_layout)
 
-        self.description_edit = QLineEdit(self)
+        self.description_edit = QTextEdit(self)
+        self.description_edit.setFixedHeight(70)
         self.description_edit.setPlaceholderText("Enter task description")
-        self.basic_layout.addRow("Description:", self.description_edit)
+        self.left_part.addWidget(self.description_edit)
 
-        self.due_date_edit = CustomDateEdit(self)
-        self.basic_layout.addRow("Due Date:", self.due_date_edit)
+        self.priority_selector = OptionSelector("Priority", ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+                                                default_value="5", fixed_width=30)
+        self.left_part.addWidget(self.priority_selector)
 
-        self.due_time_edit = QTimeEdit(self)
-        self.basic_layout.addRow("Due Time:", self.due_time_edit)
+        self.flexibility_selector = OptionSelector("Flexibility", ["Strict", "Flexible", "Very Flexible"],
+                                                   default_value="Flexible")
+        self.left_part.addWidget(self.flexibility_selector)
 
-        self.priority_spinbox = QSpinBox(self)
-        self.priority_spinbox.setMinimum(0)
-        self.priority_spinbox.setMaximum(10)
-        self.priority_spinbox.setValue(0)
-        self.basic_layout.addRow("Priority:", self.priority_spinbox)
+        self.effort_level_selector = OptionSelector("Effort Lvl", ["Low", "Medium", "High"], default_value="Medium")
+        self.left_part.addWidget(self.effort_level_selector)
 
-        categories = []
+        tags = []
         # if a TaskListDock
         if parent.type == "dock":
-            categories = parent.task_list_widget.task_list.get_task_tags()
+            tags = parent.task_list_widget.task_list.get_task_tags()
         elif parent.type == "stack":  # if TaskListStacked
-            categories = parent.get_current_task_list_widget().task_list.get_task_tags()
+            tags = parent.get_current_task_list_widget().task_list.get_task_tags()
+        self.tag_selector = TagInputWidget(tags)
+        self.left_part.addWidget(self.tag_selector)
 
-        self.categories_input = TagInputWidget(categories)
-        self.basic_layout.addRow("Category:", self.categories_input)
-
-        self.important_checkbox = QCheckBox("Important", self)
-        self.basic_layout.addRow(self.important_checkbox)
-
+        # (Add other left-side widgets like priority, category, important_checkbox if needed)
         self.recurring_checkbox = QCheckBox("Recurring", self)
-        self.basic_layout.addRow(self.recurring_checkbox)
+        self.left_part.addWidget(self.recurring_checkbox)
 
         # Recurrence Options
         self.recurrence_options_widget = QWidget()
@@ -355,39 +452,33 @@ class AddTaskDialog(QDialog):
 
         self.every_n_days_radio = QRadioButton("Every N days")
         self.specific_weekdays_radio = QRadioButton("Specific weekdays")
-
         self.recur_type_group.addButton(self.every_n_days_radio)
         self.recur_type_group.addButton(self.specific_weekdays_radio)
 
-        self.recurrence_layout.addWidget(self.every_n_days_radio)
-        self.recurrence_layout.addWidget(self.specific_weekdays_radio)
+        # Horizontal layout for recurrence type selection
+        self.recur_type_layout = QHBoxLayout()
+        self.recur_type_layout.addWidget(self.every_n_days_radio)
+        self.recur_type_layout.addWidget(self.specific_weekdays_radio)
+
+        self.recurrence_layout.addLayout(self.recur_type_layout)
 
         # Every N Days Widget
         self.every_n_days_widget = QWidget()
         self.every_n_days_layout = QHBoxLayout(self.every_n_days_widget)
-
         self.every_n_days_label = QLabel("Every")
         self.every_n_days_spinbox = QSpinBox()
         self.every_n_days_spinbox.setMinimum(1)
         self.every_n_days_spinbox.setMaximum(365)
         self.every_n_days_spinbox.setValue(1)
         self.every_n_days_unit_label = QLabel("day(s)")
-
         self.every_n_days_layout.addWidget(self.every_n_days_label)
         self.every_n_days_layout.addWidget(self.every_n_days_spinbox)
         self.every_n_days_layout.addWidget(self.every_n_days_unit_label)
 
         # Specific Weekdays Widget
-        self.specific_weekdays_widget = QWidget()
-        self.specific_weekdays_layout = QHBoxLayout(self.specific_weekdays_widget)
-
-        self.weekday_checkboxes = []
-        weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        for day in weekdays:
-            checkbox = QCheckBox(day)
-            checkbox.setObjectName(f"{day}Checkbox")
-            self.weekday_checkboxes.append(checkbox)
-            self.specific_weekdays_layout.addWidget(checkbox)
+        self.specific_weekdays_widget = MultiOptionSelector(
+            ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            fixed_width=47)
 
         self.recurrence_layout.addWidget(self.every_n_days_widget)
         self.recurrence_layout.addWidget(self.specific_weekdays_widget)
@@ -397,73 +488,83 @@ class AddTaskDialog(QDialog):
         self.specific_weekdays_widget.hide()
         self.recurrence_options_widget.hide()
 
-        # Add recurrence options to basic layout
-        self.basic_layout.addRow(self.recurrence_options_widget)
+        self.left_part.addWidget(self.recurrence_options_widget)
+
+        # Right side: Period Selector only
+        self.right_widgets = QWidget()
+        self.right_part = QVBoxLayout(self.right_widgets)
+        self.period_selector = PeriodSelectionCalendar(self)
+        self.right_part.addWidget(self.period_selector)
+
+        self.preferred_day_of_week_selector = MultiOptionSelector(
+            ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], "Preferred Days",
+            fixed_width=43)
+        self.right_part.addWidget(self.preferred_day_of_week_selector)
+
+        self.preferred_time_of_day = MultiOptionSelector(
+            ["Morning", "Afternoon", "Evening", "Night"], "Preferred Time", )
+        self.right_part.addWidget(self.preferred_time_of_day)
+
+        # Add left and right widgets to the basic layout
+        self.basic_layout.addWidget(self.left_widgets)
+        self.basic_layout.addWidget(self.right_widgets)
+
+        self.main_layout.addWidget(self.basic)
+
+        # Time assignment and chunking layout (Vertical)
+        self.time_count_assignment_and_chunking_layout = QVBoxLayout()
+
+        # Horizontal layout for label, time selector, and buttons
+        time_assignment_layout = QHBoxLayout()
+        time_assignment_layout.setSpacing(0)
+        time_assignment_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.te_label = QLabel("Time Estimate:")
+        self.te_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Prevents stretching
+        self.te_label.setMaximumWidth(self.te_label.sizeHint().width())  # Ensures compact width
+
+        self.time_estimate_selector = TimeEstimateWidget(self)
+        self.time_estimate_selector.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Keep it compact
+
+        # Quick time selection buttons layout
+        quick_time_select_layout = QHBoxLayout()
+        quick_time_select_layout.setSpacing(0)
+        quick_time_select_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.quick_time_select = QButtonGroup(self)
+        self.quick_time_select.setExclusive(True)
+
+        qs_list = ["15 min", "30 min", "1 hr", "2 hr", "3 hr"]
+        for option in qs_list:
+            btn = QPushButton(option)
+            btn.setCheckable(True)
+            btn.setFlat(False)
+            btn.setFixedWidth(60)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)  # Keep buttons compact
+            self.quick_time_select.addButton(btn)
+            quick_time_select_layout.addWidget(btn)
+
+        # Container to ensure buttons don’t spread
+        quick_time_container = QWidget()
+        quick_time_container.setLayout(quick_time_select_layout)
+        quick_time_container.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        quick_time_container.setMaximumWidth(len(qs_list) * 60)  # Keep width compact
+
+        # Add elements to the horizontal layout (ensuring no gaps)
+        time_assignment_layout.addWidget(self.te_label)
+        time_assignment_layout.addWidget(self.time_estimate_selector)
+        time_assignment_layout.addWidget(quick_time_container)
+
+        # Add the horizontal layout into the vertical layout
+        self.time_count_assignment_and_chunking_layout.addLayout(time_assignment_layout)
+
+        # Add everything to the main layout
+        self.main_layout.addLayout(self.time_count_assignment_and_chunking_layout)
 
         # Connect signals
         self.recurring_checkbox.stateChanged.connect(self.toggle_recurrence_options)
         self.every_n_days_radio.toggled.connect(self.update_recurrence_detail_widgets)
         self.specific_weekdays_radio.toggled.connect(self.update_recurrence_detail_widgets)
-
-        # Add Basic Tab to Tab Widget
-        self.tab_widget.addTab(self.basic_tab, "Basic")
-
-        # Advanced Tab
-        self.advanced_tab = QWidget()
-        self.advanced_layout = QFormLayout(self.advanced_tab)
-
-        # Advanced Fields
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(["Not Started", "In Progress", "Completed", "Failed", "On Hold"])
-        self.status_combo.setCurrentIndex(-1)
-        self.advanced_layout.addRow("Status:", self.status_combo)
-
-        self.estimate_spinbox = QDoubleSpinBox()
-        self.estimate_spinbox.setMinimum(0.0)
-        self.estimate_spinbox.setMaximum(1000.0)
-        self.estimate_spinbox.setDecimals(2)
-        self.advanced_layout.addRow("Estimate (hours):", self.estimate_spinbox)
-
-        self.count_required_spinbox = QSpinBox()
-        self.count_required_spinbox.setMinimum(0)
-        self.count_required_spinbox.setMaximum(1000)
-        self.advanced_layout.addRow("Count Required:", self.count_required_spinbox)
-
-        self.count_completed_spinbox = QSpinBox()
-        self.count_completed_spinbox.setMinimum(0)
-        self.count_completed_spinbox.setMaximum(1000)
-        self.advanced_layout.addRow("Count Completed:", self.count_completed_spinbox)
-
-        self.dependencies_edit = QLineEdit()
-        self.dependencies_edit.setPlaceholderText("Dependency tasks, separated by commas")
-        self.advanced_layout.addRow("Dependencies:", self.dependencies_edit)
-
-        self.deadline_flexibility_combo = QComboBox()
-        self.deadline_flexibility_combo.addItems(["Strict", "Flexible", "Very Flexible"])
-        self.deadline_flexibility_combo.setCurrentIndex(-1)  # Initialize to None
-        self.advanced_layout.addRow("Deadline Flexibility:", self.deadline_flexibility_combo)
-
-        self.effort_level_combo = QComboBox()
-        self.effort_level_combo.addItems(["Low", "Medium", "High"])
-        self.effort_level_combo.setCurrentIndex(-1)  # Initialize to None
-        self.advanced_layout.addRow("Effort Level:", self.effort_level_combo)
-
-        self.resources_edit = QLineEdit()
-        self.resources_edit.setPlaceholderText("Resources, separated by commas")
-        self.advanced_layout.addRow("Resources:", self.resources_edit)
-
-        self.notes_edit = QTextEdit()
-        self.notes_edit.setFixedHeight(60)
-        self.advanced_layout.addRow("Notes:", self.notes_edit)
-
-        self.time_logged_spinbox = QDoubleSpinBox()
-        self.time_logged_spinbox.setMinimum(0.0)
-        self.time_logged_spinbox.setMaximum(1000.0)
-        self.time_logged_spinbox.setDecimals(2)
-        self.advanced_layout.addRow("Time Logged (hours):", self.time_logged_spinbox)
-
-        # Add Advanced Tab to Tab Widget
-        self.tab_widget.addTab(self.advanced_tab, "Advanced")
 
         # Dialog Buttons
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
@@ -472,7 +573,7 @@ class AddTaskDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         self.main_layout.addWidget(self.buttons)
 
-        self.title_edit.setFocus()
+        self.name_edit.setFocus()
 
         # Object Names (for styling or testing)
         self.setObjectName("addTaskDialog")
@@ -483,7 +584,7 @@ class AddTaskDialog(QDialog):
 
     def keyPressEvent(self, event, **kwargs):
         if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
-            if self.categories_input.input_field.lineEdit().hasFocus():
+            if self.tag_selector.input_field.lineEdit().hasFocus():
                 event.accept()
             else:
                 super().keyPressEvent(event)
@@ -510,7 +611,7 @@ class AddTaskDialog(QDialog):
             self.specific_weekdays_widget.hide()
 
     def accept(self):
-        if not self.title_edit.text().strip():
+        if not self.name_edit.text().strip():
             QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
             return
         super().accept()
@@ -526,7 +627,7 @@ class AddTaskDialog(QDialog):
                 due_datetime = datetime.combine(py_date, py_time)
 
         task_data = {
-            "name": self.title_edit.text(),
+            "name": self.name_edit.text(),
             "description": self.description_edit.text(),
             "notes": self.notes_edit.toPlainText(),
             "tags": self.categories_input.get_tags(),
