@@ -80,7 +80,7 @@ class Task:
 
         self.single_chunk = kwargs.get("single_chunk", False)
 
-        self.subtasks = kwargs.get("subtasks", None)  # [{"order": 1, "name": "test sub task", "completed": True}]
+        self.subtasks = kwargs.get("subtasks", [])  # [{"order": 1, "name": "test sub task", "completed": True}]
         self.dependencies = kwargs.get("dependencies", None)
 
         self.status = kwargs.get("status",
@@ -1021,7 +1021,7 @@ class TaskManager:
                 raise ValueError(f"Task with ID {task_id} does not exist.")
 
             self.conn.commit()
-            list_name = task_obj.list_name
+            list_name = task.list_name
             for task_list in self.task_lists:
                 if task_list.name == list_name:
                     task_list.tasks[:] = [t for t in task_list.tasks if t.id != task_id]

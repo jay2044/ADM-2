@@ -243,7 +243,7 @@ class TaskDropdownsWidget(QWidget):
         self.effort_dropdown = self.add_labeled_dropdown(
             main_layout,
             "Effort Level",
-            ["Easy", "Medium", "Hard"],
+            ["Low", "Medium", "High"],
             self.task.effort_level,
             lambda value: self.update_task_attribute('effort_level', value)
         )

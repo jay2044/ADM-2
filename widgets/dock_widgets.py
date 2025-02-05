@@ -551,8 +551,8 @@ class TaskDetailDock(QDockWidget):
     def save_task_edits(self):
         # Validate title
         try:
-            title = self.task_name_edit.text().strip()
-            if not title:
+            name = self.task_name_edit.text().strip()
+            if not name:
                 QMessageBox.warning(self, "Input Error", "Title cannot be empty.")
                 return
             # Update task attributes
@@ -884,7 +884,6 @@ class TaskListDockStacked(QDockWidget):
         Handle focus out event for TaskListDockStacked.
         """
         super().focusOutEvent(event)
-        print("TaskListDockStacked lost focus")
 
         # Prevent exiting multi-select when clicking inside the widget or on its child widgets
         if self.multi_select_mode_toggle_bool:
