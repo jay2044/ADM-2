@@ -1162,8 +1162,6 @@ class TaskManager:
                             if t.id == task.id:
                                 task_list.tasks[i] = task
                                 break
-
-            print(f"Task with ID {task.id} successfully updated.")
         except sqlite3.Error as e:
             print(f"Database error while updating task with ID {task.id}: {e}")
         except Exception as e:
