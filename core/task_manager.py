@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 import re
 import json
+import uuid
 from core.signals import global_signals
 
 
@@ -64,21 +65,10 @@ class Task:
         self.count_required = kwargs.get("count_required", 0)
         self.count_completed = kwargs.get("count_completed", 0)
 
-        self.chunk_type = kwargs.get("chunk_type", None)  # either "time" or "count"
-
-        self.auto_chunk = kwargs.get("auto_chunk", True)
-        self.min_chunk_size = kwargs.get("min_chunk_size", None)
-        self.max_chunk_size = kwargs.get("max_chunk_size", None)
-
-        self.manually_scheduled = kwargs.get("manually_scheduled", False)
-        self.manually_scheduled_chunks = kwargs.get("manually_scheduled_chunks",
-                                                    [])  # eg: {"date": datetime obj, "timeblock": "timeblock name", "size": 0.0, "type": either count or time}
-
-        self.assigned = kwargs.get("assigned", False)
-        self.assigned_chunks = kwargs.get("assigned_chunks",
-                                          [])
-
-        self.single_chunk = kwargs.get("single_chunk", False)
+        self.chunks = kwargs.get("chunks", [])
+        self.chunk_preference = kwargs.get("chunk_preference", None)  # "time", "count"
+        self.min_chunk_size = kwargs.get("min_chunk_size", 0.0)
+        self.max_chunk_size = kwargs.get("max_chunk_size", 0.0)
 
         self.subtasks = kwargs.get("subtasks", [])  # [{"order": 1, "name": "test sub task", "completed": True}]
         self.dependencies = kwargs.get("dependencies", None)
@@ -99,6 +89,41 @@ class Task:
 
         self.global_weight = kwargs.get("global_weight", None)
 
+    def add_chunk(self, size, chunk_type="manual", time_block=None, date=None, is_recurring=False, status=None):
+        """Adds a new chunk to the task's chunk list."""
+        chunk = {
+            "id": str(uuid.uuid4()),  # Generate a unique ID for the chunk
+            "size": size,
+            "type": chunk_type,  # "manual", "auto", "placed"
+            "status": status if status else ("locked" if is_recurring else "active"),
+            "time_block": time_block,  # Stores the assigned time block (if placed)
+            "date": date,  # Stores the assigned date (if placed)
+            "is_recurring": is_recurring
+        }
+        self.chunks.append(chunk)
+
+    def update_chunk(self, updated_chunk_data: dict):
+        """Updates a chunk in the task's chunk list using a dictionary."""
+        chunk_id = updated_chunk_data.get("id")
+        if not chunk_id:
+            return False  # No ID provided, can't update
+
+        for chunk in self.chunks:
+            if chunk["id"] == chunk_id:
+                for key, value in updated_chunk_data.items():
+                    if key in chunk:  # Only update existing keys
+                        chunk[key] = value
+                return True  # Update successful
+
+        return False  # Chunk not found
+
+    def remove_chunk(self, chunk_id):
+        """Removes a chunk from the task's chunk list based on chunk ID."""
+        self.chunks = [chunk for chunk in self.chunks if chunk["id"] != chunk_id]
+
+    def get_chunks(self):
+        return self.chunks
+    
     @staticmethod
     def _parse_date(date_str, formats):
         """

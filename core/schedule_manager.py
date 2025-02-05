@@ -193,26 +193,19 @@ class TimeBlock:
         self.buffer_ratio = 0.0
 
     def add_chunk(self, chunk, rating):
-        task = chunk.task
-        task_id = task.id if hasattr(task, 'id') else uuid.uuid4().int
-        if task_id in self.task_chunks and chunk.auto:
-            self.task_chunks[task_id]["chunk"].duration += chunk.duration
+        id = chunk.id
+        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks] and chunk.chunk_type=="auto":
+            self.task_chunks[id]["chunk"].size += chunk.size
         else:
-            self.task_chunks[task_id] = {"chunk": chunk, "rating": rating}
+            self.task_chunks[id] = {"chunk": chunk, "rating": rating}
 
-    def remove_chunk(self, task, remove_amount):
-        task_id = task.id if hasattr(task, 'id') else None
-        if task_id and task_id in self.task_chunks:
-            existing_chunk = self.task_chunks[task_id]["chunk"]
-            if not existing_chunk.auto:
-                del self.task_chunks[task_id]
-            else:
-                existing_chunk.duration -= remove_amount
-                if existing_chunk.duration <= 0:
-                    del self.task_chunks[task_id]
+    def remove_chunk(self, chunk):
+        id = chunk.id
+        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks]:
+            del self.task_chunks[id]
 
     def get_available_time(self):
-        used_time = sum(info["chunk"].duration for info in self.task_chunks.values())
+        used_time = sum(info["chunk"].size for info in self.task_chunks.values())
         if self.duration is None:
             return 0
         return max(0, (self.duration * (1 - self.buffer_ratio)) - used_time)
@@ -222,89 +215,96 @@ class TimeBlock:
 
 
 class TaskChunk:
-    def __init__(self, task, duration=None, quantity=None, timeblock_ratings=None, auto=False, manual=False,
-                 assigned=False, flagged=False, chunk_type="time", active=True):
-        """
-        :param task: The task object this chunk belongs to.
-        :param duration: Duration (for time‑based tasks).
-        :param quantity: Count/quantity (for count‑based tasks).
-        :param chunk_type: "time" for time‑based tasks or "count" for count‑based tasks.
-        :param active: Indicates if this chunk is the current (active) recurrence.
-        """
+    def __init__(self, id, task, chunk_type, size=None, timeblock_ratings=[], timeblock=None, date=None, is_recurring=False, status=None):
+        self.id = id
         self.task = task
-        self.chunk_type = chunk_type  # "time" or "count"
-        if self.chunk_type == "time":
-            self.duration = duration
-        elif self.chunk_type == "count":
-            self.quantity = quantity
+        self.chunk_type = chunk_type  # "manual", "auto", "placed"
+        self.size = size
         self.timeblock_ratings = timeblock_ratings
-        self.auto = auto
-        self.manual = manual
-        self.assigned = assigned
-        self.flagged = flagged
-        self.active = active
-        # For recurring tasks, we’ll store the recurrence date (if applicable)
-        self.recurrence_date = None
+        self.timeblock = timeblock
+        self.date = date  # Date for recurring task
+        self.is_recurring = is_recurring  # True if part of a recurring task
+        self.status = status if status else self.update_status()
+
+    def update_status(self):
+        if self.date and self.is_recurring:
+            today = datetime.today().strftime("%Y-%m-%d")
+            if self.date == today:
+                return "active"
+            return "locked"  # Future recurrences start locked
+        
+        return "active"
+
+    def mark_completed(self):
+        self.status = "completed"
+    
+    def mark_flagged(self):
+        self.status = "flagged"
+
+    def mark_failed(self):
+        self.status = "failed"
 
     def split(self, ratios):
-        total_ratio = sum(ratios)
-        if self.chunk_type == "time":
-            subchunks = [
-                TaskChunk(
-                    self.task,
-                    duration=(self.duration * r) / total_ratio,
-                    timeblock_ratings=self.timeblock_ratings,
-                    auto=self.auto,
-                    manual=self.manual,
-                    assigned=self.assigned,
-                    flagged=self.flagged,
-                    chunk_type="time",
-                    active=self.active
-                )
-                for r in ratios
-            ]
-            min_chunk = getattr(self.task, 'min_chunk_size', 0)
-            max_chunk = getattr(self.task, 'max_chunk_size', float('inf'))
-            for sc in subchunks:
-                if sc.duration < min_chunk:
-                    sc.duration = min_chunk
-                elif sc.duration > max_chunk:
-                    sc.duration = max_chunk
-            total_adjusted = sum(sc.duration for sc in subchunks)
-            if total_adjusted > 0 and total_adjusted != self.duration:
-                factor = self.duration / total_adjusted
+        # only for splitting auto chunks
+        if self.chunk_type == "auto":
+            total_ratio = sum(ratios)
+            if self.chunk_type == "time":
+                subchunks = [
+                    TaskChunk(
+                        self.id,
+                        self.task,
+                        size=(self.size * r) / total_ratio,
+                        chunk_type=self.chunk_type,
+                        timeblock_ratings=self.timeblock_ratings,
+                        timeblock=self.timeblock,
+                        date=self.date,
+                        is_recurring=self.is_recurring,
+                        status=self.status
+                    )
+                    for r in ratios
+                ]
+                min_chunk = getattr(self.task, 'min_chunk_size', 0.25)
+                max_chunk = getattr(self.task, 'max_chunk_size', self.size)
                 for sc in subchunks:
-                    sc.duration *= factor
-            return subchunks
-        elif self.chunk_type == "count":
-            subchunks = [
-                TaskChunk(
-                    self.task,
-                    quantity=(self.quantity * r) / total_ratio,
-                    timeblock_ratings=self.timeblock_ratings,
-                    auto=self.auto,
-                    manual=self.manual,
-                    assigned=self.assigned,
-                    flagged=self.flagged,
-                    chunk_type="count",
-                    active=self.active
-                )
-                for r in ratios
-            ]
-            # For count‐based tasks, assume a minimum chunk size of 1
-            min_chunk = 1
-            max_chunk = self.quantity
-            for sc in subchunks:
-                if sc.quantity < min_chunk:
-                    sc.quantity = min_chunk
-                elif sc.quantity > max_chunk:
-                    sc.quantity = max_chunk
-            total_adjusted = sum(sc.quantity for sc in subchunks)
-            if total_adjusted > 0 and total_adjusted != self.quantity:
-                factor = self.quantity / total_adjusted
+                    if sc.size < min_chunk:
+                        sc.size = min_chunk
+                    elif sc.size > max_chunk:
+                        sc.size = max_chunk
+                total_adjusted = sum(sc.size for sc in subchunks)
+                if total_adjusted > 0 and total_adjusted != self.size:
+                    factor = self.size / total_adjusted
+                    for sc in subchunks:
+                        sc.size *= factor
+                return subchunks
+            elif self.chunk_type == "count":
+                subchunks = [
+                    TaskChunk(
+                        self.id,
+                        self.task,
+                        size=(self.size * r) / total_ratio,
+                        chunk_type=self.chunk_type,
+                        timeblock_ratings=self.timeblock_ratings,
+                        timeblock=self.timeblock,
+                        date=self.date,
+                        is_recurring=self.is_recurring,
+                        status=self.status
+                    )
+                    for r in ratios
+                ]
+                # For count‐based tasks, assume a minimum chunk size of 1
+                min_chunk = getattr(self.task, 'min_chunk_size', 1)
+                max_chunk = getattr(self.task, 'max_chunk_size', self.size)
                 for sc in subchunks:
-                    sc.quantity *= factor
-            return subchunks
+                    if sc.size < min_chunk:
+                        sc.size = min_chunk
+                    elif sc.size > max_chunk:
+                        sc.size = max_chunk
+                total_adjusted = sum(sc.size for sc in subchunks)
+                if total_adjusted > 0 and total_adjusted != self.size:
+                    factor = self.size / total_adjusted
+                    for sc in subchunks:
+                        sc.size *= factor
+                return subchunks
 
 
 class ScheduleManager:
@@ -782,6 +782,7 @@ class ScheduleManager:
         chunks = []
         today = datetime.now().date()
         for task in self.active_tasks:
+            task_chunks = task.chunks
             if task.recurring:
                 recurrence_days = []
                 if isinstance(task.recur_every, int):
@@ -796,7 +797,7 @@ class ScheduleManager:
                         day = day_schedule.date
                         if day.strftime("%A") in task.recur_every:
                             recurrence_days.append(day)
-                if task.count_required is not None:
+                if task.chunk_preference == "count":
                     remaining = task.count_required - task.count_completed
                     for day in recurrence_days:
                         is_active = (day == min([d for d in recurrence_days if d >= today]) if any(
