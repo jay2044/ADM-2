@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, date, time, timedelta
 import random
 import math
-from pyarrow import duration
 
 from core.task_manager import *
 
