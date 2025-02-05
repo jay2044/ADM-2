@@ -59,10 +59,10 @@ class Task:
                                       None)  # An int for recurrence every x days or a list of weekdays for recurrence.
         self.recurrences = kwargs.get("recurrences", 0)
 
-        self.time_estimate = kwargs.get("time_estimate", None)
-        self.time_logged = kwargs.get("time_logged", None)
-        self.count_required = kwargs.get("count_required", None)
-        self.count_completed = kwargs.get("count_completed", None)
+        self.time_estimate = kwargs.get("time_estimate", 0.25)
+        self.time_logged = kwargs.get("time_logged", 0.0)
+        self.count_required = kwargs.get("count_required", 0)
+        self.count_completed = kwargs.get("count_completed", 0)
 
         self.auto_chunk = kwargs.get("auto_chunk", True)
         self.min_chunk_size = kwargs.get("min_chunk_size", None)
@@ -75,6 +75,8 @@ class Task:
         self.assigned_chunks = kwargs.get("assigned_chunks",
                                           [])
 
+        self.single_chunk = kwargs.get("single_chunk", False)
+
         self.subtasks = kwargs.get("subtasks", None)  # [{"order": 1, "name": "test sub task", "completed": True}]
         self.dependencies = kwargs.get("dependencies", None)
 
@@ -86,7 +88,7 @@ class Task:
         self.previous_priority = kwargs.get("previous_priority", self.priority)
         self.preferred_work_days = kwargs.get("preferred_work_days", [])  # ["Monday", "Wednesday", ...]
         self.time_of_day_preference = kwargs.get("time_of_day_preference",
-                                                 None)  # ["Morning", "Afternoon", "Evening", "Night"]
+                                                 [])  # ["Morning", "Afternoon", "Evening", "Night"]
 
         self.progress = self.calculate_progress()
 
@@ -472,6 +474,8 @@ class TaskManager:
 
                 assigned BOOLEAN NOT NULL CHECK (assigned IN (0,1)) DEFAULT 0,
                 assigned_chunks TEXT DEFAULT '[]',
+                
+                single_chunk BOOLEAN NOT NULL CHECK (single_chunk IN (0,1)) DEFAULT 0,
 
                 subtasks TEXT,
                 dependencies TEXT,
@@ -542,6 +546,10 @@ class TaskManager:
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
             task_data["recurring"] = bool(task_data["recurring"])
             task_data['include_in_schedule'] = bool(task_data['include_in_schedule'])
+            task_data["auto_chunk"] = bool(task_data["auto_chunk"])
+            task_data["manually_scheduled"] = bool(task_data["manually_scheduled"])
+            task_data["assigned"] = bool(task_data["assigned"])
+            task_data["single_chunk"] = bool(task_data["single_chunk"])
 
             task = Task(**task_data)
             tasks.append(task)
@@ -732,7 +740,7 @@ class TaskManager:
             self.categories[task_list.category]["task_lists"].append(task_list)
 
         except sqlite3.Error as e:
-            print(f"Database error while adding task list: {e}")
+            print(f"Database error while adding task_list: {e}")
         except Exception as e:
             print(f"Unexpected error while adding task list: {e}")
 
@@ -906,6 +914,8 @@ class TaskManager:
 
                     assigned,
                     assigned_chunks,
+                    
+                    single_chunk,
 
                     subtasks,
                     dependencies,
@@ -920,7 +930,7 @@ class TaskManager:
                     progress,
                     include_in_schedule,
                     global_weight
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.name,
                 task.description,
@@ -952,6 +962,8 @@ class TaskManager:
                 int(task.assigned),
                 json.dumps(task.assigned_chunks) if task.assigned_chunks else None,
 
+                int(task.single_chunk),
+
                 json.dumps(task.subtasks) if task.subtasks else None,
                 json.dumps(task.dependencies) if task.dependencies else None,
 
@@ -961,7 +973,7 @@ class TaskManager:
                 task.priority,
                 task.previous_priority,
                 json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
-                task.time_of_day_preference,
+                json.dumps(task.time_of_day_preference) if task.time_of_day_preference else None,
                 task.progress,
                 int(task.include_in_schedule),
                 task.global_weight
@@ -1053,6 +1065,8 @@ class TaskManager:
 
                     assigned = ?,
                     assigned_chunks = ?,
+                    
+                    single_chunk = ?,
 
                     subtasks = ?,
                     dependencies = ?,
@@ -1101,6 +1115,8 @@ class TaskManager:
 
                 int(task.assigned),
                 json.dumps(task.assigned_chunks) if task.assigned_chunks else None,
+
+                int(task.single_chunk),
 
                 json.dumps(task.subtasks) if task.subtasks else None,
                 json.dumps(task.dependencies) if task.dependencies else None,
@@ -1176,6 +1192,10 @@ class TaskManager:
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
             task_data["recurring"] = bool(task_data["recurring"])
             task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
+            task_data["auto_chunk"] = bool(task_data["auto_chunk"])
+            task_data["manually_scheduled"] = bool(task_data["manually_scheduled"])
+            task_data["assigned"] = bool(task_data["assigned"])
+            task_data["single_chunk"] = bool(task_data["single_chunk"])
 
             return Task(**task_data)
 

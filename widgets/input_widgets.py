@@ -136,7 +136,7 @@ class PeriodSelectionCalendar(QWidget):
         timeLayout = QHBoxLayout()
         self.dueTimeEdit = QTimeEdit()
         self.dueTimeEdit.setDisplayFormat("hh:mm AP")
-        self.dueTimeEdit.setTime(QTime(12, 0))
+        self.dueTimeEdit.setTime(QTime(0, 0))
         self.clearTimeButton = QPushButton("Clear Time")
         timeLayout.addWidget(self.dueTimeEdit)
         timeLayout.addWidget(self.clearTimeButton)
@@ -187,7 +187,7 @@ class PeriodSelectionCalendar(QWidget):
             self.dueTimeEdit.setEnabled(True);
             self.clearTimeButton.setEnabled(True)
             if isinstance(self.due_date_time, QDate):
-                self.dueTimeEdit.setTime(QTime(12, 0))
+                self.dueTimeEdit.setTime(QTime(0, 0))
             else:
                 self.dueTimeEdit.setTime(self.due_date_time.time())
         if self.added_date_time:
@@ -201,27 +201,33 @@ class PeriodSelectionCalendar(QWidget):
         if self._last_highlight_start and self._last_highlight_end:
             cur = self._last_highlight_start
             while cur <= self._last_highlight_end:
-                self.calendar.setDateTextFormat(cur, default_fmt);
+                self.calendar.setDateTextFormat(cur, default_fmt)
                 cur = cur.addDays(1)
         if not self.due_date_time:
-            self._last_highlight_start = None;
-            self._last_highlight_end = None;
+            self._last_highlight_start = None
+            self._last_highlight_end = None
             return
-        highlight_fmt = QTextCharFormat();
+        highlight_fmt = QTextCharFormat()
         highlight_fmt.setBackground(QBrush(QColor("lightblue")))
-        if self.added_date_time and self.due_date_time:
-            start = min(self.added_date_time, self.due_date_time)
-            end = max(self.added_date_time, self.due_date_time)
+
+        # Ensure we are working with QDate, extract date if it's QDateTime
+        due_date = self.due_date_time.date() if isinstance(self.due_date_time, QDateTime) else self.due_date_time
+        added_date = self.added_date_time.date() if isinstance(self.added_date_time,
+                                                               QDateTime) else self.added_date_time
+
+        if added_date and due_date:
+            start = min(added_date, due_date)
+            end = max(added_date, due_date)
             cur = start
             while cur <= end:
-                self.calendar.setDateTextFormat(cur, highlight_fmt);
+                self.calendar.setDateTextFormat(cur, highlight_fmt)
                 cur = cur.addDays(1)
-            self._last_highlight_start = start;
+            self._last_highlight_start = start
             self._last_highlight_end = end
-        elif self.due_date_time:
-            self.calendar.setDateTextFormat(self.due_date_time, highlight_fmt)
-            self._last_highlight_start = self.due_date_time;
-            self._last_highlight_end = self.due_date_time
+        elif due_date:
+            self.calendar.setDateTextFormat(due_date, highlight_fmt)
+            self._last_highlight_start = due_date
+            self._last_highlight_end = due_date
 
     def _clearDates(self):
         self.added_date_time = None;
@@ -231,7 +237,19 @@ class PeriodSelectionCalendar(QWidget):
         self._refreshDisplay()
 
     def getSelectedDates(self):
-        return self.added_date_time, self.due_date_time
+        date_format = "yyyy-MM-dd"
+        datetime_format = "yyyy-MM-dd HH:mm"
+
+        added_date_str = self.added_date_time.toString(date_format) if self.added_date_time else None
+
+        if isinstance(self.due_date_time, QDateTime):
+            due_date_str = self.due_date_time.toString(datetime_format)
+        elif isinstance(self.due_date_time, QDate):
+            due_date_str = QDateTime(self.due_date_time, self.dueTimeEdit.time()).toString(datetime_format)
+        else:
+            due_date_str = None
+
+        return added_date_str, due_date_str
 
     def getDateStates(self):
         added_state = "none" if self.added_date_time is None else "added"
@@ -248,9 +266,9 @@ class PeriodSelectionCalendar(QWidget):
             self.due_date_time.setTime(time)
 
     def _onClearDueTime(self):
-        self.dueTimeEdit.setTime(QTime(12, 0))
+        self.dueTimeEdit.setTime(QTime(0, 0))
         if isinstance(self.due_date_time, QDateTime):
-            self.due_date_time.setTime(QTime(12, 0))
+            self.due_date_time.setTime(QTime(0, 0))
 
 
 class OptionSelector(QWidget):
@@ -288,6 +306,10 @@ class OptionSelector(QWidget):
         main_layout.addWidget(container)
 
         self.setLayout(main_layout)
+
+    def get_selection(self):
+        checked_button = self.button_group.checkedButton()
+        return checked_button.text() if checked_button else None
 
 
 class MultiOptionSelector(QWidget):
@@ -694,6 +716,7 @@ class ChunkingSelectionWidget(QWidget):
         self.time_chunk_btn.toggled.connect(self.update_chunking_method)
         self.count_chunk_btn.toggled.connect(self.update_chunking_method)
 
+        # For "Auto" min/max spinboxes, as well as showing/hiding logic:
         self.time_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
         self.count_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
         self.auto_chunk_btn.toggled.connect(self._updateChunkSpinboxes)
@@ -707,8 +730,11 @@ class ChunkingSelectionWidget(QWidget):
         self.update_chunking_config()
         self._updateChunkSpinboxes()
         self._updateAssignedVisibility()
+
+        # Show the "Evenly" preview label right away if it's the default
         self._updateEvenlyPreview()
 
+        # Hide the custom container if the default is "Split Evenly"
         self.assigned_custom_container.setVisible(False)
 
     # ----------------- Public API ----------------- #
@@ -768,34 +794,106 @@ class ChunkingSelectionWidget(QWidget):
         self.assigned_widget.setVisible(is_assigned)
 
     def update_chunking_method(self):
-        if self.time_chunk_btn.isChecked():
-            self.min_label.setText("Min Time:")
-            self.max_label.setText("Max Time:")
-        else:
-            self.min_label.setText("Min Count:")
-            self.max_label.setText("Max Count:")
+        """ Update labels and ensure all assigned chunks update their units properly. """
+        is_time_mode = self.time_chunk_btn.isChecked()
+
+        self.min_label.setText("Min Time:" if is_time_mode else "Min Count:")
+        self.max_label.setText("Max Time:" if is_time_mode else "Max Count:")
+
+        # Update chunking method for assigned mode
+        if self.assigned_chunk_btn.isChecked():
+            if self.split_evenly_btn.isChecked():
+                self._updateSplitEvenlyForModeChange()
+            else:
+                self._updateAssignedChunksForModeChange()
+
+    def _updateAssignedChunksForModeChange(self):
+        """Ensures all assigned chunks update their units properly when switching between Time and Count."""
+        total_estimate = self._getTotalEstimate()
+        is_time_mode = self.time_chunk_btn.isChecked()
+
+        # Update all custom chunks (spinboxes)
+        for item in self.custom_chunks_flow.itemList:
+            widget = item.widget()
+            if widget and widget.property("chunk_data"):
+                data = widget.property("chunk_data")
+                spinbox = data["widget"]
+
+                # Convert old value to new unit
+                old_value = spinbox.value()
+                if is_time_mode:
+                    new_value = min(old_value * 60, total_estimate)  # Convert count to minutes
+                else:
+                    new_value = min(old_value // 60, total_estimate)  # Convert minutes to count
+
+                spinbox.setValue(new_value)
+                spinbox.setRange(1, total_estimate)
+
+        # Update floating chunk
+        self._adjustFloatingChunkSize()
+
+    def _updateSplitEvenlyForModeChange(self):
+        """
+        Ensures the 'Split Evenly' preview and spinbox update properly
+        when switching between Time and Count.
+        NOTE: We do NOT disable the count_selector or min/max spinboxes here.
+        """
+        total_estimate = self._getTotalEstimate()
+        if total_estimate <= 0:
+            return
+
+        # Adjust the maximum possible chunks if needed (e.g., if total is 10, you can have at most 10 chunks).
+        self.split_evenly_spinbox.setMaximum(max(1, total_estimate))
+
+        # If the user had a higher chunk number set previously, clamp it
+        old_n_chunks = self.split_evenly_spinbox.value()
+        new_n_chunks = min(old_n_chunks, total_estimate)
+        self.split_evenly_spinbox.setValue(new_n_chunks)
+
+        # Update preview label
+        self._updateEvenlyPreview()
 
     def _updateChunkSpinboxes(self):
+        """
+        Called whenever the user changes the 'auto/assigned/single' style
+        or toggles time/count while in Auto mode.
+        Dynamically update min/max spinboxes for 'Auto' style.
+        We do NOT disable the count spinbox in count mode.
+        """
         if self.get_chunking_style() != "auto":
             return
+
         total = self._getTotalEstimate()
+        is_time_mode = self.time_chunk_btn.isChecked()
+
         if total <= 0:
+            # Fallback
             self.min_spinbox.setValue(1)
             self.max_spinbox.setValue(1)
             return
-        if self.get_chunking_method() == "time":
+
+        if is_time_mode:
+            # Time-based chunking (min/max in minutes)
             min_val = 15 if total <= 30 else 30
             max_val = max(total, min_val)
-            self.min_spinbox.setValue(min_val)
-            self.max_spinbox.setValue(max_val)
         else:
+            # Count-based chunking
+            # e.g., 20% to 100% of count
             min_val = max(1, int(total * 0.2))
             max_val = max(total, min_val)
-            self.min_spinbox.setValue(min_val)
-            self.max_spinbox.setValue(max_val)
+
+        self.min_spinbox.setValue(min_val)
+        self.max_spinbox.setValue(max_val)
+
+        # If "Split Evenly" is active in assigned mode, we update that logic too
+        if self.split_evenly_btn.isChecked() and self.assigned_chunk_btn.isChecked():
+            self._updateSplitEvenlyForModeChange()
 
     def _updateAssignedVisibility(self):
-        """ Show/Hide assigned sub-mode UI and reset the floating chunk properly."""
+        """
+        Show or hide the assigned widget and sub-mode containers.
+        Also ensure the floating chunk is created if "Custom" is chosen.
+        """
         if not self.assigned_chunk_btn.isChecked():
             self.assigned_widget.setVisible(False)
             return
@@ -806,27 +904,36 @@ class ChunkingSelectionWidget(QWidget):
         self.assigned_evenly_container.setVisible(use_split_evenly)
         self.assigned_custom_container.setVisible(not use_split_evenly)
 
+        # If switching to custom, ensure the floating chunk is there
         if self.custom_assigned_btn.isChecked():
-            self._createFloatingChunk()  # Ensure floating chunk starts with total
+            self._createFloatingChunk()
             self._adjustFloatingChunkSize()
 
         self._updateEvenlyPreview()
 
     def _updateEvenlyPreview(self):
+        """
+        Show how large each chunk will be if 'Split Evenly' is chosen,
+        including on startup (so it doesn't start empty).
+        """
         if not self.assigned_chunk_btn.isChecked() or not self.split_evenly_btn.isChecked():
             self.evenly_preview_label.setText("")
             return
+
         n = self.split_evenly_spinbox.value()
         total = self._getTotalEstimate()
+        is_time_mode = self.time_chunk_btn.isChecked()
+
         if n <= 0 or total <= 0:
             self.evenly_preview_label.setText("(No valid chunks)")
             return
+
         chunk_size = total // n
         leftover = total % n
-        if self.get_chunking_method() == "time":
-            self.evenly_preview_label.setText(f"Each ≈ {chunk_size} min (+ leftover={leftover})")
-        else:
-            self.evenly_preview_label.setText(f"Each ≈ {chunk_size} (+ leftover={leftover})")
+
+        # For display, if time mode => 'min', else 'count'
+        unit = "min" if is_time_mode else "count"
+        self.evenly_preview_label.setText(f"Each ≈ {chunk_size} {unit} (+ leftover={leftover})")
 
     # ------------------ Custom Approach ------------------ #
     def _createFloatingChunk(self):
@@ -856,30 +963,30 @@ class ChunkingSelectionWidget(QWidget):
         self.custom_chunks_flow.addWidget(container)
 
     def _onAddCustomChunk(self):
-        """Add a chunk, splitting from the floating chunk.
-           Prevent adding if leftover is 0 or less.
-        """
+        """Adds a new chunk, ensuring the sum of all chunks always equals the total estimate."""
         leftover = self._getLeftover()
         if leftover <= 0:
-            return  # Don't allow adding if no leftover
+            return  # Don't allow adding if no space left
 
         chunk_type = "time" if self.get_chunking_method() == "time" else "count"
 
-        # We'll create a new chunk of '1' minute (or 1 count) by default,
-        # then subtract that from the floating chunk leftover.
-        new_chunk_value = 1 if leftover >= 1 else leftover  # Just in case leftover=1
+        new_chunk_value = max(1, leftover // 2)  # Default to splitting remaining space
         container = QWidget()
         container_layout = QHBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(5)
 
         spin = QSpinBox(self)
-        spin.setRange(0, leftover)  # user can't exceed leftover
+        spin.setRange(1, leftover)  # Max cannot exceed leftover
         spin.setValue(new_chunk_value)
         spin.setFixedWidth(80)
+        spin.valueChanged.connect(lambda: self._onCustomChunkChanged(spin))
+
         container_layout.addWidget(spin)
 
-        remove_btn = QPushButton("X")
+        remove_btn = QPushButton("x")
+        remove_btn.setFixedWidth(20)
+        remove_btn.setFixedHeight(25)
         remove_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         remove_btn.clicked.connect(lambda: self._removeCustomChunk(container))
         container_layout.addWidget(remove_btn)
@@ -887,10 +994,36 @@ class ChunkingSelectionWidget(QWidget):
         container.setProperty("chunk_data", {"type": chunk_type, "widget": spin, "floating": False})
         self.custom_chunks_flow.addWidget(container)
 
-        # Reorder floating chunk last
+        # Ensure floating chunk updates correctly
         self._reorderFloatingChunkLast()
-        # Adjust leftover
         self._adjustFloatingChunkSize()
+
+    def _onCustomChunkChanged(self, changed_spinbox):
+        """Ensures the total sum of chunks remains equal to the total estimate when a user changes a value."""
+        total_estimate = self._getTotalEstimate()
+        if total_estimate <= 0:
+            return
+
+        used_amount = sum(self._getChunkValue(data["type"], data["widget"])
+                          for item in self.custom_chunks_flow.itemList
+                          if (data := item.widget().property("chunk_data")) and not data["floating"])
+
+        floating_w = self._floating_chunk_widget
+
+        leftover = total_estimate - used_amount
+        if floating_w:
+            floating_w.setValue(max(0, leftover))
+            floating_w.setRange(0, leftover)
+
+        # Adjust max range for all spinboxes to prevent exceeding total
+        for item in self.custom_chunks_flow.itemList:
+            widget = item.widget()
+            if widget and widget.property("chunk_data"):
+                data = widget.property("chunk_data")
+                spinbox = data["widget"]
+                if not data["floating"]:
+                    current_val = spinbox.value()
+                    spinbox.setRange(1, current_val + leftover)  # Adjust limit to prevent over-allocation
 
     def _removeCustomChunk(self, container):
         self.custom_chunks_flow.removeWidget(container)
@@ -913,52 +1046,29 @@ class ChunkingSelectionWidget(QWidget):
             self.custom_chunks_flow.addWidget(floating_container)
 
     def _adjustFloatingChunkSize(self):
-        """Adjust the floating chunk so sum(all chunks) == total estimate."""
+        """Ensures the sum of all chunks always equals the total estimate by dynamically adjusting the floating chunk."""
         total_estimate = self._getTotalEstimate()
         if total_estimate <= 0:
             return
 
-        used_amount = 0
-        floating_w = None
-        floating_container = None
+        used_amount = sum(self._getChunkValue(data["type"], data["widget"])
+                          for item in self.custom_chunks_flow.itemList
+                          if (data := item.widget().property("chunk_data")) and not data["floating"])
 
-        for i in range(self.custom_chunks_flow.count()):
-            item = self.custom_chunks_flow.itemAt(i)
-            w = item.widget()
-            if not w or not w.property("chunk_data"):
-                continue
-            data = w.property("chunk_data")
-            if data["floating"]:
-                floating_w = data["widget"]
-                floating_container = w
-                continue
-            used_amount += self._getChunkValue(data["type"], data["widget"])
-
-        if not floating_w:
-            # If no floating chunk exists, create one with the correct total
-            self._createFloatingChunk()
-            return
-
+        floating_w = self._floating_chunk_widget
         leftover = total_estimate - used_amount
-        floating_w.setRange(0, total_estimate)
-        floating_w.setValue(max(0, leftover))  # Ensure it doesn't go negative
 
-        if leftover <= 0:
-            self.custom_chunks_flow.removeWidget(floating_container)
-            floating_container.setParent(None)
-            floating_container.deleteLater()
+        if floating_w:
+            floating_w.setRange(0, leftover)
+            floating_w.setValue(max(0, leftover))
+
+        # If there's no leftover, remove floating chunk
+        if leftover <= 0 and floating_w:
+            container = floating_w.parent()
+            self.custom_chunks_flow.removeWidget(container)
+            container.setParent(None)
+            container.deleteLater()
             self._floating_chunk_widget = None
-
-            # Make last chunk the new floating chunk if needed
-            new_count = self.custom_chunks_flow.count()
-            if new_count > 0:
-                last_item = self.custom_chunks_flow.itemAt(new_count - 1)
-                last_w = last_item.widget()
-                if last_w and last_w.property("chunk_data"):
-                    d = last_w.property("chunk_data")
-                    d["floating"] = True
-                    self._floating_chunk_widget = d["widget"]
-                    self._clearRemoveButton(last_w)
 
     def _clearRemoveButton(self, container):
         layout = container.layout()
@@ -1019,13 +1129,52 @@ class ChunkingSelectionWidget(QWidget):
             hrs, mins = self.quick_times_map[option]
             self.time_estimate_selector.set_time_estimate(hrs, mins)
 
+    def get_selections(self):
+        """
+        Returns a dictionary with all selected values:
+        - time estimate (total minutes)
+        - count
+        - chunk type (time or count)
+        - auto chunking enabled
+        - min chunk size
+        - max chunk size
+        - assigned chunking enabled
+        - assigned chunks list
+        - single chunking enabled
+        """
+        hours, minutes = self.time_estimate_selector.get_time_estimate()
+        time_estimate = (hours * 60) + minutes  # Convert to total minutes
+
+        count = self.count_selector.value()
+        chunk_type = "time" if self.time_chunk_btn.isChecked() else "count"
+
+        auto_chunk = self.auto_chunk_btn.isChecked()
+        min_chunk_size = self.min_spinbox.value() if auto_chunk else None
+        max_chunk_size = self.max_spinbox.value() if auto_chunk else None
+
+        assigned = self.assigned_chunk_btn.isChecked()
+        assigned_chunks = self.get_assigned_chunks() if assigned else []
+
+        single_chunk = self.single_chunk_btn.isChecked()
+
+        return {
+            "time_estimate": time_estimate,
+            "count": count,
+            "chunk_type": chunk_type,
+            "auto_chunk": auto_chunk,
+            "min_chunk_size": min_chunk_size,
+            "max_chunk_size": max_chunk_size,
+            "assigned": assigned,
+            "assigned_chunks": assigned_chunks,
+            "single_chunk": single_chunk
+        }
+
 
 class AddTaskDialog(QDialog):
     def __init__(self, parent=None, task_list_widget=None):
         super().__init__(parent)
         self.setWindowTitle("Add New Task")
         self.resize(500, 400)
-        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
 
         self.task_list_widget = task_list_widget
 
@@ -1047,8 +1196,8 @@ class AddTaskDialog(QDialog):
         self.name_layout = QHBoxLayout()
         self.name_layout.addWidget(QLabel("Name*:"))
         self.name_layout.addWidget(self.name_edit)
-        self.important_checkbox = QCheckBox()
-        self.name_layout.addWidget(self.important_checkbox)
+        self.include_in_schedule_checkbox = QCheckBox()
+        self.name_layout.addWidget(self.include_in_schedule_checkbox)
         self.left_part.addLayout(self.name_layout)
 
         self.description_edit = QTextEdit(self)
@@ -1207,53 +1356,35 @@ class AddTaskDialog(QDialog):
         super().accept()
 
     def get_task_data(self):
-        due_date = self.due_date_edit.date()
-        due_time = self.due_time_edit.time()
-        due_datetime = None
-        if due_date and not due_date.isNull():
-            if due_date != QDate(2000, 1, 1):
-                py_date = due_date.toPyDate()
-                py_time = due_time.toPyTime()
-                due_datetime = datetime.combine(py_date, py_time)
+
+        time_count_chunks = self.time_count_chunk_selector.get_selections()
+        start_date, due_date_time = self.period_selector.getSelectedDates()
 
         task_data = {
+            "include_in_schedule": self.include_in_schedule_checkbox.isChecked(),
             "name": self.name_edit.text(),
-            "description": self.description_edit.text(),
-            "notes": self.notes_edit.toPlainText(),
-            "tags": self.categories_input.get_tags(),
-            "resources": [res.strip() for res in self.resources_edit.text().split(",") if res.strip()],
-            "start_date": None,  # Missing in the method
-            "due_datetime": due_datetime,
-            "added_date_time": None,  # Missing in the method
-            "last_completed_date": None,  # Missing in the method
-            "list_order": 0,  # Default value, missing in the method
             "list_name": self.task_list_widget.task_list_name,
+            "description": self.description_edit.toPlainText(),
+            "priority": int(self.priority_selector.get_selection()),
+            "flexibility":  self.flexibility_selector.get_selection(),
+            "effort_level": self.effort_level_selector.get_selection(),
+            "tags": self.tag_selector.get_tags(),
             "recurring": self.recurring_checkbox.isChecked(),
-            "recur_every": int(self.every_n_days_spinbox.value()) if self.every_n_days_radio.isChecked() else [
-                checkbox.text() for checkbox in self.weekday_checkboxes if checkbox.isChecked()
-            ] if self.specific_weekdays_radio.isChecked() else None,
-            "recurrences": 0,  # Default value, missing in the method
-            "time_estimate": self.estimate_spinbox.value(),
-            "time_chunk_size": None,  # Missing in the method
-            "time_of_day_preference": None,  # Missing in the method
-            "time_logged": self.time_logged_spinbox.value(),
-            "count_required": self.count_required_spinbox.value(),
-            "count_chunk_size": 1,  # Default value, missing in the method
-            "count_completed": self.count_completed_spinbox.value(),
-            "subtasks": None,  # Missing in the method
-            "dependencies": [dep.strip() for dep in self.dependencies_edit.text().split(",") if dep.strip()],
-            "status": self.status_combo.currentText() if self.status_combo.currentText() else 'Not Started',
-            "flexibility": self.deadline_flexibility_combo.currentText() if self.deadline_flexibility_combo.currentText() else 'Flexible',
-            "effort_level": self.effort_level_combo.currentText() if self.effort_level_combo.currentText() else 'Medium',
-            "priority": self.priority_spinbox.value(),
-            "previous_priority": 0,  # Default value, missing in the method
-            "preferred_work_days": None,  # Missing in the method
-            "progress": 0.0,  # Default value, missing in the method
-            "urgency": 0.0,  # Default value, missing in the method
-            "milestones": None,  # Missing in the method
-            "global_weight": None,  # Missing in the method
-            "schedule_weight": None,  # Missing in the method
-            "behind_schedule": False,  # Default value, missing in the method
+            "recur_every": int(
+                self.every_n_days_spinbox.value()) if self.every_n_days_radio.isChecked() else self.specific_weekdays_widget.get_selected() if self.specific_weekdays_radio.isChecked() else None,
+            "start_date": start_date,
+            "due_datetime": due_date_time,
+            "preferred_work_days": self.preferred_day_of_week_selector.get_selected(),
+            "time_of_day_preference": self.preferred_time_of_day.get_selected(),
+            "time_estimate": time_count_chunks.get("time_estimate"),
+            "count_required": time_count_chunks.get("count"),
+            "chunk_type": time_count_chunks.get("chunk_type"),
+            "auto_chunk": time_count_chunks.get("auto_chunk"),
+            "min_chunk_size": time_count_chunks.get("min_chunk_size"),
+            "max_chunk_size": time_count_chunks.get("max_chunk_size"),
+            "assigned": time_count_chunks.get("assigned"),
+            "assigned_chunks": time_count_chunks.get("assigned_chunks"),
+            "single_chunk": time_count_chunks.get("single_chunk")
         }
 
         return task_data
