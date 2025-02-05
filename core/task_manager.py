@@ -64,12 +64,15 @@ class Task:
         self.count_required = kwargs.get("count_required", 0)
         self.count_completed = kwargs.get("count_completed", 0)
 
+        self.chunk_type = kwargs.get("chunk_type", None)  # either "time" or "count"
+
         self.auto_chunk = kwargs.get("auto_chunk", True)
         self.min_chunk_size = kwargs.get("min_chunk_size", None)
         self.max_chunk_size = kwargs.get("max_chunk_size", None)
 
         self.manually_scheduled = kwargs.get("manually_scheduled", False)
-        self.manually_scheduled_chunks = kwargs.get("manually_scheduled_chunks", [])  # eg: {"date": datetime obj, "timeblock": "timeblock name", "size": 0.0, "type": either count or time}
+        self.manually_scheduled_chunks = kwargs.get("manually_scheduled_chunks",
+                                                    [])  # eg: {"date": datetime obj, "timeblock": "timeblock name", "size": 0.0, "type": either count or time}
 
         self.assigned = kwargs.get("assigned", False)
         self.assigned_chunks = kwargs.get("assigned_chunks",
@@ -464,6 +467,8 @@ class TaskManager:
                 time_logged REAL,
                 count_required INTEGER,
                 count_completed INTEGER,
+                
+                chunk_type TEXT,
 
                 auto_chunk BOOLEAN NOT NULL CHECK (auto_chunk IN (0,1)) DEFAULT 1,
                 min_chunk_size REAL,
@@ -904,6 +909,8 @@ class TaskManager:
                     time_logged,
                     count_required,
                     count_completed,
+                    
+                    chunk_type,
 
                     auto_chunk,
                     min_chunk_size,
@@ -930,7 +937,7 @@ class TaskManager:
                     progress,
                     include_in_schedule,
                     global_weight
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.name,
                 task.description,
@@ -951,6 +958,8 @@ class TaskManager:
                 task.time_logged,
                 task.count_required,
                 task.count_completed,
+
+                task.chunk_type,
 
                 int(task.auto_chunk),
                 task.min_chunk_size,
@@ -1055,6 +1064,8 @@ class TaskManager:
                     time_logged = ?,
                     count_required = ?,
                     count_completed = ?,
+                    
+                    chunk_type = ?,
 
                     auto_chunk = ?,
                     min_chunk_size = ?,
@@ -1105,6 +1116,8 @@ class TaskManager:
                 task.time_logged,
                 task.count_required,
                 task.count_completed,
+
+                task.chunk_type,
 
                 int(task.auto_chunk),
                 task.min_chunk_size,
