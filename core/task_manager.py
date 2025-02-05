@@ -1140,7 +1140,7 @@ class TaskManager:
                 task.priority,
                 task.previous_priority,
                 json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
-                task.time_of_day_preference,
+                json.dumps(task.time_of_day_preference) if task.time_of_day_preference else None,
 
                 task.progress,
                 int(task.include_in_schedule),
