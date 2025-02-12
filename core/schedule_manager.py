@@ -858,13 +858,10 @@ class ScheduleManager:
 
         sorted_candidates = sorted(chunk.timeblock_ratings, key=lambda x: x[1], reverse=True)
 
-        # Determine required capacity based on chunk type.
-        if chunk.chunk_type == "time":
-            required_capacity = chunk.duration
-        elif chunk.chunk_type == "count":
-            required_capacity = chunk.quantity
+        # For both time‐ and count‑based chunks, use the "size" attribute.
+        required_capacity = chunk.size
 
-        if chunk.auto:
+        if chunk.chunk_type == "auto":
             FLEXIBILITY_MAP = {"Strict": 1, "Flexible": 2, "Very Flexible": 3}
             flexibility_ratio = FLEXIBILITY_MAP.get(task.flexibility, 1) / max(FLEXIBILITY_MAP.values())
             if required_capacity <= 0:
@@ -875,8 +872,10 @@ class ScheduleManager:
             for candidate in top_candidates:
                 block, rating = candidate
                 filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
-                filtered_chunks = [c for c in filtered_chunks if not c.manual]
-                available = (block.get_available_time() if chunk.chunk_type == "time" else block.get_available_count())
+                filtered_chunks = [c for c in filtered_chunks if c.chunk_type != "manual"]
+                # Use block.get_available_time() for time‐based units and get_available_count() for count.
+                available = (block.get_available_time() if chunk.unit == "time"
+                             else block.get_available_count())
                 if available >= required_capacity:
                     if not test:
                         block.add_chunk(chunk, rating)
@@ -887,26 +886,23 @@ class ScheduleManager:
                     resizable_capacity = 0.0
                     reschedule_chunk_queue = []
                     for filtered_chunk in filtered_chunks:
-                        cap = filtered_chunk.duration if filtered_chunk.chunk_type == "time" else filtered_chunk.quantity
+                        cap = filtered_chunk.size
                         if cap <= 0:
                             continue
-                        if filtered_chunk.assigned:
+                        if filtered_chunk.chunk_type == "placed":
                             if self.assign_chunk(filtered_chunk, block, True):
                                 resizable_capacity += cap
                                 reschedule_chunk_queue.append(filtered_chunk)
-                        elif filtered_chunk.auto:
+                        elif filtered_chunk.chunk_type == "auto":
                             flexibility_ratio_auto = FLEXIBILITY_MAP.get(filtered_chunk.task.flexibility, 1) / max(
                                 FLEXIBILITY_MAP.values())
                             if flexibility_ratio_auto >= flexibility_ratio:
-                                av = (
-                                         filtered_chunk.duration if filtered_chunk.chunk_type == "time" else filtered_chunk.quantity) - (
-                                             required_capacity - resizable_capacity)
+                                av = filtered_chunk.size - (required_capacity - resizable_capacity)
                                 if av > 0:
                                     sp = filtered_chunk.split([av, cap - av])
                                     if sp and len(sp) >= 2:
                                         if self.assign_chunk(sp[1], block, True):
-                                            cap_sub = sp[1].duration if sp[1].chunk_type == "time" else sp[1].quantity
-                                            resizable_capacity += cap_sub
+                                            resizable_capacity += sp[1].size
                                             reschedule_chunk_queue.append(sp[1])
                             elif cap <= required_capacity:
                                 if self.assign_chunk(filtered_chunk, block, True):
@@ -916,7 +912,7 @@ class ScheduleManager:
                             break
                     if resizable_capacity >= 0.9 * required_capacity:
                         available_for_this_block = available + resizable_capacity
-                        total = chunk.duration if chunk.chunk_type == "time" else chunk.quantity
+                        total = chunk.size
                         if available_for_this_block < total:
                             sp = chunk.split([available_for_this_block, total - available_for_this_block])
                             if sp and len(sp) >= 2:
@@ -931,30 +927,30 @@ class ScheduleManager:
                         if not test:
                             block.add_chunk(chunk, rating)
                         return True
-            # End candidate loop for auto chunk.
-        elif chunk.assigned:
+
+        elif chunk.chunk_type == "placed":
             for candidate in sorted_candidates:
                 block, rating = candidate
                 if exclude_block and block.id == exclude_block.id:
                     continue
-                available = (block.get_available_time() if chunk.chunk_type == "time" else block.get_available_count())
-                total = chunk.duration if chunk.chunk_type == "time" else chunk.quantity
+                available = (block.get_available_time() if chunk.unit == "time"
+                             else block.get_available_count())
+                total = chunk.size
                 if available >= total:
                     if not test:
                         block.add_chunk(chunk, rating)
                     return True
                 else:
                     filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
-                    filtered_chunks = [c for c in filtered_chunks if not c.manual]
+                    filtered_chunks = [c for c in filtered_chunks if c.chunk_type != "manual"]
                     if not filtered_chunks:
                         continue
                     resizable_capacity = 0.0
                     reschedule_chunk_queue = []
                     for filtered_chunk in filtered_chunks:
-                        if filtered_chunk.assigned or filtered_chunk.auto:
+                        if filtered_chunk.chunk_type in ("placed", "auto"):
                             if self.assign_chunk(filtered_chunk, block, True):
-                                cap_sub = filtered_chunk.duration if filtered_chunk.chunk_type == "time" else filtered_chunk.quantity
-                                resizable_capacity += cap_sub
+                                resizable_capacity += filtered_chunk.size
                                 reschedule_chunk_queue.append(filtered_chunk)
                         if resizable_capacity >= total:
                             break
@@ -965,24 +961,59 @@ class ScheduleManager:
                         if not test:
                             block.add_chunk(chunk, rating)
                         return True
+
         chunk.flagged = True
         return False
 
     def generate_schedule(self):
         for chunk in self.chunks:
-            # If the chunk is manually scheduled, assume it's pre-assigned.
-            if chunk.manual:
-                continue
+            # Handle manual chunks: they come with a specific date and timeblock.
+            if chunk.chunk_type == "manual":
+                # Determine the target date.
+                target_date = chunk.date
+                if isinstance(target_date, str):
+                    try:
+                        target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+                    except ValueError:
+                        chunk.flagged = True
+                        continue
 
+                # Find the DaySchedule matching the target date.
+                matching_day = next((day for day in self.day_schedules if day.date == target_date), None)
+                if matching_day is None:
+                    chunk.flagged = True
+                    continue
+
+                # Find the specific timeblock within the DaySchedule.
+                # Assume chunk.timeblock holds the id of the target timeblock.
+                target_block = next(
+                    (block for block in matching_day.time_blocks if str(block.id) == str(chunk.timeblock)),
+                    None
+                )
+                if target_block is None:
+                    chunk.flagged = True
+                    continue
+
+                if chunk.unit == "time":
+                    if target_block.get_available_time() < chunk.size:
+                        chunk.flagged = True
+                        continue
+
+                # Assign the manual chunk to the target timeblock.
+                target_block.add_chunk(chunk, 10000)  # Using a fixed high rating for manual assignments.
+                continue  # Skip to the next chunk.
+
+            # For non-manual chunks, clear any existing timeblock ratings.
             chunk.timeblock_ratings = []
             for day in self.day_schedules:
+                # Skip days beyond the task's due date (if set).
                 if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
                     break
                 ratings = day.get_suitable_timeblocks_with_rating(chunk)
                 chunk.timeblock_ratings.extend(ratings)
 
+            # Sort candidates by rating (highest first) and attempt assignment.
             chunk.timeblock_ratings.sort(key=lambda x: x[1], reverse=True)
-
             self.assign_chunk(chunk)
 
     def refresh_schedule(self):
@@ -1136,6 +1167,7 @@ class DaySchedule:
 
     def get_suitable_timeblocks_with_rating(self, chunk):
         from datetime import datetime, time, timedelta
+
         def compute_time_bonus(t, interval, max_bonus, threshold=60):
             def to_minutes(t_obj):
                 return t_obj.hour * 60 + t_obj.minute
@@ -1164,8 +1196,10 @@ class DaySchedule:
                 continue
             if not self.qualifies(task, block):
                 continue
-            if not task.auto_chunk and block.get_available_time() < chunk.duration:
+            # For time-based chunks, ensure the block has enough available time.
+            if chunk.unit == "time" and not chunk.chunk_type == "auto" and block.get_available_time() < chunk.size:
                 continue
+
             rating = 0
             if task.due_datetime:
                 days_until_due = (task.due_datetime.date() - self.date).days
@@ -1173,7 +1207,7 @@ class DaySchedule:
             days_from_today = (self.date - today).days
             if task.priority >= 8:
                 rating += max(0, 100 - days_from_today * 10)
-            if hasattr(task, "preferred_work_days") and task.preferred_work_days:
+            if task.preferred_work_days:
                 if self.date.strftime("%A") in task.preferred_work_days:
                     rating += 50
             pref_intervals = {
@@ -1182,13 +1216,13 @@ class DaySchedule:
                 "Evening": (time(16, 0), time(20, 0)),
                 "Night": (time(20, 0), time(23, 0))
             }
-            if hasattr(task, "time_of_day_preference") and task.time_of_day_preference:
+            if task.time_of_day_preference:
                 for pref in task.time_of_day_preference:
                     if pref in pref_intervals:
                         bonus = compute_time_bonus(block.start_time, pref_intervals[pref], 50)
                         rating += bonus
                         break
-            if hasattr(task, "effort_level"):
+            if task.effort_level:
                 if task.effort_level == "High":
                     peak_start, peak_end = self.schedule_settings.peak_productivity_hours
                     bonus = compute_time_bonus(block.start_time, (peak_start, peak_end), 50)

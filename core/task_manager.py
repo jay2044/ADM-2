@@ -65,7 +65,19 @@ class Task:
         self.count_required = kwargs.get("count_required", 0)
         self.count_completed = kwargs.get("count_completed", 0)
 
-        self.chunks = kwargs.get("chunks", [])
+        example_chunk = {
+            "id": str(uuid.uuid4()),  # Unique ID for the chunk
+            "size": 1.5,  # Represents 1.5 hours or count units
+            "type": "auto",  # "manual", "auto", or "placed"
+            "unit": "time",  # "time" for duration-based tasks, "count" for count-based tasks
+            "status": "active",  # "active", "locked", "completed", etc.
+            "time_block": None,  # Assume this references a TimeBlock ID
+            "date": "2025-02-12",  # The date on which this chunk is scheduled
+            "is_recurring": False  # Whether this chunk is part of a recurring task
+        }
+
+        # self.chunks = kwargs.get("chunks", [])
+        self.chunks = [example_chunk]
         self.chunk_preference = kwargs.get("chunk_preference", None)  # "time", "count"
         self.min_chunk_size = kwargs.get("min_chunk_size", 0.0)
         self.max_chunk_size = kwargs.get("max_chunk_size", 0.0)
@@ -89,7 +101,8 @@ class Task:
 
         self.global_weight = kwargs.get("global_weight", None)
 
-    def add_chunk(self, size, chunk_type="manual", unit=self.chunk_preference, time_block=None, date=None, is_recurring=False, status=None):
+    def add_chunk(self, size, chunk_type="manual", unit="time", time_block=None, date=None, is_recurring=False,
+                  status=None):
         """Adds a new chunk to the task's chunk list."""
         chunk = {
             "id": str(uuid.uuid4()),  # Generate a unique ID for the chunk
@@ -489,26 +502,17 @@ class TaskManager:
                 recur_every TEXT,
                 recurrences INTEGER DEFAULT 0,
 
-                time_estimate REAL,
-                time_logged REAL,
-                count_required INTEGER,
-                count_completed INTEGER,
-                
-                chunk_type TEXT,
+                time_estimate REAL DEFAULT 0.25,
+                time_logged REAL DEFAULT 0.0,
+                count_required INTEGER DEFAULT 0,
+                count_completed INTEGER DEFAULT 0,
 
-                auto_chunk BOOLEAN NOT NULL CHECK (auto_chunk IN (0,1)) DEFAULT 1,
-                min_chunk_size REAL,
-                max_chunk_size REAL,
+                chunks TEXT DEFAULT '[]',
+                chunk_preference TEXT,
+                min_chunk_size REAL DEFAULT 0.0,
+                max_chunk_size REAL DEFAULT 0.0,
 
-                manually_scheduled BOOLEAN NOT NULL CHECK (manually_scheduled IN (0,1)) DEFAULT 0,
-                manually_scheduled_chunks TEXT DEFAULT '[]',
-
-                assigned BOOLEAN NOT NULL CHECK (assigned IN (0,1)) DEFAULT 0,
-                assigned_chunks TEXT DEFAULT '[]',
-                
-                single_chunk BOOLEAN NOT NULL CHECK (single_chunk IN (0,1)) DEFAULT 0,
-
-                subtasks TEXT,
+                subtasks TEXT DEFAULT '[]',
                 dependencies TEXT,
 
                 status TEXT DEFAULT 'Not Started',
@@ -517,13 +521,13 @@ class TaskManager:
                 priority INTEGER DEFAULT 0,
                 previous_priority INTEGER DEFAULT 0,
                 preferred_work_days TEXT DEFAULT '[]',
-                time_of_day_preference TEXT,
+                time_of_day_preference TEXT DEFAULT '[]',
 
-                progress REAL DEFAULT 0,
                 include_in_schedule BOOLEAN NOT NULL CHECK (include_in_schedule IN (0,1)) DEFAULT 0,
+
                 global_weight REAL,
 
-                FOREIGN KEY(list_name) REFERENCES task_lists(list_name) ON DELETE CASCADE
+                FOREIGN KEY(list_name) REFERENCES task_lists(name) ON DELETE CASCADE
             );
         """
 
@@ -576,11 +580,8 @@ class TaskManager:
             task_data["subtasks"] = json.loads(task_data["subtasks"]) if task_data.get("subtasks") else []
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
             task_data["recurring"] = bool(task_data["recurring"])
+            task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
             task_data['include_in_schedule'] = bool(task_data['include_in_schedule'])
-            task_data["auto_chunk"] = bool(task_data["auto_chunk"])
-            task_data["manually_scheduled"] = bool(task_data["manually_scheduled"])
-            task_data["assigned"] = bool(task_data["assigned"])
-            task_data["single_chunk"] = bool(task_data["single_chunk"])
 
             task = Task(**task_data)
             tasks.append(task)
@@ -913,7 +914,6 @@ class TaskManager:
     def add_task(self, task: Task):
         try:
             cursor = self.conn.cursor()
-
             cursor.execute("""
                 INSERT INTO tasks (
                     name,
@@ -931,24 +931,16 @@ class TaskManager:
                     recurring,
                     recur_every,
                     recurrences,
+
                     time_estimate,
                     time_logged,
                     count_required,
                     count_completed,
-                    
-                    chunk_type,
 
-                    auto_chunk,
+                    chunks,
+                    chunk_preference,
                     min_chunk_size,
                     max_chunk_size,
-
-                    manually_scheduled,
-                    manually_scheduled_chunks,
-
-                    assigned,
-                    assigned_chunks,
-                    
-                    single_chunk,
 
                     subtasks,
                     dependencies,
@@ -960,10 +952,10 @@ class TaskManager:
                     previous_priority,
                     preferred_work_days,
                     time_of_day_preference,
-                    progress,
+
                     include_in_schedule,
                     global_weight
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 task.name,
                 task.description,
@@ -980,26 +972,18 @@ class TaskManager:
                 int(task.recurring),
                 json.dumps(task.recur_every) if task.recur_every else None,
                 task.recurrences,
+
                 task.time_estimate,
                 task.time_logged,
                 task.count_required,
                 task.count_completed,
 
-                task.chunk_type,
-
-                int(task.auto_chunk),
+                json.dumps(task.chunks) if task.chunks else '[]',
+                task.chunk_preference,
                 task.min_chunk_size,
                 task.max_chunk_size,
 
-                int(task.manually_scheduled),
-                json.dumps(task.manually_scheduled_chunks) if task.manually_scheduled_chunks else None,
-
-                int(task.assigned),
-                json.dumps(task.assigned_chunks) if task.assigned_chunks else None,
-
-                int(task.single_chunk),
-
-                json.dumps(task.subtasks) if task.subtasks else None,
+                json.dumps(task.subtasks) if task.subtasks else '[]',
                 json.dumps(task.dependencies) if task.dependencies else None,
 
                 task.status,
@@ -1007,16 +991,16 @@ class TaskManager:
                 task.effort_level,
                 task.priority,
                 task.previous_priority,
-                json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
-                json.dumps(task.time_of_day_preference) if task.time_of_day_preference else None,
-                task.progress,
+                json.dumps(task.preferred_work_days) if task.preferred_work_days else '[]',
+                json.dumps(task.time_of_day_preference) if task.time_of_day_preference else '[]',
+
                 int(task.include_in_schedule),
                 task.global_weight
             ))
-
             self.conn.commit()
             task.id = cursor.lastrowid
 
+            # Add to the in-memory model
             for task_list in self.task_lists:
                 if task_list.name == task.list_name:
                     task_list.add_task_to_model_list(task)
@@ -1063,7 +1047,6 @@ class TaskManager:
         try:
             cursor = self.conn.cursor()
 
-            # Store old task list name before update to check if it changed
             old_task = self.get_task(task.id)
             old_list_name = old_task.list_name if old_task else None
 
@@ -1090,20 +1073,11 @@ class TaskManager:
                     time_logged = ?,
                     count_required = ?,
                     count_completed = ?,
-                    
-                    chunk_type = ?,
 
-                    auto_chunk = ?,
+                    chunks = ?,
+                    chunk_preference = ?,
                     min_chunk_size = ?,
                     max_chunk_size = ?,
-
-                    manually_scheduled = ?,
-                    manually_scheduled_chunks = ?,
-
-                    assigned = ?,
-                    assigned_chunks = ?,
-                    
-                    single_chunk = ?,
 
                     subtasks = ?,
                     dependencies = ?,
@@ -1116,7 +1090,6 @@ class TaskManager:
                     preferred_work_days = ?,
                     time_of_day_preference = ?,
 
-                    progress = ?,
                     include_in_schedule = ?,
                     global_weight = ?
 
@@ -1143,21 +1116,12 @@ class TaskManager:
                 task.count_required,
                 task.count_completed,
 
-                task.chunk_type,
-
-                int(task.auto_chunk),
+                json.dumps(task.chunks) if task.chunks else '[]',
+                task.chunk_preference,
                 task.min_chunk_size,
                 task.max_chunk_size,
 
-                int(task.manually_scheduled),
-                json.dumps(task.manually_scheduled_chunks) if task.manually_scheduled_chunks else None,
-
-                int(task.assigned),
-                json.dumps(task.assigned_chunks) if task.assigned_chunks else None,
-
-                int(task.single_chunk),
-
-                json.dumps(task.subtasks) if task.subtasks else None,
+                json.dumps(task.subtasks) if task.subtasks else '[]',
                 json.dumps(task.dependencies) if task.dependencies else None,
 
                 task.status,
@@ -1165,10 +1129,9 @@ class TaskManager:
                 task.effort_level,
                 task.priority,
                 task.previous_priority,
-                json.dumps(task.preferred_work_days) if task.preferred_work_days else None,
-                json.dumps(task.time_of_day_preference) if task.time_of_day_preference else None,
+                json.dumps(task.preferred_work_days) if task.preferred_work_days else '[]',
+                json.dumps(task.time_of_day_preference) if task.time_of_day_preference else '[]',
 
-                task.progress,
                 int(task.include_in_schedule),
                 task.global_weight,
 
@@ -1180,27 +1143,26 @@ class TaskManager:
 
             self.conn.commit()
 
-            # Update task list references in-place
-            if old_list_name:
-                # If the task moved to a different list
-                if old_list_name != task.list_name:
-                    # Remove from old list
-                    old_task_list = next((tl for tl in self.task_lists if tl.name == old_list_name), None)
-                    if old_task_list:
-                        old_task_list.tasks[:] = [t for t in old_task_list.tasks if t.id != task.id]
+            # Update in-memory list references
+            if old_list_name and old_list_name != task.list_name:
+                # Remove from old list
+                old_task_list = next((tl for tl in self.task_lists if tl.name == old_list_name), None)
+                if old_task_list:
+                    old_task_list.tasks[:] = [t for t in old_task_list.tasks if t.id != task.id]
 
-                    # Add to new list
-                    new_task_list = next((tl for tl in self.task_lists if tl.name == task.list_name), None)
-                    if new_task_list:
-                        new_task_list.tasks.append(task)
-                else:
-                    # Update task in the same list
-                    task_list = next((tl for tl in self.task_lists if tl.name == task.list_name), None)
-                    if task_list:
-                        for i, t in enumerate(task_list.tasks):
-                            if t.id == task.id:
-                                task_list.tasks[i] = task
-                                break
+                # Add to new list
+                new_task_list = next((tl for tl in self.task_lists if tl.name == task.list_name), None)
+                if new_task_list:
+                    new_task_list.tasks.append(task)
+            else:
+                # Update within the same list
+                current_list = next((tl for tl in self.task_lists if tl.name == task.list_name), None)
+                if current_list:
+                    for i, t in enumerate(current_list.tasks):
+                        if t.id == task.id:
+                            current_list.tasks[i] = task
+                            break
+
         except sqlite3.Error as e:
             print(f"Database error while updating task with ID {task.id}: {e}")
         except Exception as e:
@@ -1228,11 +1190,8 @@ class TaskManager:
             task_data["subtasks"] = json.loads(task_data["subtasks"]) if task_data.get("subtasks") else []
             task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get("dependencies") else []
             task_data["recurring"] = bool(task_data["recurring"])
+            task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
             task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
-            task_data["auto_chunk"] = bool(task_data["auto_chunk"])
-            task_data["manually_scheduled"] = bool(task_data["manually_scheduled"])
-            task_data["assigned"] = bool(task_data["assigned"])
-            task_data["single_chunk"] = bool(task_data["single_chunk"])
 
             return Task(**task_data)
 
@@ -1268,6 +1227,7 @@ class TaskManager:
                 task_data["dependencies"] = json.loads(task_data["dependencies"]) if task_data.get(
                     "dependencies") else []
                 task_data["recurring"] = bool(task_data["recurring"])
+                task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
                 task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
 
                 task = Task(**task_data)
