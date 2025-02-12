@@ -775,10 +775,11 @@ class ScheduleManager:
             day_workload_est = (day_eat / total_eat) * total_workload
 
             # 5. Calculate the daily buffer ratio as a fraction of free time
-            if day_eat > 0:
-                day_schedule.assign_buffer_ratio(1.0 - (day_workload_est / day_eat))
-            else:
-                day_schedule.assign_buffer_ratio(0.0)
+            # if day_eat > 0:
+            #     day_schedule.assign_buffer_ratio(1.0 - (day_workload_est / day_eat))
+            # else:
+            #     day_schedule.assign_buffer_ratio(0.0)
+            day_schedule.assign_buffer_ratio(0.0)
 
     def chunk_tasks(self):
         chunks = []

@@ -51,7 +51,7 @@ class ScheduleTaskWidget(QWidget):
         self.layout = QHBoxLayout()
         self.setLayout(self.layout)
         self.checkbox = QCheckBox()
-        self.checkbox.setChecked(self.task.completed)
+        self.checkbox.setChecked(self.task.status=="completed")
         self.checkbox.stateChanged.connect(self.task_checked)
         self.layout.addWidget(self.checkbox)
         self.task_label = QLabel(self.task.title)
@@ -488,7 +488,7 @@ class TimeBlockWidget(QWidget):
     def load_tasks(self):
         for chunk in self.chunks:
             # Create the ScheduleTaskWidget using the chunk
-            task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager, chunk)
+            task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager_instance, chunk)
             item = QListWidgetItem()
             item.setSizeHint(task_widget.sizeHint())
             self.task_list.addItem(item)
