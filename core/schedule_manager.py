@@ -27,6 +27,7 @@ def convert_times_in_schedule(schedule_dict: dict) -> dict:
         new_schedule[day] = converted
     return new_schedule
 
+
 def parse_time_schedule(schedule_data: dict) -> dict:
     """
     Convert each day's [start_time_str, end_time_str] into [start_time_obj, end_time_obj].
@@ -51,7 +52,6 @@ def parse_time_schedule(schedule_data: dict) -> dict:
         parsed_schedule[day] = [start_time, end_time]
 
     return parsed_schedule
-
 
 
 class ScheduleSettings:
@@ -194,7 +194,7 @@ class TimeBlock:
 
     def add_chunk(self, chunk, rating):
         id = chunk.id
-        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks] and chunk.chunk_type=="auto":
+        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks] and chunk.chunk_type == "auto":
             self.task_chunks[id]["chunk"].size += chunk.size
         else:
             self.task_chunks[id] = {"chunk": chunk, "rating": rating}
@@ -215,11 +215,13 @@ class TimeBlock:
 
 
 class TaskChunk:
-    def __init__(self, id, task, chunk_type, size=None, timeblock_ratings=[], timeblock=None, date=None, is_recurring=False, status=None):
+    def __init__(self, id, task, chunk_type, unit, size=None, timeblock_ratings=[], timeblock=None, date=None,
+                 is_recurring=False, status=None):
         self.id = id
         self.task = task
         self.chunk_type = chunk_type  # "manual", "auto", "placed"
         self.size = size
+        self.unit = unit
         self.timeblock_ratings = timeblock_ratings
         self.timeblock = timeblock
         self.date = date  # Date for recurring task
@@ -232,12 +234,12 @@ class TaskChunk:
             if self.date == today:
                 return "active"
             return "locked"  # Future recurrences start locked
-        
+
         return "active"
 
     def mark_completed(self):
         self.status = "completed"
-    
+
     def mark_flagged(self):
         self.status = "flagged"
 
@@ -780,89 +782,70 @@ class ScheduleManager:
 
     def chunk_tasks(self):
         chunks = []
-        today = datetime.now().date()
+        recurrence_end_date = datetime.now() + timedelta(days=48)
+
         for task in self.active_tasks:
-            task_chunks = task.chunks
-            if task.recurring:
-                recurrence_days = []
-                if isinstance(task.recur_every, int):
-                    base_date = (
-                        task.last_completed_date.date() if task.last_completed_date else task.added_date_time.date())
-                    for day_schedule in self.day_schedules:
-                        day = day_schedule.date
-                        if (day - base_date).days % task.recur_every == 0 and day >= base_date:
-                            recurrence_days.append(day)
-                elif isinstance(task.recur_every, list):
-                    for day_schedule in self.day_schedules:
-                        day = day_schedule.date
-                        if day.strftime("%A") in task.recur_every:
-                            recurrence_days.append(day)
-                if task.chunk_preference == "count":
-                    remaining = task.count_required - task.count_completed
-                    for day in recurrence_days:
-                        is_active = (day == min([d for d in recurrence_days if d >= today]) if any(
-                            d >= today for d in recurrence_days) else False)
-                        chunk = TaskChunk(task=task, quantity=remaining, auto=True, chunk_type="count",
-                                          active=is_active)
-                        chunk.recurrence_date = day
-                        chunks.append(chunk)
-                else:
-                    remaining = task.time_estimate - task.time_logged
-                    for day in recurrence_days:
-                        is_active = (day == min([d for d in recurrence_days if d >= today]) if any(
-                            d >= today for d in recurrence_days) else False)
-                        chunk = TaskChunk(task=task, duration=remaining, auto=True, chunk_type="time", active=is_active)
-                        chunk.recurrence_date = day
-                        chunks.append(chunk)
-            else:
-                # Non-recurring tasks
-                if task.count_required is not None:
-                    remaining = task.count_required - task.count_completed
-                    if task.manually_scheduled:
-                        if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
-                            for chunk_info in task.manually_scheduled_chunks:
-                                chunk_quantity = chunk_info.get("quantity", 0)
-                                if chunk_quantity > 0:
-                                    chunk = TaskChunk(task=task, quantity=chunk_quantity, manual=True,
-                                                      chunk_type="count")
-                                    for day in self.day_schedules:
-                                        if chunk_info.get("date") == day.date:
-                                            target_block_name = chunk_info.get("timeblock", "")
-                                            for tb in day.time_blocks:
-                                                if tb.name == target_block_name:
-                                                    tb.add_chunk(chunk, rating=9999)
-                                                    break
-                                    remaining -= chunk_quantity
-                    if remaining > 0:
-                        if task.auto_chunk:
-                            chunk = TaskChunk(task=task, quantity=remaining, auto=True, chunk_type="count")
-                            chunks.append(chunk)
-                        else:
-                            chunk = TaskChunk(task=task, quantity=remaining, assigned=True, chunk_type="count")
-                            chunks.append(chunk)
-                else:
-                    remaining = task.time_estimate - task.time_logged
-                    if task.manually_scheduled:
-                        if hasattr(task, 'manually_scheduled_chunks') and task.manually_scheduled_chunks:
-                            for chunk_info in task.manually_scheduled_chunks:
-                                chunk_duration = chunk_info.get("duration", 0)
-                                if chunk_duration > 0:
-                                    chunk = TaskChunk(task=task, duration=chunk_duration, manual=True)
-                                    for day in self.day_schedules:
-                                        if chunk_info.get("date") == day.date:
-                                            target_block_name = chunk_info.get("timeblock", "")
-                                            for tb in day.time_blocks:
-                                                if tb.name == target_block_name:
-                                                    tb.add_chunk(chunk, rating=9999)
-                                                    break
-                                    remaining -= chunk_duration
-                    if remaining > 0:
-                        if task.auto_chunk:
-                            chunk = TaskChunk(task=task, duration=remaining, auto=True)
-                            chunks.append(chunk)
-                        else:
-                            chunk = TaskChunk(task=task, duration=remaining, assigned=True)
-                            chunks.append(chunk)
+            for chunk_data in task.chunks:
+                base_chunk_id = chunk_data.get("id")
+
+                chunk_obj = TaskChunk(
+                    id=base_chunk_id,
+                    task=task,
+                    chunk_type=chunk_data.get("type"),
+                    unit=chunk_data.get("unit"),
+                    size=chunk_data.get("size"),
+                    timeblock_ratings=chunk_data.get("timeblock_ratings", []),
+                    timeblock=chunk_data.get("time_block"),
+                    date=chunk_data.get("date"),
+                    is_recurring=chunk_data.get("is_recurring", False),
+                    status=chunk_data.get("status", "active")
+                )
+                chunks.append(chunk_obj)
+
+                if task.recurring and chunk_data.get("is_recurring", False):
+                    recurrence_count = 1
+                    if isinstance(task.recur_every, int):
+                        try:
+                            base_date = datetime.strptime(chunk_obj.date,
+                                                          "%Y-%m-%d") if chunk_obj.date else datetime.now()
+                        except ValueError:
+                            base_date = datetime.now()
+                        next_date = base_date
+                        while next_date < recurrence_end_date:
+                            next_date += timedelta(days=task.recur_every)
+                            recurring_chunk = TaskChunk(
+                                id=f"{base_chunk_id}_{recurrence_count}",
+                                task=task,
+                                chunk_type=chunk_data.get("type"),
+                                unit=chunk_data.get("unit"),
+                                size=chunk_data.get("size"),
+                                timeblock_ratings=chunk_data.get("timeblock_ratings", []),
+                                timeblock=chunk_data.get("time_block"),
+                                date=next_date.strftime("%Y-%m-%d"),
+                                is_recurring=True,
+                                status="locked"
+                            )
+                            chunks.append(recurring_chunk)
+                            recurrence_count += 1
+                    elif isinstance(task.recur_every, list):
+                        current_date = datetime.now().date()
+                        while current_date <= recurrence_end_date.date():
+                            if current_date.strftime("%A") in task.recur_every:
+                                recurring_chunk = TaskChunk(
+                                    id=f"{base_chunk_id}_{recurrence_count}",
+                                    task=task,
+                                    chunk_type=chunk_data.get("type"),
+                                    unit=chunk_data.get("unit"),
+                                    size=chunk_data.get("size"),
+                                    timeblock_ratings=chunk_data.get("timeblock_ratings", []),
+                                    timeblock=chunk_data.get("time_block"),
+                                    date=current_date.strftime("%Y-%m-%d"),
+                                    is_recurring=True,
+                                    status="locked"
+                                )
+                                chunks.append(recurring_chunk)
+                                recurrence_count += 1
+                            current_date += timedelta(days=1)
         return chunks
 
     # returns a bool for success

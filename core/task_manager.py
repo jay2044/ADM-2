@@ -89,12 +89,13 @@ class Task:
 
         self.global_weight = kwargs.get("global_weight", None)
 
-    def add_chunk(self, size, chunk_type="manual", time_block=None, date=None, is_recurring=False, status=None):
+    def add_chunk(self, size, chunk_type="manual", unit=self.chunk_preference, time_block=None, date=None, is_recurring=False, status=None):
         """Adds a new chunk to the task's chunk list."""
         chunk = {
             "id": str(uuid.uuid4()),  # Generate a unique ID for the chunk
             "size": size,
             "type": chunk_type,  # "manual", "auto", "placed"
+            "unit": unit,  # "time", "count"
             "status": status if status else ("locked" if is_recurring else "active"),
             "time_block": time_block,  # Stores the assigned time block (if placed)
             "date": date,  # Stores the assigned date (if placed)
@@ -123,7 +124,7 @@ class Task:
 
     def get_chunks(self):
         return self.chunks
-    
+
     @staticmethod
     def _parse_date(date_str, formats):
         """
