@@ -214,101 +214,6 @@ class TimeBlock:
         return max(0, self.duration * (1 - self.buffer_ratio))
 
 
-class TaskChunk:
-    def __init__(self, id, task, chunk_type, unit, size=None, timeblock_ratings=[], timeblock=None, date=None,
-                 is_recurring=False, status=None):
-        self.id = id
-        self.task = task
-        self.chunk_type = chunk_type  # "manual", "auto", "placed"
-        self.size = size
-        self.unit = unit
-        self.timeblock_ratings = timeblock_ratings
-        self.timeblock = timeblock
-        self.date = date  # Date for recurring task
-        self.is_recurring = is_recurring  # True if part of a recurring task
-        self.status = status if status else self.update_status()
-
-    def update_status(self):
-        if self.date and self.is_recurring:
-            today = datetime.today().strftime("%Y-%m-%d")
-            if self.date == today:
-                return "active"
-            return "locked"  # Future recurrences start locked
-
-        return "active"
-
-    def mark_completed(self):
-        self.status = "completed"
-
-    def mark_flagged(self):
-        self.status = "flagged"
-
-    def mark_failed(self):
-        self.status = "failed"
-
-    def split(self, ratios):
-        # only for splitting auto chunks
-        if self.chunk_type == "auto":
-            total_ratio = sum(ratios)
-            if self.chunk_type == "time":
-                subchunks = [
-                    TaskChunk(
-                        self.id,
-                        self.task,
-                        size=(self.size * r) / total_ratio,
-                        chunk_type=self.chunk_type,
-                        timeblock_ratings=self.timeblock_ratings,
-                        timeblock=self.timeblock,
-                        date=self.date,
-                        is_recurring=self.is_recurring,
-                        status=self.status
-                    )
-                    for r in ratios
-                ]
-                min_chunk = getattr(self.task, 'min_chunk_size', 0.25)
-                max_chunk = getattr(self.task, 'max_chunk_size', self.size)
-                for sc in subchunks:
-                    if sc.size < min_chunk:
-                        sc.size = min_chunk
-                    elif sc.size > max_chunk:
-                        sc.size = max_chunk
-                total_adjusted = sum(sc.size for sc in subchunks)
-                if total_adjusted > 0 and total_adjusted != self.size:
-                    factor = self.size / total_adjusted
-                    for sc in subchunks:
-                        sc.size *= factor
-                return subchunks
-            elif self.chunk_type == "count":
-                subchunks = [
-                    TaskChunk(
-                        self.id,
-                        self.task,
-                        size=(self.size * r) / total_ratio,
-                        chunk_type=self.chunk_type,
-                        timeblock_ratings=self.timeblock_ratings,
-                        timeblock=self.timeblock,
-                        date=self.date,
-                        is_recurring=self.is_recurring,
-                        status=self.status
-                    )
-                    for r in ratios
-                ]
-                # For count‐based tasks, assume a minimum chunk size of 1
-                min_chunk = getattr(self.task, 'min_chunk_size', 1)
-                max_chunk = getattr(self.task, 'max_chunk_size', self.size)
-                for sc in subchunks:
-                    if sc.size < min_chunk:
-                        sc.size = min_chunk
-                    elif sc.size > max_chunk:
-                        sc.size = max_chunk
-                total_adjusted = sum(sc.size for sc in subchunks)
-                if total_adjusted > 0 and total_adjusted != self.size:
-                    factor = self.size / total_adjusted
-                    for sc in subchunks:
-                        sc.size *= factor
-                return subchunks
-
-
 class ScheduleManager:
     def __init__(self, task_manager_instance: TaskManager):
         self.task_manager_instance = task_manager_instance
@@ -332,7 +237,7 @@ class ScheduleManager:
         self.theta = 0.1
         # K: Fixed boost weight for quick tasks.
         # T_q: Decay time constant (in seconds).
-        # C: Very high constant ensuring manual tasks always appear at the top.
+        # C: Very high constant ensuring placed tasks always appear at the top.
         self.K = 100
         self.T_q = 3600
         self.C = 1000
@@ -873,7 +778,7 @@ class ScheduleManager:
             for candidate in top_candidates:
                 block, rating = candidate
                 filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
-                filtered_chunks = [c for c in filtered_chunks if c.chunk_type != "manual"]
+                filtered_chunks = [c for c in filtered_chunks if c.chunk_type != "placed"]
                 # Use block.get_available_time() for time‐based units and get_available_count() for count.
                 available = (block.get_available_time() if chunk.unit == "time"
                              else block.get_available_count())
@@ -929,7 +834,7 @@ class ScheduleManager:
                             block.add_chunk(chunk, rating)
                         return True
 
-        elif chunk.chunk_type == "placed":
+        elif chunk.chunk_type == "manual":
             for candidate in sorted_candidates:
                 block, rating = candidate
                 if exclude_block and block.id == exclude_block.id:
@@ -943,7 +848,7 @@ class ScheduleManager:
                     return True
                 else:
                     filtered_chunks = [ci["chunk"] for ci in block.task_chunks.values() if ci["rating"] < rating]
-                    filtered_chunks = [c for c in filtered_chunks if c.chunk_type != "manual"]
+                    filtered_chunks = [c for c in filtered_chunks if c.chunk_type != "placed"]
                     if not filtered_chunks:
                         continue
                     resizable_capacity = 0.0
@@ -968,8 +873,8 @@ class ScheduleManager:
 
     def generate_schedule(self):
         for chunk in self.chunks:
-            # Handle manual chunks: they come with a specific date and timeblock.
-            if chunk.chunk_type == "manual":
+            # Handle placed chunks: they come with a specific date and timeblock.
+            if chunk.chunk_type == "placed":
                 # Determine the target date.
                 target_date = chunk.date
                 if isinstance(target_date, str):
@@ -1000,11 +905,11 @@ class ScheduleManager:
                         chunk.flagged = True
                         continue
 
-                # Assign the manual chunk to the target timeblock.
-                target_block.add_chunk(chunk, 10000)  # Using a fixed high rating for manual assignments.
+                # Assign the placed chunk to the target timeblock.
+                target_block.add_chunk(chunk, 10000)  # Using a fixed high rating for placed assignments.
                 continue  # Skip to the next chunk.
 
-            # For non-manual chunks, clear any existing timeblock ratings.
+            # For non-placed chunks, clear any existing timeblock ratings.
             chunk.timeblock_ratings = []
             for day in self.day_schedules:
                 # Skip days beyond the task's due date (if set).

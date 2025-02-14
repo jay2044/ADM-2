@@ -11,6 +11,101 @@ def sanitize_name(name):
     return re.sub(r'\W+', '_', name)
 
 
+class TaskChunk:
+    def __init__(self, id, task, chunk_type, unit, size=None, timeblock_ratings=[], timeblock=None, date=None,
+                 is_recurring=False, status=None):
+        self.id = id
+        self.task = task
+        self.chunk_type = chunk_type  # "manual", "auto", "placed"
+        self.size = size
+        self.unit = unit
+        self.timeblock_ratings = timeblock_ratings
+        self.timeblock = timeblock
+        self.date = date  # Date for recurring task
+        self.is_recurring = is_recurring  # True if part of a recurring task
+        self.status = status if status else self.update_status()
+
+    def update_status(self):
+        if self.date and self.is_recurring:
+            today = datetime.today().strftime("%Y-%m-%d")
+            if self.date == today:
+                return "active"
+            return "locked"  # Future recurrences start locked
+
+        return "active"
+
+    def mark_completed(self):
+        self.status = "completed"
+
+    def mark_flagged(self):
+        self.status = "flagged"
+
+    def mark_failed(self):
+        self.status = "failed"
+
+    def split(self, ratios):
+        # only for splitting auto chunks
+        if self.chunk_type == "auto":
+            total_ratio = sum(ratios)
+            if self.chunk_type == "time":
+                subchunks = [
+                    TaskChunk(
+                        self.id,
+                        self.task,
+                        size=(self.size * r) / total_ratio,
+                        chunk_type=self.chunk_type,
+                        timeblock_ratings=self.timeblock_ratings,
+                        timeblock=self.timeblock,
+                        date=self.date,
+                        is_recurring=self.is_recurring,
+                        status=self.status
+                    )
+                    for r in ratios
+                ]
+                min_chunk = getattr(self.task, 'min_chunk_size', 0.25)
+                max_chunk = getattr(self.task, 'max_chunk_size', self.size)
+                for sc in subchunks:
+                    if sc.size < min_chunk:
+                        sc.size = min_chunk
+                    elif sc.size > max_chunk:
+                        sc.size = max_chunk
+                total_adjusted = sum(sc.size for sc in subchunks)
+                if total_adjusted > 0 and total_adjusted != self.size:
+                    factor = self.size / total_adjusted
+                    for sc in subchunks:
+                        sc.size *= factor
+                return subchunks
+            elif self.chunk_type == "count":
+                subchunks = [
+                    TaskChunk(
+                        self.id,
+                        self.task,
+                        size=(self.size * r) / total_ratio,
+                        chunk_type=self.chunk_type,
+                        timeblock_ratings=self.timeblock_ratings,
+                        timeblock=self.timeblock,
+                        date=self.date,
+                        is_recurring=self.is_recurring,
+                        status=self.status
+                    )
+                    for r in ratios
+                ]
+                # For count‐based tasks, assume a minimum chunk size of 1
+                min_chunk = getattr(self.task, 'min_chunk_size', 1)
+                max_chunk = getattr(self.task, 'max_chunk_size', self.size)
+                for sc in subchunks:
+                    if sc.size < min_chunk:
+                        sc.size = min_chunk
+                    elif sc.size > max_chunk:
+                        sc.size = max_chunk
+                total_adjusted = sum(sc.size for sc in subchunks)
+                if total_adjusted > 0 and total_adjusted != self.size:
+                    factor = self.size / total_adjusted
+                    for sc in subchunks:
+                        sc.size *= factor
+                return subchunks
+
+
 class Task:
     def __init__(self, **kwargs):
 
@@ -134,6 +229,48 @@ class Task:
     def remove_chunk(self, chunk_id):
         """Removes a chunk from the task's chunk list based on chunk ID."""
         self.chunks = [chunk for chunk in self.chunks if chunk["id"] != chunk_id]
+
+    def update_chunk_obj(self, task_chunk: TaskChunk) -> bool:
+        """
+        Update a chunk in the task's chunk list using a TaskChunk object.
+        If the chunk's status changes to 'completed', update time_logged or count_completed.
+        """
+        for chunk in self.chunks:
+            if chunk["id"] == task_chunk.id:
+                previous_status = chunk.get("status", "active")
+                # Update chunk details from the TaskChunk object.
+                chunk["size"] = task_chunk.size
+                chunk["type"] = task_chunk.chunk_type
+                chunk["unit"] = task_chunk.unit
+                chunk["status"] = task_chunk.status
+                chunk["time_block"] = task_chunk.timeblock
+                chunk["date"] = task_chunk.date
+                chunk["is_recurring"] = task_chunk.is_recurring
+                # If the chunk has just been marked as complete, update totals.
+                if task_chunk.status == "completed" and previous_status != "completed":
+                    if task_chunk.unit == "time":
+                        self.time_logged += task_chunk.size
+                    elif task_chunk.unit == "count":
+                        self.count_completed += task_chunk.size
+                return True
+        return False
+
+    def delete_chunk(self, task_chunk: TaskChunk) -> bool:
+        """
+        Delete a chunk from the task's chunk list using a TaskChunk object.
+        If the chunk is marked as complete, subtract its size from time_logged or count_completed.
+        """
+        for i, chunk in enumerate(self.chunks):
+            if chunk["id"] == task_chunk.id:
+                # If the chunk is complete, adjust totals.
+                if chunk.get("status") == "completed":
+                    if chunk.get("unit") == "time":
+                        self.time_logged -= chunk["size"]
+                    elif chunk.get("unit") == "count":
+                        self.count_completed -= chunk["size"]
+                del self.chunks[i]
+                return True
+        return False
 
     def get_chunks(self):
         return self.chunks

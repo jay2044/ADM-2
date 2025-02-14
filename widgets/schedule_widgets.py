@@ -51,7 +51,7 @@ class ScheduleTaskWidget(QWidget):
         self.layout = QHBoxLayout()
         self.setLayout(self.layout)
         self.checkbox = QCheckBox()
-        self.checkbox.setChecked(self.task.status=="completed")
+        self.checkbox.setChecked(self.task.status == "completed")
         self.checkbox.stateChanged.connect(self.task_checked)
         self.layout.addWidget(self.checkbox)
         self.task_label = QLabel(self.task.title)
@@ -273,6 +273,73 @@ class ScheduleTaskWidget(QWidget):
             print(f"Error in mark_important: {e}")
 
 
+class ScheduleTaskChunkWidget(QWidget):
+    def __init__(self, task_list_manager: TaskManager, chunk: TaskChunk):
+        super().__init__()
+        self.task_list_manager = task_list_manager
+        self.chunk = chunk
+        self.task = chunk.task
+        self.is_dragging = False
+        self.no_context = False
+        self.setup_ui()
+        self.setup_timer()
+        self.checkbox.setObjectName("chunkCheckbox")
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+
+    def setup_ui(self):
+        self.layout = QHBoxLayout(self)
+        self.setLayout(self.layout)
+
+        # Checkbox: reflects the chunk status (completed vs. active)
+        self.checkbox = QCheckBox()
+        self.checkbox.setChecked(self.chunk.status == "completed")
+        self.checkbox.stateChanged.connect(self.chunk_checked)
+        self.layout.addWidget(self.checkbox)
+
+        # Label: displays task name along with chunk details
+        chunk_info = f"{self.task.name} - {self.chunk.chunk_type.capitalize()} " \
+                     f"({self.chunk.size} {self.chunk.unit})"
+        if self.chunk.date:
+            chunk_info += f" on {self.chunk.date}"
+        self.chunk_label = QLabel(chunk_info)
+        self.chunk_label.setStyleSheet("font-size: 14px;")
+        self.chunk_label.mousePressEvent = self.on_chunk_label_click
+        self.layout.addWidget(self.chunk_label)
+
+        self.layout.addStretch()
+
+    def setup_timer(self):
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.edit_chunk)
+
+    def on_chunk_label_click(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.edit_chunk()
+
+    def show_context_menu(self, position):
+        if not self.no_context:
+            menu = QMenu(self)
+            delete_action = QAction("Delete Chunk", self)
+            delete_action.triggered.connect(self.delete_chunk)
+            # Additional chunk-related actions can be added here.
+            menu.exec(self.mapToGlobal(position))
+
+    def edit_chunk(self):
+        # Placeholder: implement your chunk editing logic here.
+        print(f"Editing chunk {self.chunk.id} for task '{self.task.name}'.")
+
+    def chunk_checked(self, state):
+        # Toggle chunk status based on checkbox state.
+        if state == Qt.CheckState.Checked.value:
+            self.chunk.status = "completed"
+        else:
+            self.chunk.status = "active"
+        # Update the chunk via the task manager.
+        self.task.update_chunk_obj(self.chunk)
+
+
 class HourCell(QWidget):
     """Custom widget for hour cells."""
 
@@ -488,7 +555,7 @@ class TimeBlockWidget(QWidget):
     def load_tasks(self):
         for chunk in self.chunks:
             # Create the ScheduleTaskWidget using the chunk
-            task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager_instance, chunk)
+            task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager_instance, chunk)
             item = QListWidgetItem()
             item.setSizeHint(task_widget.sizeHint())
             self.task_list.addItem(item)
@@ -508,7 +575,7 @@ class TimeBlockWidget(QWidget):
 
         # Then update the UI list
         self.chunks.append(chunk)
-        task_widget = ScheduleTaskWidget(self.schedule_manager.task_manager, chunk)
+        task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager, chunk)
         item = QListWidgetItem()
         item.setSizeHint(task_widget.sizeHint())
         self.task_list.addItem(item)
@@ -680,7 +747,6 @@ class TimeBlockManagerWidget(QWidget):
 
                     QMessageBox.information(self, "Success", "Time block updated successfully!")
                     global_signals.refresh_schedule_signal.emit()
-
 
     def delete_time_block(self, time_block_name):
         self.schedule_manager.remove_time_block(time_block_name)
