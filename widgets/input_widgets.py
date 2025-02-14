@@ -852,7 +852,9 @@ class ChunkingSelectionWidget(QWidget):
             "total": total,
             "min": self.min_spinbox.value(),
             "max": self.max_spinbox.value(),
-            "chunks": chunk_values
+            "chunks": chunk_values,
+            "time_estimate": self.get_overall_time(),
+            "count_required": self.count_selector.value()
         }
 
 
@@ -1063,14 +1065,11 @@ class AddTaskDialog(QDialog):
             "preferred_work_days": self.preferred_day_of_week_selector.get_selected(),
             "time_of_day_preference": self.preferred_time_of_day.get_selected(),
             "time_estimate": time_count_chunks.get("time_estimate"),
-            "count_required": time_count_chunks.get("count"),
-            "chunk_type": time_count_chunks.get("chunk_type"),
-            "auto_chunk": time_count_chunks.get("auto_chunk"),
-            "min_chunk_size": time_count_chunks.get("min_chunk_size"),
-            "max_chunk_size": time_count_chunks.get("max_chunk_size"),
-            "assigned": time_count_chunks.get("assigned"),
-            "assigned_chunks": time_count_chunks.get("assigned_chunks"),
-            "single_chunk": time_count_chunks.get("single_chunk")
+            "count_required": time_count_chunks.get("count_required"),
+            "chunks": time_count_chunks.get("chunks"),
+            "chunk_preference": time_count_chunks.get("mode"),
+            "min_chunk_size": time_count_chunks.get("min"),
+            "max_chunk_size": time_count_chunks.get("max"),
         }
 
         return task_data
