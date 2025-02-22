@@ -839,22 +839,51 @@ class TimeBlockManagerWidget(QWidget):
         global_signals.refresh_schedule_signal.emit()
 
 
+class SuggestionPanel(QWidget):
+    def __init__(self):
+        super().__init__()
+        main_layout = QVBoxLayout(self)
+
+        self.toolbar = QToolBar()
+        self.toolbar.setStyleSheet("QToolBar { border: none; }")
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        add_action = QAction("Configure", self)
+        add_action.triggered.connect(self.configure_weights)
+
+        self.toolbar.addWidget(spacer)
+        self.toolbar.addAction(add_action)
+
+        self.list_widget = QListWidget()
+
+        main_layout.addWidget(self.toolbar)
+        main_layout.addWidget(self.list_widget)
+
+    def configure_weights(self):
+        print("configure bruh")
+
+
 class ScheduleViewWidget(QWidget):
     def __init__(self, schedule_manager=None):
         super().__init__()
         self.schedule_manager = schedule_manager
         self.expanded_ui_visible = False
+        self.current_view_mode = "Day"  # "Day" or "Week"
         self.initUI()
         self.load_time_blocks()
-
-        global_signals.refresh_schedule_signal.connect(self.load_time_blocks)
+        self.load_suggestion_panel()
+        # Optionally: global_signals.refresh_schedule_signal.connect(self.load_time_blocks)
 
     def initUI(self):
         self.mainLayout = QHBoxLayout(self)
         self.setLayout(self.mainLayout)
+
+        # Expanded UI container
         self.expandedContainer = QWidget()
         self.expandedUI()
-        self.expandedContainer.setVisible(False)  # Initially hidden
+        self.expandedContainer.setVisible(False)
         self.mainLayout.addWidget(self.expandedContainer)
 
         self.scheduleViewUI()
@@ -862,153 +891,211 @@ class ScheduleViewWidget(QWidget):
     def scheduleViewUI(self):
         self.scheduleViewOnlyLayout = QVBoxLayout()
 
-        topLayout = QHBoxLayout()
-        self.expandBtn = QPushButton("Expand")
-        self.expandBtn.clicked.connect(self.toggle_expanded_ui)
+        # --- Toolbar Section ---
+        toolbarContainer = QWidget()
+        toolbarLayout = QVBoxLayout(toolbarContainer)
+        toolbarLayout.setContentsMargins(0, 0, 0, 0)
+        toolbar = QToolBar("Schedule Toolbar")
+        self.expandAction = QAction("<<", self)
+        self.expandAction.triggered.connect(self.toggle_expanded_ui)
+        toolbar.addAction(self.expandAction)
+        self.scheduleSettingsAction = QAction("Schedule Settings", self)
+        self.scheduleSettingsAction.triggered.connect(self.open_settings_dialogue)
+        toolbar.addAction(self.scheduleSettingsAction)
+        toolbar.addSeparator()
 
-        self.schedule_settings_button = QPushButton("Schedule Settings")
-        self.schedule_settings_button.clicked.connect(self.open_settings_dialogue)
-        self.quickTaskBtn = QPushButton("Add Quick Task")
-        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        # Toggle actions for Day and Week views
+        self.dayViewAction = QAction("Day", self)
+        self.dayViewAction.setCheckable(True)
+        self.weekViewAction = QAction("Week", self)
+        self.weekViewAction.setCheckable(True)
+        self.dayViewAction.triggered.connect(self.set_day_view_mode)
+        self.weekViewAction.triggered.connect(self.set_week_view_mode)
+        if self.current_view_mode == "Day":
+            self.dayViewAction.setChecked(True)
+        else:
+            self.weekViewAction.setChecked(True)
+        viewActionGroup = QActionGroup(self)
+        viewActionGroup.addAction(self.dayViewAction)
+        viewActionGroup.addAction(self.weekViewAction)
+        viewActionGroup.setExclusive(True)
+        toolbar.addAction(self.dayViewAction)
+        toolbar.addAction(self.weekViewAction)
+        toolbar.addSeparator()
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+        self.quickTaskAction = QAction("Add Quick Task", self)
+        toolbar.addAction(self.quickTaskAction)
+        toolbarLayout.addWidget(toolbar)
+        self.scheduleViewOnlyLayout.addWidget(toolbarContainer)
 
-        topLayout.addWidget(self.expandBtn)
-        topLayout.addWidget(self.schedule_settings_button)
-        topLayout.addItem(spacer)
-        topLayout.addWidget(self.quickTaskBtn)
-        self.scheduleViewOnlyLayout.addLayout(topLayout)
-
-        viewSelectorLayout = QHBoxLayout()
-        self.prevBtn = QPushButton("<")
-        self.viewLabel = QLabel("Day")
-        self.nextBtn = QPushButton(">")
-        viewSelectorLayout.addWidget(self.prevBtn)
-        viewSelectorLayout.addWidget(self.viewLabel, alignment=Qt.AlignmentFlag.AlignCenter)
-        viewSelectorLayout.addWidget(self.nextBtn)
-        self.scheduleViewOnlyLayout.addLayout(viewSelectorLayout)
-
+        # --- Main Content Section ---
+        # Create one scroll area that contains both the HourScaleWidget and the schedule views.
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-
         self.container = QWidget()
-        self.timeAndTasksLayout = QHBoxLayout(self.container)
-
+        container_layout = QHBoxLayout(self.container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        # Add the HourScaleWidget on the left.
         self.timeScaleWidget = HourScaleWidget(self)
-        self.timeBlocksLayout = QVBoxLayout()
-
-        self.timeAndTasksLayout.addWidget(self.timeScaleWidget)
-        self.timeAndTasksLayout.addLayout(self.timeBlocksLayout)
+        container_layout.addWidget(self.timeScaleWidget)
+        # Create a widget to hold the schedule blocks (day/week) with a stacked layout.
+        self.scheduleBlocksWidget = QWidget()
+        self.stackLayout = QStackedLayout(self.scheduleBlocksWidget)
+        # Day view container
+        self.dayViewWidget = QWidget()
+        self.dayLayout = QVBoxLayout(self.dayViewWidget)
+        self.dayLayout.setSpacing(5)
+        self.dayLayout.setContentsMargins(0, 0, 0, 0)
+        self.stackLayout.addWidget(self.dayViewWidget)
+        # Week view container
+        self.weekViewWidget = QWidget()
+        self.weekLayout = QHBoxLayout(self.weekViewWidget)
+        self.weekLayout.setSpacing(2)  # Reduced spacing between columns
+        self.weekLayout.setContentsMargins(0, 0, 0, 0)
+        self.stackLayout.addWidget(self.weekViewWidget)
+        container_layout.addWidget(self.scheduleBlocksWidget)
         scroll_area.setWidget(self.container)
-
         self.scheduleViewOnlyLayout.addWidget(scroll_area)
         self.mainLayout.addLayout(self.scheduleViewOnlyLayout)
 
     def expandedUI(self):
         self.expandedLayout = QGridLayout(self.expandedContainer)
-
-        self.date_picker = QCalendarWidget()
-        self.date_picker.setGridVisible(True)
-        self.date_picker.setSelectedDate(date.today())
-        self.date_picker.selectionChanged.connect(self.update_date_label)
-
+        # Use the custom DatePickerCalendar.
+        self.date_picker = DatePickerCalendar()
+        # When the date selection changes, update the schedule's starting day.
+        self.date_picker.calendar.selectionChanged.connect(self.date_changed_handler)
         self.date_label = QLabel("Selected Date: ")
-
         self.time_block_manager = TimeBlockManagerWidget(self, self.schedule_manager)
-        self.right_widget_top = QLabel("Right Widget Top Placeholder")
-        self.right_widget_bottom = QLabel("Right Widget Bottom Placeholder")
-
+        self.suggestion_panel = SuggestionPanel()
         self.expandedLayout.addWidget(self.date_picker, 0, 0)
         self.expandedLayout.addWidget(self.time_block_manager, 1, 0)
-        self.expandedLayout.addWidget(self.right_widget_top, 0, 1)
-        self.expandedLayout.addWidget(self.right_widget_bottom, 1, 1)
+        self.expandedLayout.addWidget(self.suggestion_panel, 0, 1, 2, 1)
 
     def toggle_expanded_ui(self):
         self.expanded_ui_visible = not self.expanded_ui_visible
         self.expandedContainer.setVisible(self.expanded_ui_visible)
 
+    def date_changed_handler(self):
+        self.update_date_label()
+        self.load_time_blocks()
+
     def update_date_label(self):
-        selected_date = self.date_picker.selectedDate().toString('yyyy-MM-dd')
+        selected_date = self.date_picker.get_selected_date().toString('yyyy-MM-dd')
         self.date_label.setText(f"Selected Date: {selected_date}")
 
-    def open_settings_dialogue(self):
-        pass  # Add your settings dialogue logic
+    def clearLayout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+            elif item.layout():
+                self.clearLayout(item.layout())
 
     def load_time_blocks(self):
-        # 1. Refresh schedule in the schedule manager
+        # Refresh schedule from the schedule manager.
         self.schedule_manager.refresh_schedule()
-
-        # 2. Clear old time block widgets from the layout
-        while self.timeBlocksLayout.count():
-            item = self.timeBlocksLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # 3. Fetch today's time blocks (recomputed)
-        self.time_blocks = self.schedule_manager.get_day_schedule(
-            date.today()
-        ).time_blocks if self.schedule_manager else []
-
-        # 4. Debug print
-
-        # for tb in self.time_blocks:
-        #     print(f"TimeBlock ID: {tb.id}, Name: {tb.name}, Type: {tb.block_type}, "
-        #           f"Start: {tb.start_time}, End: {tb.end_time}, Duration: {tb.duration}h, "
-        #           f"Tasks: {len(tb.task_chunks)}, Buffer Ratio: {tb.buffer_ratio}, Color: {tb.color}")
-
-        if not self.time_blocks:
-            return
-
-        # 5. Re-add the new time block widgets
-        for block in self.time_blocks:
-            tb_widget = TimeBlockWidget(self, block)
-            stretch_factor = tb_widget.base_height
-            self.timeBlocksLayout.addWidget(tb_widget, stretch=stretch_factor)
-
-        # 6. Update time cell heights
+        self.clearLayout(self.dayLayout)
+        self.clearLayout(self.weekLayout)
+        # Use the date selected in the DatePickerCalendar as the starting date.
+        selected_date = self.date_picker.get_selected_date().toPyDate()
+        if self.current_view_mode == "Day":
+            day_schedule = self.schedule_manager.get_day_schedule(selected_date)
+            time_blocks = day_schedule.time_blocks if day_schedule else []
+            for block in time_blocks:
+                tb_widget = TimeBlockWidget(self, block)
+                self.dayLayout.addWidget(tb_widget)
+            self.stackLayout.setCurrentWidget(self.dayViewWidget)
+        elif self.current_view_mode == "Week":
+            # In week view, the selected date is the first column followed by the next six days.
+            for i in range(7):
+                current_day = selected_date + timedelta(days=i)
+                day_container = QWidget()
+                day_layout = QVBoxLayout(day_container)
+                day_layout.setSpacing(2)
+                day_layout.setContentsMargins(2, 2, 2, 2)
+                day_label = QLabel(current_day.strftime("%A %Y-%m-%d"))
+                day_layout.addWidget(day_label)
+                day_schedule = self.schedule_manager.get_day_schedule(current_day)
+                time_blocks = day_schedule.time_blocks if day_schedule else []
+                for block in time_blocks:
+                    tb_widget = TimeBlockWidget(self, block)
+                    day_layout.addWidget(tb_widget)
+                self.weekLayout.addWidget(day_container)
+            self.stackLayout.setCurrentWidget(self.weekViewWidget)
         QTimer.singleShot(0, self.update_time_cell_heights)
 
     def update_time_cell_heights(self):
         self.updateGeometry()
         QApplication.processEvents()
-        # Get the day start hour from schedule settings
         day_start_hour = self.schedule_manager.schedule_settings.day_start.hour
-        for i in range(self.timeBlocksLayout.count()):
-            tb_widget = self.timeBlocksLayout.itemAt(i).widget()
-            if tb_widget:
-                # Parse the block's start and end times
-                block_start_dt = datetime.strptime(tb_widget.start_time, "%H:%M")
-                block_end_dt = datetime.strptime(tb_widget.end_time, "%H:%M")
+        if self.current_view_mode == "Day":
+            for i in range(self.dayLayout.count()):
+                tb_widget = self.dayLayout.itemAt(i).widget()
+                if tb_widget and hasattr(tb_widget, "start_time") and hasattr(tb_widget, "end_time"):
+                    block_start_dt = datetime.strptime(tb_widget.start_time, "%H:%M")
+                    block_end_dt = datetime.strptime(tb_widget.end_time, "%H:%M")
+                    start_hour = block_start_dt.hour
+                    end_hour = block_end_dt.hour
+                    if end_hour < start_hour:
+                        end_hour += 24
+                    relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (24 - day_start_hour)
+                    relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (24 - day_start_hour)
+                    start_str = f"{(day_start_hour + relative_start) % 12 or 12} {'AM' if (day_start_hour + relative_start) % 24 < 12 else 'PM'}"
+                    end_str = f"{(day_start_hour + relative_end) % 12 or 12} {'AM' if (day_start_hour + relative_end) % 24 < 12 else 'PM'}"
+                    self.timeScaleWidget.set_height_by_widget(start_str, end_str, tb_widget)
+        elif self.current_view_mode == "Week":
+            for i in range(self.weekLayout.count()):
+                day_container = self.weekLayout.itemAt(i).widget()
+                if day_container:
+                    day_layout = day_container.layout()
+                    for j in range(day_layout.count()):
+                        child = day_layout.itemAt(j).widget()
+                        if child and hasattr(child, "start_time") and hasattr(child, "end_time") and isinstance(child, TimeBlockWidget):
+                            block_start_dt = datetime.strptime(child.start_time, "%H:%M")
+                            block_end_dt = datetime.strptime(child.end_time, "%H:%M")
+                            start_hour = block_start_dt.hour
+                            end_hour = block_end_dt.hour
+                            if end_hour < start_hour:
+                                end_hour += 24
+                            relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (24 - day_start_hour)
+                            relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (24 - day_start_hour)
+                            start_str = f"{(day_start_hour + relative_start) % 12 or 12} {'AM' if (day_start_hour + relative_start) % 24 < 12 else 'PM'}"
+                            end_str = f"{(day_start_hour + relative_end) % 12 or 12} {'AM' if (day_start_hour + relative_end) % 24 < 12 else 'PM'}"
+                            self.timeScaleWidget.set_height_by_widget(start_str, end_str, child)
 
-                start_hour = block_start_dt.hour
-                end_hour = block_end_dt.hour
-                # If the block spans midnight, adjust end hour:
-                if end_hour < start_hour:
-                    end_hour += 24
+    def set_day_view_mode(self):
+        self.current_view_mode = "Day"
+        self.load_time_blocks()
 
-                # Compute relative positions from the configured day start
-                relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (
-                        24 - day_start_hour)
-                relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (
-                        24 - day_start_hour)
-
-                # Build strings in the same format as HourScaleWidget.hours
-                # (This assumes HourScaleWidget.hours was built starting at day_start)
-                start_str = f"{(day_start_hour + relative_start) % 12 or 12} {'AM' if (day_start_hour + relative_start) % 24 < 12 else 'PM'}"
-                end_str = f"{(day_start_hour + relative_end) % 12 or 12} {'AM' if (day_start_hour + relative_end) % 24 < 12 else 'PM'}"
-
-                self.timeScaleWidget.set_height_by_widget(start_str, end_str, tb_widget)
-
-    def print_time_block_heights(self):
-        for i in range(self.timeBlocksLayout.count()):
-            tb_widget = self.timeBlocksLayout.itemAt(i).widget()
-
-    def add_time_block(self, time_block_widget):
-        self.timeBlocksLayout.addWidget(time_block_widget)
+    def set_week_view_mode(self):
+        self.current_view_mode = "Week"
+        self.load_time_blocks()
 
     def open_settings_dialogue(self):
         dialog = ScheduleSettingsDialog(self.schedule_manager.schedule_settings)
-        if dialog.exec():  # This will return QDialog.Accepted if the dialog is closed via 'Save'
-            # Any additional actions after saving can be handled here
+        if dialog.exec():
             pass
+
+    def load_suggestion_panel(self):
+        if hasattr(self, "suggestion_panel"):
+            for chunk in self.schedule_manager.chunks:
+                task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager_instance, chunk)
+                item = QListWidgetItem()
+                item.setSizeHint(task_widget.sizeHint())
+                self.suggestion_panel.list_widget.addItem(item)
+                self.suggestion_panel.list_widget.setItemWidget(item, task_widget)
+
+    @property
+    def timeBlocksLayout(self):
+        # Returns the currently active layout (for compatibility)
+        if self.current_view_mode == "Day":
+            return self.dayLayout
+        elif self.current_view_mode == "Week":
+            return self.weekLayout
+        return None
 
 
 class ScheduleSettingsDialog(QDialog):
