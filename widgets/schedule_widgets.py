@@ -274,7 +274,7 @@ class ScheduleTaskWidget(QWidget):
 
 
 class ScheduleTaskChunkWidget(QWidget):
-    def __init__(self, task_list_manager: TaskManager, chunk: TaskChunk):
+    def __init__(self, task_list_manager, chunk):
         super().__init__()
         self.task_list_manager = task_list_manager
         self.chunk = chunk
@@ -288,26 +288,109 @@ class ScheduleTaskChunkWidget(QWidget):
         self.customContextMenuRequested.connect(self.show_context_menu)
 
     def setup_ui(self):
-        self.layout = QHBoxLayout(self)
+        self.layout = QVBoxLayout(self)
         self.setLayout(self.layout)
 
-        # Checkbox: reflects the chunk status (completed vs. active)
+        # Top layout for checkbox, task name, and recurrence indicator
+        top_layout = QHBoxLayout()
+
+        # Checkbox for task chunk status
         self.checkbox = QCheckBox()
         self.checkbox.setChecked(self.chunk.status == "completed")
         self.checkbox.stateChanged.connect(self.chunk_checked)
-        self.layout.addWidget(self.checkbox)
+        top_layout.addWidget(self.checkbox)
 
-        # Label: displays task name along with chunk details
-        chunk_info = f"{self.task.name} - {self.chunk.chunk_type.capitalize()} " \
-                     f"({self.chunk.size} {self.chunk.unit})"
-        if self.chunk.date:
-            chunk_info += f" on {self.chunk.date}"
-        self.chunk_label = QLabel(chunk_info)
-        self.chunk_label.setStyleSheet("font-size: 14px;")
-        self.chunk_label.mousePressEvent = self.on_chunk_label_click
-        self.layout.addWidget(self.chunk_label)
+        # Task name label
+        self.task_name_label = QLabel(self.task.name)
+        task_name_font = QFont()
+        task_name_font.setPointSize(14)
+        self.task_name_label.setFont(task_name_font)
+        self.task_name_label.mousePressEvent = self.on_chunk_label_click
+        top_layout.addWidget(self.task_name_label)
 
-        self.layout.addStretch()
+        # Stretch to push the recurrence indicator to the right
+        top_layout.addStretch()
+
+        # Recurrence indicator ('R') if the chunk is recurring
+        if self.chunk.is_recurring:
+            self.recurrence_label = QLabel('R')
+            recurrence_font = QFont()
+            recurrence_font.setPointSize(10)  # Small font for subtlety
+            self.recurrence_label.setFont(recurrence_font)
+            palette = self.recurrence_label.palette()
+            palette.setColor(QPalette.WindowText, QColor(128, 128, 128))  # Light gray color
+            self.recurrence_label.setPalette(palette)
+            top_layout.addWidget(self.recurrence_label)
+
+        # Add the top layout to the main layout
+        self.layout.addLayout(top_layout)
+
+        # Details label below the top layout
+        details = self.get_details_text()
+        self.details_label = QLabel(details)
+        details_font = QFont()
+        details_font.setPointSize(10)
+        self.details_label.setFont(details_font)
+        self.layout.addWidget(self.details_label)
+
+    def get_details_text(self):
+        chunk_type = self.chunk.chunk_type.capitalize()
+        unit_display = "hours" if self.chunk.unit == "time" else "units"
+        if self.chunk.unit == "time":
+            total_size = self.task.time_estimate
+        elif self.chunk.unit == "count":
+            total_size = self.task.count_required
+        else:
+            total_size = None
+        if total_size is not None and total_size > 0:
+            size_str = f"{self.chunk.size:.1f} / {total_size:.1f} {unit_display}"
+        else:
+            size_str = f"{self.chunk.size:.1f} {unit_display}"
+        due_str = self.get_formatted_due_date()
+        return f"{chunk_type} ({size_str}) {due_str}"
+
+    def get_formatted_due_date(self):
+        due_datetime = self.task.due_datetime
+
+        if isinstance(due_datetime, int):  # If it's an epoch timestamp
+            due_datetime = datetime.fromtimestamp(due_datetime)
+
+        if isinstance(due_datetime, datetime):
+            due_date = due_datetime.date()
+            today = datetime.now().date()
+            tomorrow = today + timedelta(days=1)
+            end_of_week = today + timedelta(days=(6 - today.weekday()))
+            is_this_year = due_date.year == today.year
+
+            if due_date == today:
+                formatted_date = "Today"
+            elif due_date == tomorrow:
+                formatted_date = "Tomorrow"
+            elif due_date < today:
+                day = due_date.day
+                suffix = "th" if 11 <= day <= 13 else ["st", "nd", "rd"][day % 10 - 1] if day % 10 in [1, 2,
+                                                                                                       3] else "th"
+                month_abbr = due_date.strftime("%b")
+                year = f" {due_date.year}" if not is_this_year else ""
+                formatted_date = f"{day}{suffix} {month_abbr}{year}"
+            elif today < due_date <= end_of_week:
+                formatted_date = due_date.strftime("%a")
+            else:
+                day = due_date.day
+                suffix = "th" if 11 <= day <= 13 else ["st", "nd", "rd"][day % 10 - 1] if day % 10 in [1, 2,
+                                                                                                       3] else "th"
+                month_abbr = due_date.strftime("%b")
+                year = f" {due_date.year}" if not is_this_year else ""
+                formatted_date = f"{day}{suffix} {month_abbr}{year}"
+
+            if due_datetime.time() != datetime.min.time():
+                formatted_time = due_datetime.strftime("%I:%M %p").lstrip("0")
+                formatted_date += f" at {formatted_time}"
+
+            return f"Due: {formatted_date}"
+
+        print(f"Warning: due_datetime is not a valid datetime object, it's {type(due_datetime)}: {due_datetime}")
+        return ""
 
     def setup_timer(self):
         self.timer = QTimer(self)
@@ -323,21 +406,23 @@ class ScheduleTaskChunkWidget(QWidget):
             menu = QMenu(self)
             delete_action = QAction("Delete Chunk", self)
             delete_action.triggered.connect(self.delete_chunk)
-            # Additional chunk-related actions can be added here.
             menu.exec(self.mapToGlobal(position))
 
     def edit_chunk(self):
-        # Placeholder: implement your chunk editing logic here.
         print(f"Editing chunk {self.chunk.id} for task '{self.task.name}'.")
 
     def chunk_checked(self, state):
-        # Toggle chunk status based on checkbox state.
         if state == Qt.CheckState.Checked.value:
             self.chunk.status = "completed"
         else:
             self.chunk.status = "active"
-        # Update the chunk via the task manager.
         self.task.update_chunk_obj(self.chunk)
+
+    def delete_chunk(self):
+        self.task.delete_chunk(self.chunk)
+        self.task_list_manager.update_task(self.task)
+        self.setParent(None)
+        self.deleteLater()
 
 
 class HourCell(QWidget):
