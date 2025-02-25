@@ -10,9 +10,127 @@ from .task_progress_widgets import *
 from .input_widgets import *
 
 
+class ScheduleSettingsDialog(QDialog):
+    def __init__(self, schedule_settings):
+        super().__init__()
+        self.schedule_settings = schedule_settings
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("Configure Schedule Settings")
+        layout = QVBoxLayout()
+        form_layout = QFormLayout()
+
+        self.day_start_edit = QTimeEdit(self)
+        self.day_start_edit.setTime(
+            QTime(self.schedule_settings.day_start.hour, self.schedule_settings.day_start.minute))
+        self.day_start_edit.timeChanged.connect(self.auto_calculate_hours)
+
+        self.sleep_duration_spin = QSpinBox(self)
+        self.sleep_duration_spin.setMinimum(1)
+        self.sleep_duration_spin.setMaximum(24)
+        self.sleep_duration_spin.setValue(int(self.schedule_settings.ideal_sleep_duration))
+        self.sleep_duration_spin.valueChanged.connect(self.auto_calculate_hours)
+
+        self.hours_available_edit = QLineEdit(self)
+        self.hours_available_edit.setText(
+            str(self.schedule_settings.hours_of_day_available or self.calculate_hours_available()))
+        self.hours_available_edit.setReadOnly(True)
+        self.hours_available_custom = QCheckBox("Custom")
+        self.hours_available_custom.stateChanged.connect(self.toggle_hours_editable)
+
+        self.overtime_combo = QComboBox(self)
+        self.overtime_combo.addItems(["Auto", "Manual"])
+        self.overtime_combo.setCurrentText(self.schedule_settings.overtime_flexibility)
+
+        self.peak_start_edit = QTimeEdit(self)
+        self.peak_start_edit.setTime(QTime(self.schedule_settings.peak_productivity_hours[0].hour,
+                                           self.schedule_settings.peak_productivity_hours[0].minute))
+
+        self.peak_end_edit = QTimeEdit(self)
+        self.peak_end_edit.setTime(QTime(self.schedule_settings.peak_productivity_hours[1].hour,
+                                         self.schedule_settings.peak_productivity_hours[1].minute))
+
+        self.off_peak_start_edit = QTimeEdit(self)
+        self.off_peak_start_edit.setTime(
+            QTime(self.schedule_settings.off_peak_hours[0].hour, self.schedule_settings.off_peak_hours[0].minute))
+
+        self.off_peak_end_edit = QTimeEdit(self)
+        self.off_peak_end_edit.setTime(
+            QTime(self.schedule_settings.off_peak_hours[1].hour, self.schedule_settings.off_peak_hours[1].minute))
+
+        self.task_notifications_check = QCheckBox("Enable Task Notifications", self)
+        self.task_notifications_check.setChecked(self.schedule_settings.task_notifications)
+
+        self.popup_frequency_spin = QSpinBox(self)
+        self.popup_frequency_spin.setMinimum(1)
+        self.popup_frequency_spin.setMaximum(60)
+        self.popup_frequency_spin.setValue(self.schedule_settings.task_status_popup_frequency)
+
+        self.save_button = QPushButton("Save", self)
+        self.save_button.clicked.connect(self.save_settings)
+
+        form_layout.addRow("Day Start", self.day_start_edit)
+        form_layout.addRow("Ideal Sleep Duration (hours)", self.sleep_duration_spin)
+        form_layout.addRow("Hours of Day Available", self.hours_available_edit)
+        form_layout.addRow("", self.hours_available_custom)
+        form_layout.addRow("Overtime Flexibility", self.overtime_combo)
+        form_layout.addRow("Peak Productivity Start", self.peak_start_edit)
+        form_layout.addRow("Peak Productivity End", self.peak_end_edit)
+        form_layout.addRow("Off-Peak Start", self.off_peak_start_edit)
+        form_layout.addRow("Off-Peak End", self.off_peak_end_edit)
+        form_layout.addRow(self.task_notifications_check)
+        form_layout.addRow("Task Status Popup Frequency (minutes)", self.popup_frequency_spin)
+        layout.addLayout(form_layout)
+        layout.addWidget(self.save_button)
+        self.setLayout(layout)
+
+    def calculate_hours_available(self):
+        day_start = self.day_start_edit.time()
+        sleep_duration = self.sleep_duration_spin.value()
+        available_hours = 24 - sleep_duration
+        return max(0, available_hours)
+
+    def auto_calculate_hours(self):
+        if not self.hours_available_custom.isChecked():
+            self.hours_available_edit.setText(str(self.calculate_hours_available()))
+
+    def toggle_hours_editable(self):
+        self.hours_available_edit.setReadOnly(not self.hours_available_custom.isChecked())
+        if not self.hours_available_custom.isChecked():
+            self.auto_calculate_hours()
+
+    def save_settings(self):
+        day_start_time = self.day_start_edit.time()
+        self.schedule_settings.set_day_start(day_start_time.toPyTime())
+        self.schedule_settings.set_ideal_sleep_duration(self.sleep_duration_spin.value())
+        self.schedule_settings.set_overtime_flexibility(self.overtime_combo.currentText())
+        if self.hours_available_custom.isChecked():
+            try:
+                hours_available = int(self.hours_available_edit.text())
+                if hours_available > 24 or hours_available < 0:
+                    raise ValueError
+                self.schedule_settings.set_hours_of_day_available(hours_available)
+            except ValueError:
+                return
+        else:
+            self.schedule_settings.set_hours_of_day_available(self.calculate_hours_available())
+        self.schedule_settings.set_peak_productivity_hours(
+            self.peak_start_edit.time().toPyTime(), self.peak_end_edit.time().toPyTime()
+        )
+        self.schedule_settings.set_off_peak_hours(
+            self.off_peak_start_edit.time().toPyTime(), self.off_peak_end_edit.time().toPyTime()
+        )
+        self.schedule_settings.set_task_notifications(self.task_notifications_check.isChecked())
+        self.schedule_settings.set_task_status_popup_frequency(self.popup_frequency_spin.value())
+        self.accept()
+
+
 class DatePickerCalendar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setMaximumHeight(250)
+        self.setMaximumWidth(400)
         self.layout = QVBoxLayout(self)
         self.calendar = QCalendarWidget(self)
         self.calendar.setGridVisible(True)
@@ -351,10 +469,10 @@ class ScheduleTaskChunkWidget(QWidget):
 
     def get_formatted_due_date(self):
         due_datetime = self.task.due_datetime
-
-        if isinstance(due_datetime, int):  # If it's an epoch timestamp
+        if due_datetime is None:
+            return ""
+        if isinstance(due_datetime, int):  # Convert epoch timestamp to datetime.
             due_datetime = datetime.fromtimestamp(due_datetime)
-
         if isinstance(due_datetime, datetime):
             due_date = due_datetime.date()
             today = datetime.now().date()
@@ -386,10 +504,7 @@ class ScheduleTaskChunkWidget(QWidget):
             if due_datetime.time() != datetime.min.time():
                 formatted_time = due_datetime.strftime("%I:%M %p").lstrip("0")
                 formatted_date += f" at {formatted_time}"
-
             return f"Due: {formatted_date}"
-
-        print(f"Warning: due_datetime is not a valid datetime object, it's {type(due_datetime)}: {due_datetime}")
         return ""
 
     def setup_timer(self):
@@ -524,7 +639,6 @@ class DraggableListWidget(QListWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
         self.setSizeAdjustPolicy(QAbstractItemView.SizeAdjustPolicy.AdjustToContents)
         self.adjustSize()
 
@@ -547,39 +661,51 @@ class DraggableListWidget(QListWidget):
             # If the drop comes from another DraggableListWidget
             dragged_task_widget = getattr(source_list_widget, "dragged_task_widget", None)
             if dragged_task_widget:
-                print(f"Task '{dragged_task_widget.task.title}' "
-                      f"moved from {source_list_widget.parent_time_block_widget.name} "
-                      f"to {self.parent_time_block_widget.name}")
+                # Using the chunk attribute instead of task.
+                chunk = dragged_task_widget.chunk
+                print(
+                    f"Chunk for task '{chunk.task.name}' moved from "
+                    f"{source_list_widget.parent_time_block_widget.name} to {self.parent_time_block_widget.name}"
+                )
                 event.ignore()
-                source_list_widget.parent_time_block_widget.remove_task(dragged_task_widget.task)
-                self.parent_time_block_widget.add_task(dragged_task_widget.task)
+                source_list_widget.parent_time_block_widget.remove_chunk(chunk)
+                self.parent_time_block_widget.add_chunk(chunk)
         else:
             super().dropEvent(event)
 
     def on_rows_moved(self, parent, start, end, destination, row):
         """
         React to reordering within the same list.
-        'parent', 'destination' are model indexes, while 'start', 'end', 'row' are row indices.
+        'parent' and 'destination' are model indexes, while 'start', 'end', and 'row' are row indices.
         """
-        # TODO: implement reorder logic. (probably by changing weights)
         print("Rows moved internally in DraggableListWidget")
-        # Implement reorder logic if needed.
+        # TODO: implement reorder logic if needed.
 
 
 class TimeBlockWidget(QWidget):
     def __init__(self, parent, time_block: TimeBlock):
         super().__init__(parent)
 
+        self.setMinimumWidth(300)
+
         self.time_block = time_block
         self.name = self.time_block.name
         self.color = self.time_block.color
 
         # Convert start_time and end_time from time objects to strings ("HH:MM")
-        self.start_time = self.time_block.start_time.strftime("%H:%M") if self.time_block.start_time else "00:00"
-        self.end_time = self.time_block.end_time.strftime("%H:%M") if self.time_block.end_time else "00:00"
+        self.start_time = (
+            self.time_block.start_time.strftime("%H:%M")
+            if self.time_block.start_time
+            else "00:00"
+        )
+        self.end_time = (
+            self.time_block.end_time.strftime("%H:%M")
+            if self.time_block.end_time
+            else "00:00"
+        )
 
-        self.start_hour = int(self.start_time.split(':')[0])
-        self.end_hour = int(self.end_time.split(':')[0])
+        self.start_hour = int(self.start_time.split(":")[0])
+        self.end_hour = int(self.end_time.split(":")[0])
         # Adjust if end hour is on the next day
         if self.end_hour < self.start_hour:
             self.end_hour += 24
@@ -593,17 +719,24 @@ class TimeBlockWidget(QWidget):
         self.frame = QFrame(self)
         self.frame.setFrameShape(QFrame.Shape.StyledPanel)
         self.frame.setFrameShadow(QFrame.Shadow.Raised)
-        # self.frame.setFixedHeight(self.base_height)
 
-        self.schedule_manager = parent.schedule_manager if parent and hasattr(parent, 'schedule_manager') else None
+        self.schedule_manager = (
+            parent.schedule_manager
+            if parent and hasattr(parent, "schedule_manager")
+            else None
+        )
 
-        if not self.time_block.block_type == "unavailable":
+        if self.time_block.block_type != "unavailable":
             self.init_ui_time_block_with_tasks()
-        elif self.time_block.block_type == "unavailable":
+        else:
             self.init_ui_unavailable()
 
-        self.chunks = ([entry["chunk"] for entry in self.time_block.task_chunks.values()]
-                       if hasattr(self.time_block, "task_chunks") else [])
+        # Use only task chunk logic to build the internal chunk list.
+        self.chunks = (
+            [entry["chunk"] for entry in self.time_block.task_chunks.values()]
+            if hasattr(self.time_block, "task_chunks")
+            else []
+        )
 
         if self.chunks:
             self.load_tasks()
@@ -632,77 +765,70 @@ class TimeBlockWidget(QWidget):
         self.frame_layout.addWidget(self.task_list)
 
     def init_ui_empty(self):
-        self.setup_frame("No tasks", (47, 47, 47))
+        self.setup_frame("No chunks", (47, 47, 47))
 
     def init_ui_unavailable(self):
         self.setup_frame("Unavailable", (231, 131, 97))
 
     def load_tasks(self):
         for chunk in self.chunks:
-            # Create the ScheduleTaskWidget using the chunk
-            task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager_instance, chunk)
+            # Create the ScheduleTaskChunkWidget using the chunk.
+            task_widget = ScheduleTaskChunkWidget(
+                self.schedule_manager.task_manager_instance, chunk
+            )
             item = QListWidgetItem()
             item.setSizeHint(task_widget.sizeHint())
             self.task_list.addItem(item)
             self.task_list.setItemWidget(item, task_widget)
         self.resize_frame_and_hour_cells()
 
-    def add_task(self, task_or_chunk):
-        # Wrap raw Task objects in a default time-based TaskChunk
-        if not isinstance(task_or_chunk, TaskChunk):
-            remaining = task_or_chunk.time_estimate - task_or_chunk.time_logged
-            chunk = TaskChunk(task=task_or_chunk, duration=remaining, auto=True, chunk_type="time")
-        else:
-            chunk = task_or_chunk
-
-        # Optionally, add the chunk to the underlying time block:
+    def add_chunk(self, chunk: TaskChunk):
+        """
+        Adds a TaskChunk to the time block and updates the UI.
+        """
         self.time_block.add_chunk(chunk, rating=9999)  # or appropriate rating
-
-        # Then update the UI list
         self.chunks.append(chunk)
-        task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager, chunk)
+        task_widget = ScheduleTaskChunkWidget(
+            self.schedule_manager.task_manager_instance, chunk
+        )
         item = QListWidgetItem()
         item.setSizeHint(task_widget.sizeHint())
         self.task_list.addItem(item)
         self.task_list.setItemWidget(item, task_widget)
         self.resize_frame_and_hour_cells()
 
-    def remove_task(self, task):
+    def remove_chunk(self, chunk: TaskChunk):
         """
-        Removes the specified task from both the widget's internal list (self.tasks)
+        Removes the specified TaskChunk from both the widget's internal list (self.chunks)
         and the QListWidget display.
         """
-        # 1) Locate the matching item in the QListWidget
         item_to_remove = None
         for i in range(self.task_list.count()):
             item = self.task_list.item(i)
             task_widget = self.task_list.itemWidget(item)
-            if task_widget and task_widget.task == task:
+            # Assuming the ScheduleTaskChunkWidget stores the chunk as `chunk`
+            if task_widget and task_widget.chunk == chunk:
                 item_to_remove = item
                 break
 
-        # 2) remove from the QListWidget and from self.tasks if found
         if item_to_remove is not None:
             row = self.task_list.row(item_to_remove)
             self.task_list.takeItem(row)  # Removes from UI
-            if task in self.tasks:
-                self.tasks.remove(task)  # Remove from internal list
-
-            # 3) Adjust minimum height if block to shrink
+            if chunk in self.chunks:
+                self.chunks.remove(chunk)
             self.resize_frame_and_hour_cells()
 
     def resize_frame_and_hour_cells(self):
         """
-        1) Recalculate the widget's minimum height based on the
-           current tasks in the QListWidget.
-        2) Update the corresponding hour cells in the parent
-           ScheduleViewWidget's HourScaleWidget.
+        Recalculates the widget's minimum height based on the current TaskChunk items in the QListWidget
+        and updates the corresponding hour cells in the parent ScheduleViewWidget's HourScaleWidget.
         """
         if self.task_list.count() == 0:
             new_height = self.base_height
         else:
             task_height = self.name_label.height() + sum(
-                self.task_list.sizeHintForRow(i) for i in range(self.task_list.count())) + 15
+                self.task_list.sizeHintForRow(i) for i in range(self.task_list.count())
+            ) + 15
             if self.base_height >= task_height:
                 new_height = max(task_height, max(45 * (self.end_hour - self.start_hour), 45))
             else:
@@ -721,6 +847,7 @@ class TimeBlockWidget(QWidget):
 class TimeBlockManagerWidget(QWidget):
     def __init__(self, parent, schedule_manager):
         super().__init__()
+        self.setMaximumWidth(400)
         self.parent = parent
         self.schedule_manager = schedule_manager
         self.initUI()
@@ -842,6 +969,7 @@ class TimeBlockManagerWidget(QWidget):
 class SuggestionPanel(QWidget):
     def __init__(self):
         super().__init__()
+        self.setMaximumWidth(400)
         main_layout = QVBoxLayout(self)
 
         self.toolbar = QToolBar()
@@ -863,6 +991,11 @@ class SuggestionPanel(QWidget):
 
     def configure_weights(self):
         print("configure bruh")
+
+
+# ----------------------------------
+# SCHEDULE VIEW LOGIC MAIN
+# ----------------------------------
 
 
 class ScheduleViewWidget(QWidget):
@@ -1041,8 +1174,10 @@ class ScheduleViewWidget(QWidget):
                     end_hour = block_end_dt.hour
                     if end_hour < start_hour:
                         end_hour += 24
-                    relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (24 - day_start_hour)
-                    relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (24 - day_start_hour)
+                    relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (
+                            24 - day_start_hour)
+                    relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (
+                            24 - day_start_hour)
                     start_str = f"{(day_start_hour + relative_start) % 12 or 12} {'AM' if (day_start_hour + relative_start) % 24 < 12 else 'PM'}"
                     end_str = f"{(day_start_hour + relative_end) % 12 or 12} {'AM' if (day_start_hour + relative_end) % 24 < 12 else 'PM'}"
                     self.timeScaleWidget.set_height_by_widget(start_str, end_str, tb_widget)
@@ -1053,15 +1188,18 @@ class ScheduleViewWidget(QWidget):
                     day_layout = day_container.layout()
                     for j in range(day_layout.count()):
                         child = day_layout.itemAt(j).widget()
-                        if child and hasattr(child, "start_time") and hasattr(child, "end_time") and isinstance(child, TimeBlockWidget):
+                        if child and hasattr(child, "start_time") and hasattr(child, "end_time") and isinstance(child,
+                                                                                                                TimeBlockWidget):
                             block_start_dt = datetime.strptime(child.start_time, "%H:%M")
                             block_end_dt = datetime.strptime(child.end_time, "%H:%M")
                             start_hour = block_start_dt.hour
                             end_hour = block_end_dt.hour
                             if end_hour < start_hour:
                                 end_hour += 24
-                            relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (24 - day_start_hour)
-                            relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (24 - day_start_hour)
+                            relative_start = start_hour - day_start_hour if start_hour >= day_start_hour else start_hour + (
+                                    24 - day_start_hour)
+                            relative_end = end_hour - day_start_hour if end_hour >= day_start_hour else end_hour + (
+                                    24 - day_start_hour)
                             start_str = f"{(day_start_hour + relative_start) % 12 or 12} {'AM' if (day_start_hour + relative_start) % 24 < 12 else 'PM'}"
                             end_str = f"{(day_start_hour + relative_end) % 12 or 12} {'AM' if (day_start_hour + relative_end) % 24 < 12 else 'PM'}"
                             self.timeScaleWidget.set_height_by_widget(start_str, end_str, child)
@@ -1079,9 +1217,34 @@ class ScheduleViewWidget(QWidget):
         if dialog.exec():
             pass
 
+    def get_displayed_chunk_ids(self):
+        displayed_ids = set()
+        if self.current_view_mode == "Day":
+            for i in range(self.dayLayout.count()):
+                tb_widget = self.dayLayout.itemAt(i).widget()
+                if hasattr(tb_widget, "chunks"):
+                    for chunk in tb_widget.chunks:
+                        displayed_ids.add(chunk.id)
+        elif self.current_view_mode == "Week":
+            for i in range(self.weekLayout.count()):
+                day_container = self.weekLayout.itemAt(i).widget()
+                day_layout = day_container.layout()
+                for j in range(day_layout.count()):
+                    child = day_layout.itemAt(j).widget()
+                    if isinstance(child, TimeBlockWidget):
+                        for chunk in child.chunks:
+                            displayed_ids.add(chunk.id)
+        return displayed_ids
+
     def load_suggestion_panel(self):
+        # Clear any previous suggestions
+        self.suggestion_panel.list_widget.clear()
+        displayed_ids = self.get_displayed_chunk_ids()
         if hasattr(self, "suggestion_panel"):
             for chunk in self.schedule_manager.chunks:
+                # Skip chunks already shown in the schedule view
+                if chunk.id in displayed_ids:
+                    continue
                 task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager_instance, chunk)
                 item = QListWidgetItem()
                 item.setSizeHint(task_widget.sizeHint())
@@ -1096,119 +1259,3 @@ class ScheduleViewWidget(QWidget):
         elif self.current_view_mode == "Week":
             return self.weekLayout
         return None
-
-
-class ScheduleSettingsDialog(QDialog):
-    def __init__(self, schedule_settings):
-        super().__init__()
-        self.schedule_settings = schedule_settings
-        self.init_ui()
-
-    def init_ui(self):
-        self.setWindowTitle("Configure Schedule Settings")
-        layout = QVBoxLayout()
-        form_layout = QFormLayout()
-
-        self.day_start_edit = QTimeEdit(self)
-        self.day_start_edit.setTime(
-            QTime(self.schedule_settings.day_start.hour, self.schedule_settings.day_start.minute))
-        self.day_start_edit.timeChanged.connect(self.auto_calculate_hours)
-
-        self.sleep_duration_spin = QSpinBox(self)
-        self.sleep_duration_spin.setMinimum(1)
-        self.sleep_duration_spin.setMaximum(24)
-        self.sleep_duration_spin.setValue(int(self.schedule_settings.ideal_sleep_duration))
-        self.sleep_duration_spin.valueChanged.connect(self.auto_calculate_hours)
-
-        self.hours_available_edit = QLineEdit(self)
-        self.hours_available_edit.setText(
-            str(self.schedule_settings.hours_of_day_available or self.calculate_hours_available()))
-        self.hours_available_edit.setReadOnly(True)
-        self.hours_available_custom = QCheckBox("Custom")
-        self.hours_available_custom.stateChanged.connect(self.toggle_hours_editable)
-
-        self.overtime_combo = QComboBox(self)
-        self.overtime_combo.addItems(["Auto", "Manual"])
-        self.overtime_combo.setCurrentText(self.schedule_settings.overtime_flexibility)
-
-        self.peak_start_edit = QTimeEdit(self)
-        self.peak_start_edit.setTime(QTime(self.schedule_settings.peak_productivity_hours[0].hour,
-                                           self.schedule_settings.peak_productivity_hours[0].minute))
-
-        self.peak_end_edit = QTimeEdit(self)
-        self.peak_end_edit.setTime(QTime(self.schedule_settings.peak_productivity_hours[1].hour,
-                                         self.schedule_settings.peak_productivity_hours[1].minute))
-
-        self.off_peak_start_edit = QTimeEdit(self)
-        self.off_peak_start_edit.setTime(
-            QTime(self.schedule_settings.off_peak_hours[0].hour, self.schedule_settings.off_peak_hours[0].minute))
-
-        self.off_peak_end_edit = QTimeEdit(self)
-        self.off_peak_end_edit.setTime(
-            QTime(self.schedule_settings.off_peak_hours[1].hour, self.schedule_settings.off_peak_hours[1].minute))
-
-        self.task_notifications_check = QCheckBox("Enable Task Notifications", self)
-        self.task_notifications_check.setChecked(self.schedule_settings.task_notifications)
-
-        self.popup_frequency_spin = QSpinBox(self)
-        self.popup_frequency_spin.setMinimum(1)
-        self.popup_frequency_spin.setMaximum(60)
-        self.popup_frequency_spin.setValue(self.schedule_settings.task_status_popup_frequency)
-
-        self.save_button = QPushButton("Save", self)
-        self.save_button.clicked.connect(self.save_settings)
-
-        form_layout.addRow("Day Start", self.day_start_edit)
-        form_layout.addRow("Ideal Sleep Duration (hours)", self.sleep_duration_spin)
-        form_layout.addRow("Hours of Day Available", self.hours_available_edit)
-        form_layout.addRow("", self.hours_available_custom)
-        form_layout.addRow("Overtime Flexibility", self.overtime_combo)
-        form_layout.addRow("Peak Productivity Start", self.peak_start_edit)
-        form_layout.addRow("Peak Productivity End", self.peak_end_edit)
-        form_layout.addRow("Off-Peak Start", self.off_peak_start_edit)
-        form_layout.addRow("Off-Peak End", self.off_peak_end_edit)
-        form_layout.addRow(self.task_notifications_check)
-        form_layout.addRow("Task Status Popup Frequency (minutes)", self.popup_frequency_spin)
-        layout.addLayout(form_layout)
-        layout.addWidget(self.save_button)
-        self.setLayout(layout)
-
-    def calculate_hours_available(self):
-        day_start = self.day_start_edit.time()
-        sleep_duration = self.sleep_duration_spin.value()
-        available_hours = 24 - sleep_duration
-        return max(0, available_hours)
-
-    def auto_calculate_hours(self):
-        if not self.hours_available_custom.isChecked():
-            self.hours_available_edit.setText(str(self.calculate_hours_available()))
-
-    def toggle_hours_editable(self):
-        self.hours_available_edit.setReadOnly(not self.hours_available_custom.isChecked())
-        if not self.hours_available_custom.isChecked():
-            self.auto_calculate_hours()
-
-    def save_settings(self):
-        day_start_time = self.day_start_edit.time()
-        self.schedule_settings.set_day_start(day_start_time.toPyTime())
-        self.schedule_settings.set_ideal_sleep_duration(self.sleep_duration_spin.value())
-        self.schedule_settings.set_overtime_flexibility(self.overtime_combo.currentText())
-        if self.hours_available_custom.isChecked():
-            try:
-                hours_available = int(self.hours_available_edit.text())
-                if hours_available > 24 or hours_available < 0:
-                    raise ValueError
-                self.schedule_settings.set_hours_of_day_available(hours_available)
-            except ValueError:
-                return
-        else:
-            self.schedule_settings.set_hours_of_day_available(self.calculate_hours_available())
-        self.schedule_settings.set_peak_productivity_hours(
-            self.peak_start_edit.time().toPyTime(), self.peak_end_edit.time().toPyTime()
-        )
-        self.schedule_settings.set_off_peak_hours(
-            self.off_peak_start_edit.time().toPyTime(), self.off_peak_end_edit.time().toPyTime()
-        )
-        self.schedule_settings.set_task_notifications(self.task_notifications_check.isChecked())
-        self.schedule_settings.set_task_status_popup_frequency(self.popup_frequency_spin.value())
-        self.accept()

@@ -24,6 +24,7 @@ class TaskChunk:
         self.date = date  # Date for recurring task
         self.is_recurring = is_recurring  # True if part of a recurring task
         self.status = status if status else self.update_status()
+        self.flagged = False  # Initialize flagged attribute
 
     def update_status(self):
         if self.date and self.is_recurring:
@@ -31,7 +32,6 @@ class TaskChunk:
             if self.date == today:
                 return "active"
             return "locked"  # Future recurrences start locked
-
         return "active"
 
     def mark_completed(self):
@@ -44,16 +44,17 @@ class TaskChunk:
         self.status = "failed"
 
     def split(self, ratios):
-        # only for splitting auto chunks
+        # Only for splitting auto chunks
         if self.chunk_type == "auto":
             total_ratio = sum(ratios)
-            if self.chunk_type == "time":
+            if self.unit == "time":
                 subchunks = [
                     TaskChunk(
                         self.id,
                         self.task,
+                        self.chunk_type,
+                        self.unit,
                         size=(self.size * r) / total_ratio,
-                        chunk_type=self.chunk_type,
                         timeblock_ratings=self.timeblock_ratings,
                         timeblock=self.timeblock,
                         date=self.date,
@@ -75,13 +76,14 @@ class TaskChunk:
                     for sc in subchunks:
                         sc.size *= factor
                 return subchunks
-            elif self.chunk_type == "count":
+            elif self.unit == "count":
                 subchunks = [
                     TaskChunk(
                         self.id,
                         self.task,
+                        self.chunk_type,
+                        self.unit,
                         size=(self.size * r) / total_ratio,
-                        chunk_type=self.chunk_type,
                         timeblock_ratings=self.timeblock_ratings,
                         timeblock=self.timeblock,
                         date=self.date,
@@ -104,6 +106,7 @@ class TaskChunk:
                     for sc in subchunks:
                         sc.size *= factor
                 return subchunks
+        return [self]
 
 
 class Task:
@@ -160,19 +163,18 @@ class Task:
         self.count_required = kwargs.get("count_required", 0)
         self.count_completed = kwargs.get("count_completed", 0)
 
-        example_chunk = {
-            "id": str(uuid.uuid4()),  # Unique ID for the chunk
-            "size": 1.5,  # Represents 1.5 hours or count units
-            "type": "auto",  # "manual", "auto", or "placed"
-            "unit": "time",  # "time" for duration-based tasks, "count" for count-based tasks
-            "status": "active",  # "active", "locked", "completed", etc.
-            "time_block": None,  # Assume this references a TimeBlock ID
-            "date": "2025-02-12",  # The date on which this chunk is scheduled
-            "is_recurring": False  # Whether this chunk is part of a recurring task
-        }
+        # example_chunk = {
+        #     "id": str(uuid.uuid4()),  # Unique ID for the chunk
+        #     "size": 1.5,  # Represents 1.5 hours or count units
+        #     "type": "auto",  # "manual", "auto", or "placed"
+        #     "unit": "time",  # "time" for duration-based tasks, "count" for count-based tasks
+        #     "status": "active",  # "active", "locked", "completed", etc.
+        #     "time_block": None,  # Assume this references a TimeBlock ID
+        #     "date": "2025-02-12",  # The date on which this chunk is scheduled
+        #     "is_recurring": False  # Whether this chunk is part of a recurring task
+        # }
 
-        # self.chunks = kwargs.get("chunks", [])
-        self.chunks = [example_chunk]
+        self.chunks = kwargs.get("chunks", [])
         self.chunk_preference = kwargs.get("chunk_preference", None)  # "time", "count"
         self.min_chunk_size = kwargs.get("min_chunk_size", 0.0)
         self.max_chunk_size = kwargs.get("max_chunk_size", 0.0)
@@ -719,6 +721,10 @@ class TaskManager:
             task_data["recurring"] = bool(task_data["recurring"])
             task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
             task_data['include_in_schedule'] = bool(task_data['include_in_schedule'])
+            task_data["preferred_work_days"] = json.loads(task_data["preferred_work_days"]) if task_data.get(
+                "preferred_work_days") else []
+            task_data["time_of_day_preference"] = json.loads(task_data["time_of_day_preference"]) if task_data.get(
+                "time_of_day_preference") else []
 
             task = Task(**task_data)
             tasks.append(task)
@@ -1329,6 +1335,8 @@ class TaskManager:
             task_data["recurring"] = bool(task_data["recurring"])
             task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
             task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
+            task_data["preferred_work_days"] = json.loads(task_data["preferred_work_days"]) if task_data.get("preferred_work_days") else []
+            task_data["time_of_day_preference"] = json.loads(task_data["time_of_day_preference"]) if task_data.get("time_of_day_preference") else []
 
             return Task(**task_data)
 
@@ -1366,6 +1374,10 @@ class TaskManager:
                 task_data["recurring"] = bool(task_data["recurring"])
                 task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
                 task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
+                task_data["preferred_work_days"] = json.loads(task_data["preferred_work_days"]) if task_data.get(
+                    "preferred_work_days") else []
+                task_data["time_of_day_preference"] = json.loads(task_data["time_of_day_preference"]) if task_data.get(
+                    "time_of_day_preference") else []
 
                 task = Task(**task_data)
 

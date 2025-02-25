@@ -168,6 +168,7 @@ class ScheduleSettings:
         self.save_settings()
 
 
+# --- Modified TimeBlock class (add get_available_count method) ---
 class TimeBlock:
     def __init__(self, block_id=None, name="", date=None,
                  list_categories=None, task_tags=None,
@@ -192,18 +193,6 @@ class TimeBlock:
         self.duration = None
         self.buffer_ratio = 0.0
 
-    def add_chunk(self, chunk, rating):
-        id = chunk.id
-        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks] and chunk.chunk_type == "auto":
-            self.task_chunks[id]["chunk"].size += chunk.size
-        else:
-            self.task_chunks[id] = {"chunk": chunk, "rating": rating}
-
-    def remove_chunk(self, chunk):
-        id = chunk.id
-        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks]:
-            del self.task_chunks[id]
-
     def get_available_time(self):
         used_time = sum(info["chunk"].size for info in self.task_chunks.values())
         if self.duration is None:
@@ -212,6 +201,21 @@ class TimeBlock:
 
     def get_capacity(self):
         return max(0, self.duration * (1 - self.buffer_ratio))
+
+    def get_available_count(self):
+        # For count-based tasks, assume capacity is analogous to time capacity.
+        used_count = sum(info["chunk"].size for info in self.task_chunks.values())
+        capacity = self.get_capacity()
+        return max(0, capacity - used_count)
+
+    def add_chunk(self, chunk, rating):
+        cid = chunk.id
+        self.task_chunks[cid] = {"chunk": chunk, "rating": rating}
+
+    def remove_chunk(self, chunk):
+        id = chunk.id
+        if id in [task_chunk["chunk"].id for task_chunk in self.task_chunks]:
+            del self.task_chunks[id]
 
 
 class ScheduleManager:
@@ -680,11 +684,11 @@ class ScheduleManager:
             day_workload_est = (day_eat / total_eat) * total_workload
 
             # 5. Calculate the daily buffer ratio as a fraction of free time
-            # if day_eat > 0:
-            #     day_schedule.assign_buffer_ratio(1.0 - (day_workload_est / day_eat))
-            # else:
-            #     day_schedule.assign_buffer_ratio(0.0)
-            day_schedule.assign_buffer_ratio(0.0)
+            if day_eat > 0:
+                day_schedule.assign_buffer_ratio(1 - day_workload_est)
+            else:
+                day_schedule.assign_buffer_ratio(0.0)
+            # day_schedule.assign_buffer_ratio(0.0)
 
     def chunk_tasks(self):
         chunks = []

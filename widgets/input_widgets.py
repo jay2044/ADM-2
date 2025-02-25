@@ -637,7 +637,7 @@ class ChunkingSelectionWidget(QWidget):
 
     def get_overall_time(self):
         hrs, mins = self.time_estimate_selector.get_time_estimate()
-        return hrs * 60 + mins
+        return (hrs * 60 + mins)
 
     def get_overall_total(self):
         return self.get_overall_time() if self.current_mode == "time" else self.count_selector.value()
@@ -846,14 +846,31 @@ class ChunkingSelectionWidget(QWidget):
     def get_selections(self):
         total = self.get_overall_total()
         chunks = self.time_chunks if self.current_mode == "time" else self.count_chunks
-        chunk_values = [c.spin.value() for c in chunks]
+
+        chunk_list = []
+        for c in chunks:
+            value = c.spin.value()
+            # Convert to hours for time mode; leave as-is for count mode.
+            size = value / 60.0 if self.current_mode == "time" else value
+            chunk_dict = {
+                "id": str(uuid.uuid4()),
+                "size": size,
+                "type": c.type_combo.currentText().lower(),  # e.g. "auto" or "manual"
+                "unit": self.current_mode,  # "time" or "count"
+                "status": "active",
+                "time_block": None,
+                "date": datetime.today().strftime("%Y-%m-%d"),
+                "is_recurring": False
+            }
+            chunk_list.append(chunk_dict)
+
         return {
             "mode": self.current_mode,
             "total": total,
             "min": self.min_spinbox.value(),
             "max": self.max_spinbox.value(),
-            "chunks": chunk_values,
-            "time_estimate": self.get_overall_time(),
+            "chunks": chunk_list,
+            "time_estimate": self.get_overall_time() / 60,
             "count_required": self.count_selector.value()
         }
 
