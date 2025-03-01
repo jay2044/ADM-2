@@ -216,8 +216,7 @@ class ScheduleTaskWidget(QWidget):
             menu.exec(self.mapToGlobal(position))
 
     def set_due_today(self):
-        self.task.due_date = datetime.now().strftime("%Y-%m-%d")
-        self.update_due_label()
+        pass
 
     def set_due_tomorrow(self):
         tomorrow = datetime.now() + timedelta(days=1)
@@ -510,11 +509,11 @@ class ScheduleTaskChunkWidget(QWidget):
     def setup_timer(self):
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.edit_chunk)
+        self.timer.timeout.connect(self.edit_task)
 
     def on_chunk_label_click(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.edit_chunk()
+            self.edit_task()
 
     def show_context_menu(self, position):
         if not self.no_context:
@@ -522,9 +521,6 @@ class ScheduleTaskChunkWidget(QWidget):
             delete_action = QAction("Delete Chunk", self)
             delete_action.triggered.connect(self.delete_chunk)
             menu.exec(self.mapToGlobal(position))
-
-    def edit_chunk(self):
-        print(f"Editing chunk {self.chunk.id} for task '{self.task.name}'.")
 
     def chunk_checked(self, state):
         if state == Qt.CheckState.Checked.value:
@@ -538,6 +534,37 @@ class ScheduleTaskChunkWidget(QWidget):
         self.task_list_manager.update_task(self.task)
         self.setParent(None)
         self.deleteLater()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.is_dragging = False
+            self.timer.start(250)
+            self.start_pos = event.pos()
+        if event.button() == Qt.MouseButton.RightButton:
+            self.no_context = False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.RightButton:
+            self.no_context = True
+            return
+        if not self.is_dragging and (event.pos() - self.start_pos).manhattanLength() > QApplication.startDragDistance():
+            self.is_dragging = True
+            self.timer.stop()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                if self.timer.isActive():
+                    self.timer.stop()
+                    self.edit_task()
+            super().mouseReleaseEvent(event)
+        except Exception as e:
+            print(e)
+
+    def edit_task(self):
+        get_main_window().add_task_detail_dock(self.task)
 
 
 class HourCell(QWidget):

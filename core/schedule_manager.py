@@ -685,7 +685,7 @@ class ScheduleManager:
 
             # 5. Calculate the daily buffer ratio as a fraction of free time
             if day_eat > 0:
-                day_schedule.assign_buffer_ratio(1 - day_workload_est)
+                day_schedule.assign_buffer_ratio(0.8 - day_workload_est)
             else:
                 day_schedule.assign_buffer_ratio(0.0)
             # day_schedule.assign_buffer_ratio(0.0)
@@ -799,7 +799,7 @@ class ScheduleManager:
                         cap = filtered_chunk.size
                         if cap <= 0:
                             continue
-                        if filtered_chunk.chunk_type == "placed":
+                        if filtered_chunk.chunk_type == "manual":
                             if self.assign_chunk(filtered_chunk, block, True):
                                 resizable_capacity += cap
                                 reschedule_chunk_queue.append(filtered_chunk)
@@ -820,6 +820,7 @@ class ScheduleManager:
                                     reschedule_chunk_queue.append(filtered_chunk)
                         if resizable_capacity >= required_capacity:
                             break
+
                     if resizable_capacity >= 0.9 * required_capacity:
                         available_for_this_block = available + resizable_capacity
                         total = chunk.size

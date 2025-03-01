@@ -5,7 +5,7 @@ from core.task_manager import *
 from core.globals import *
 from .task_progress_widgets import *
 import random
-
+from datetime import datetime, time
 
 class TaskListWidget(QListWidget):
     def __init__(self, task_list, parent):
@@ -297,26 +297,15 @@ class TaskWidget(QWidget):
         self.clear_due_datetime()
 
     def set_due_today(self):
-        now = datetime.now()
-        # Preserve any existing time, or default to current time
-        if self.task.due_datetime:
-            time_component = self.task.due_datetime.time()
-            self.task.due_datetime = datetime.combine(now.date(), time_component)
-        else:
-            self.task.due_datetime = now
-
+        now = datetime.now().date()
+        self.task.due_datetime = datetime.combine(now, time.min)
         self.task_list_widget.manager.update_task(self.task)
         self.update_due_label()
 
     def set_due_tomorrow(self):
-        tomorrow = datetime.now() + timedelta(days=1)
-        # Preserve any existing time, or default to current time
-        if self.task.due_datetime:
-            time_component = self.task.due_datetime.time()
-            self.task.due_datetime = datetime.combine(tomorrow.date(), time_component)
-        else:
-            self.task.due_datetime = tomorrow
-
+        tomorrow = datetime.now().date() + timedelta(days=1)
+        time_component = self.task.due_datetime.time() if self.task.due_datetime else time.min
+        self.task.due_datetime = datetime.combine(tomorrow, time_component)
         self.task_list_widget.manager.update_task(self.task)
         self.update_due_label()
 
