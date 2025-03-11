@@ -5,7 +5,7 @@ from ui.gui import MainWindow
 
 def main():
     app = QApplication(sys.argv)
-    with open('themes/styles.qss', 'r') as f:
+    with open('themes/styles.css', 'r') as f:
         app.setStyleSheet(f.read())
     main_window = MainWindow(app)
     main_window.show()

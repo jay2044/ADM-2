@@ -659,17 +659,20 @@ class TaskListCollection(QWidget):
 
         self.setup_ui()
         self.load_task_lists()
+        self.setObjectName("TaskListCollection")
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
 
         self.search_bar = QLineEdit(self)
+        self.search_bar.setObjectName("TaskListSearch")
         self.search_bar.setPlaceholderText("Search...")
         self.layout.addWidget(self.search_bar)
         self.search_bar.textChanged.connect(self.filter_items)
         self.task_list_widget_in_focus_before_search = None
 
         self.tree_widget = CustomTreeWidget(self.parent)
+        self.tree_widget.setObjectName("TaskListTree")
         self.tree_widget.setHeaderHidden(True)
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self.task_list_collection_context_menu)

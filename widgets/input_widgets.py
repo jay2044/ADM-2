@@ -867,8 +867,8 @@ class ChunkingSelectionWidget(QWidget):
         return {
             "mode": self.current_mode,
             "total": total,
-            "min": self.min_spinbox.value(),
-            "max": self.max_spinbox.value(),
+            "min": self.min_spinbox.value() / 60,
+            "max": self.max_spinbox.value() / 60,
             "chunks": chunk_list,
             "time_estimate": self.get_overall_time() / 60,
             "count_required": self.count_selector.value()

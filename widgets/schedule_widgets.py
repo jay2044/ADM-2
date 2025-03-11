@@ -1156,7 +1156,7 @@ class ScheduleViewWidget(QWidget):
 
     def load_time_blocks(self):
         # Refresh schedule from the schedule manager.
-        self.schedule_manager.refresh_schedule()
+        # self.schedule_manager.refresh_schedule()
         self.clearLayout(self.dayLayout)
         self.clearLayout(self.weekLayout)
         # Use the date selected in the DatePickerCalendar as the starting date.

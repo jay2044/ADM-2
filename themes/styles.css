@@ -1,0 +1,60 @@
+
+
+/* QProgressBar */
+QProgressBar
+{
+    border: 1px solid #222222;
+    background-color: #3d3d3d;
+    text-align: center;
+    color: #ffffff;
+    font-size: 12px;
+    /* font-weight: bold; */
+    padding: 1px;
+    border-radius: 3px;
+}
+QProgressBar::chunk
+{
+    background-color: #607cff;
+}
+
+/* Style for the whole collection container */
+/*QWidget#TaskListCollection {*/
+/*    background-color: #121212;*/
+/*    color: #ffffff;*/
+/*    border: 1px solid #051a39;*/
+/*    padding: 10px;*/
+/*    font-family: "Segoe UI", sans-serif;*/
+/*}*/
+
+/*!* Style for the search bar *!*/
+/*QLineEdit#TaskListSearch {*/
+/*    background-color: #2a2a2a;*/
+/*    color: #ffffff;*/
+/*    border: 1px solid #444;*/
+/*    border-radius: 4px;*/
+/*    padding: 4px 8px;*/
+/*    margin-bottom: 10px;*/
+/*}*/
+
+/*!* Style for the tree widget *!*/
+/*QTreeView#TaskListTree {*/
+/*    background-color: #1a1a1a;*/
+/*    color: #ffffff;*/
+/*    border: 1px solid #051a39;*/
+/*}*/
+
+/*QTreeView#TaskListTree {*/
+/*    background-color: #1a1a1a;*/
+/*    color: #ffffff;*/
+/*    border: 1px solid #051a39;*/
+/*}*/
+
+/*!* Optional: Style selected items *!*/
+/*QTreeView#TaskListTree::item {*/
+/*    background-color: #202020;*/
+/*    border: 1px solid #303030;*/
+/*    color: #ffffff;*/
+/*}*/
+
+
+
