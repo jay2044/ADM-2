@@ -142,6 +142,9 @@ class DatePickerCalendar(QWidget):
     def get_selected_date(self):
         return self.calendar.selectedDate()
 
+    def set_selected_date(self, date: QDate):
+        self.calendar.setSelectedDate(date)
+
     def date_changed(self):
         print(self.get_selected_date().toString('yyyy-MM-dd'))
 
@@ -662,7 +665,6 @@ class HourScaleWidget(QWidget):
         self.highlight_current_hour()
 
 
-
 class DraggableListWidget(QListWidget):
     def __init__(self, parent_time_block_widget):
         """
@@ -1034,11 +1036,6 @@ class SuggestionPanel(QWidget):
         print("configure bruh")
 
 
-# ----------------------------------
-# SCHEDULE VIEW LOGIC MAIN
-# ----------------------------------
-
-
 class ScheduleViewWidget(QWidget):
     def __init__(self, schedule_manager=None):
         super().__init__()
@@ -1058,7 +1055,7 @@ class ScheduleViewWidget(QWidget):
         self.expandedContainer = QWidget()
         self.expandedUI()
         self.expandedContainer.setVisible(False)
-        self.mainLayout.addWidget(self.expandedContainer)
+        self.mainLayout.addWidget(self.expandedContainer, 0)
 
         self.scheduleViewUI()
 
@@ -1095,11 +1092,22 @@ class ScheduleViewWidget(QWidget):
         viewActionGroup.setExclusive(True)
         toolbar.addAction(self.dayViewAction)
         toolbar.addAction(self.weekViewAction)
+
+        # 1) New actions to move current head date
+        self.prevDateAction = QAction("< Prev", self)
+        self.prevDateAction.triggered.connect(self.go_to_previous_date)
+        toolbar.addAction(self.prevDateAction)
+
+        self.nextDateAction = QAction("Next >", self)
+        self.nextDateAction.triggered.connect(self.go_to_next_date)
+        toolbar.addAction(self.nextDateAction)
+
         toolbar.addSeparator()
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
         self.quickTaskAction = QAction("Add Quick Task", self)
+        self.quickTaskAction.triggered.connect(self.add_quick_task)
         toolbar.addAction(self.quickTaskAction)
         toolbarLayout.addWidget(toolbar)
         self.scheduleViewOnlyLayout.addWidget(toolbarContainer)
@@ -1132,10 +1140,11 @@ class ScheduleViewWidget(QWidget):
         container_layout.addWidget(self.scheduleBlocksWidget)
         scroll_area.setWidget(self.container)
         self.scheduleViewOnlyLayout.addWidget(scroll_area)
-        self.mainLayout.addLayout(self.scheduleViewOnlyLayout)
+        self.mainLayout.addLayout(self.scheduleViewOnlyLayout, 1)
 
     def expandedUI(self):
         self.expandedLayout = QGridLayout(self.expandedContainer)
+
         # Use the custom DatePickerCalendar.
         self.date_picker = DatePickerCalendar()
         # When the date selection changes, update the schedule's starting day.
@@ -1150,6 +1159,10 @@ class ScheduleViewWidget(QWidget):
     def toggle_expanded_ui(self):
         self.expanded_ui_visible = not self.expanded_ui_visible
         self.expandedContainer.setVisible(self.expanded_ui_visible)
+        if self.expandAction.text() == "<<":
+            self.expandAction.setText(">>")
+        else:
+            self.expandAction.setText("<<")
 
     def date_changed_handler(self):
         self.update_date_label()
@@ -1176,12 +1189,18 @@ class ScheduleViewWidget(QWidget):
         # Use the date selected in the DatePickerCalendar as the starting date.
         selected_date = self.date_picker.get_selected_date().toPyDate()
         if self.current_view_mode == "Day":
+            # A label at the top of Day view:
+            day_label = QLabel(selected_date.strftime("%A %Y-%m-%d"))
+            self.dayLayout.addWidget(day_label)
+
             day_schedule = self.schedule_manager.get_day_schedule(selected_date)
             time_blocks = day_schedule.time_blocks if day_schedule else []
             for block in time_blocks:
                 tb_widget = TimeBlockWidget(self, block)
                 self.dayLayout.addWidget(tb_widget)
+
             self.stackLayout.setCurrentWidget(self.dayViewWidget)
+
         elif self.current_view_mode == "Week":
             # In week view, the selected date is the first column followed by the next six days.
             for i in range(7):
@@ -1300,3 +1319,30 @@ class ScheduleViewWidget(QWidget):
         elif self.current_view_mode == "Week":
             return self.weekLayout
         return None
+
+    def go_to_previous_date(self):
+        selected_date = self.date_picker.get_selected_date().toPyDate()
+        new_date = selected_date - timedelta(days=1)
+        # Update the date picker to the new date
+        self.date_picker.set_selected_date(QDate(new_date.year, new_date.month, new_date.day))
+        # Reload
+        self.load_time_blocks()
+
+    def go_to_next_date(self):
+        selected_date = self.date_picker.get_selected_date().toPyDate()
+        new_date = selected_date + timedelta(days=1)
+        # Update the date picker to the new date
+        self.date_picker.set_selected_date(QDate(new_date.year, new_date.month, new_date.day))
+        # Reload
+        self.load_time_blocks()
+
+    def add_quick_task(self):
+        for task_list in self.schedule_manager.task_manager_instance.task_lists:
+            if task_list.name == "quick tasks":
+                dialog = AddTaskDialog(self, task_list)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    task_data = dialog.get_task_data()
+                    task = Task(**task_data)
+                    self.schedule_manager.task_manager_instance.add_task(task)
+                    global_signals.task_list_updated.emit()
+            break

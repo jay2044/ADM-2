@@ -876,12 +876,12 @@ class ChunkingSelectionWidget(QWidget):
 
 
 class AddTaskDialog(QDialog):
-    def __init__(self, parent=None, task_list_widget=None):
+    def __init__(self, parent=None, task_list=None):
         super().__init__(parent)
         self.setWindowTitle("Add New Task")
         self.resize(500, 400)
 
-        self.task_list_widget = task_list_widget
+        self.task_list = task_list
 
         # Main layout
         self.main_layout = QVBoxLayout(self)
@@ -921,12 +921,7 @@ class AddTaskDialog(QDialog):
         self.effort_level_selector = OptionSelector("Effort Lvl", ["Low", "Medium", "High"], default_value="Medium")
         self.left_part.addWidget(self.effort_level_selector)
 
-        tags = []
-        # if a TaskListDock
-        if parent.type == "dock":
-            tags = parent.task_list_widget.task_list.get_task_tags()
-        elif parent.type == "stack":  # if TaskListStacked
-            tags = parent.get_current_task_list_widget().task_list.get_task_tags()
+        tags = self.task_list.get_task_tags() if self.task_list else []
         self.tag_selector = TagInputWidget(tags)
         self.left_part.addWidget(self.tag_selector)
 
@@ -1068,7 +1063,7 @@ class AddTaskDialog(QDialog):
         task_data = {
             "include_in_schedule": self.include_in_schedule_checkbox.isChecked(),
             "name": self.name_edit.text(),
-            "list_name": self.task_list_widget.task_list_name,
+            "list_name": self.task_list.name,
             "description": self.description_edit.toPlainText(),
             "priority": int(self.priority_selector.get_selection()),
             "flexibility": self.flexibility_selector.get_selection(),
@@ -1087,6 +1082,7 @@ class AddTaskDialog(QDialog):
             "chunk_preference": time_count_chunks.get("mode"),
             "min_chunk_size": time_count_chunks.get("min"),
             "max_chunk_size": time_count_chunks.get("max"),
+            "added_date_time": datetime.now().strftime("%Y-%m-%d %H:%M")
         }
 
         return task_data

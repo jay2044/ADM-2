@@ -758,7 +758,7 @@ class TaskListDockStacked(QDockWidget):
 
     def show_add_task_dialog(self, task_list_widget):
         # try:
-        dialog = AddTaskDialog(self, task_list_widget)
+        dialog = AddTaskDialog(self, task_list_widget.task_list)
         # button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
         # dialog.adjustSize()
         # dialog.move(button_pos.x() - dialog.width(), button_pos.y())
@@ -967,7 +967,7 @@ class TaskListDock(QDockWidget):
         self.show_add_task_dialog(self.task_list_widget)
 
     def show_add_task_dialog(self, task_list_widget):
-        dialog = AddTaskDialog(self, task_list_widget)
+        dialog = AddTaskDialog(self, task_list_widget.task_list)
         # button_pos = self.toolbar.mapToGlobal(self.toolbar.rect().bottomRight())
         # dialog.adjustSize()
         # dialog.move(button_pos.x() - dialog.width(), button_pos.y())

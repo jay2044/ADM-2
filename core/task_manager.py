@@ -582,6 +582,7 @@ class TaskManager:
         self.conn = sqlite3.connect(self.db_file)
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
+        self.initialize_system_category()
         self.task_lists = self.load_task_lists()
         self.categories = self.load_categories()
         self.manage_recurring_tasks()
@@ -706,6 +707,51 @@ class TaskManager:
             task_lists.append(task_list)
         return task_lists
 
+    def initialize_system_category(self):
+        """
+        Create a protected category 'system' and within it a default task list called 'quick tasks'.
+        These cannot be deleted or edited.
+        """
+        cursor = self.conn.cursor()
+        # Check if the system category exists; use "System" for comparison.
+        cursor.execute("SELECT * FROM categories WHERE name=?", ("System",))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO categories (`order`, name) VALUES (?, ?)", (10000, "System"))
+            self.conn.commit()
+            print("Protected system category created.")
+
+        # Check if the system task list "quick tasks" exists.
+        cursor.execute("SELECT * FROM task_lists WHERE name=? AND category=?", ("quick tasks", "System"))
+        if not cursor.fetchone():
+            # Create a TaskList instance for quick tasks.
+            quick_tasks = TaskList(
+                id=6363,
+                order=1000000000,
+                name="quick tasks",
+                description="Default system quick tasks",
+                category="System",
+                notifications_enabled=True,
+                archived=False,
+                in_trash=False,
+                creation_date=datetime.now().strftime("%Y-%m-%d"),  # Fix here
+                default_start_date=datetime.now().strftime("%Y-%m-%d"),  # Fix here
+                default_due_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),  # Fix here
+                default_time_of_day_preference=None,
+                default_flexibility=None,
+                default_effort_level=None,
+                default_priority=0,
+                default_preferred_work_days=[],
+                consider_in_schedule=True,
+                sort_by_queue=False,
+                sort_by_stack=False,
+                sort_by_priority=False,
+                sort_by_due_datetime=False,
+                sort_by_tags=False,
+                tasks=[]
+            )
+            self.add_task_list(quick_tasks)
+            print("Protected 'quick tasks' task list created in system category.")
+
     def get_tasks_by_list_name(self, list_name):
         tasks = []
         cursor = self.conn.cursor()
@@ -733,57 +779,49 @@ class TaskManager:
     def load_categories(self):
         categories = {
             "Uncategorized": {
-                "order": float('inf'),  # Ensures Uncategorized appears last
+                "order": 0,
+                "task_lists": []
+            },
+            "System": {
+                "order": 0,
                 "task_lists": []
             }
         }
 
         cursor = self.conn.cursor()
-
-        # Load categories from database
         cursor.execute("SELECT * FROM categories ORDER BY `order`")
         category_rows = cursor.fetchall()
 
-        # Create category entries
-        for category_row in category_rows:
-            category_order = category_row["order"]
-            category_name = category_row["name"]
+        for row in category_rows:
+            order_val = row["order"]
+            name_val = row["name"]
+            if name_val not in ("Uncategorized", "System"):
+                categories[name_val] = {
+                    "order": order_val,
+                    "task_lists": []
+                }
 
-            categories[category_name] = {
-                "order": category_order,
-                "task_lists": []
-            }
+        for tl in self.task_lists:
+            cat = tl.category or "Uncategorized"
+            if cat not in categories:
+                cat = "Uncategorized"
+            categories[cat]["task_lists"].append(tl)
 
-        # Distribute task lists to their categories
-        for task_list in self.task_lists:
-            category_name = task_list.category if task_list.category else "Uncategorized"
+        for cat_name, cat_data in categories.items():
+            cat_data["task_lists"].sort(key=lambda t: getattr(t, "order", float('inf')))
 
-            # If category doesn't exist, fallback to Uncategorized
-            if category_name not in categories:
-                print(f"Category {category_name} not found. Falling back to Uncategorized.")
-                category_name = "Uncategorized"
-
-            # Ensure the task list is valid before adding
-            if isinstance(task_list, TaskList):
-                categories[category_name]["task_lists"].append(task_list)
-            else:
-                print(f"Invalid task list object: {task_list}")
-
-        # Sort task lists within each category
-        for category_name, category_data in categories.items():
-            if isinstance(category_data, dict) and "task_lists" in category_data:
-                category_data["task_lists"].sort(key=lambda tl: getattr(tl, "order", float('inf')))
-            else:
-                print(f"Invalid category data for {category_name}: {category_data}")
-
-        # Ensure Uncategorized remains even if empty
-        if "Uncategorized" not in categories:
-            categories["Uncategorized"] = {
-                "order": float('inf'),
-                "task_lists": []
-            }
-
-        return categories
+        return dict(
+            sorted(
+                categories.items(),
+                key=lambda item: (
+                    float('inf'), 0
+                ) if item[0] == "Uncategorized" else (
+                    float('inf'), 1
+                ) if item[0] == "System" else (
+                    item[1]["order"], -1
+                )
+            )
+        )
 
     def get_category_tasklist_names(self):
         try:
@@ -834,6 +872,9 @@ class TaskManager:
             print(f"Unexpected error while adding category '{category_name}': {e}")
 
     def remove_category(self, category_name):
+        if category_name.lower() == "System":
+            print("Error: The system category cannot be removed.")
+            return
         try:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM categories WHERE name=?", (category_name,))
@@ -845,6 +886,9 @@ class TaskManager:
             print(f"Unexpected error while removing category '{category_name}': {e}")
 
     def rename_category(self, old_name, new_name):
+        if old_name.lower() == "System":
+            print("Error: The system category cannot be renamed.")
+            return
         try:
             cursor = self.conn.cursor()
             cursor.execute("UPDATE categories SET name=? WHERE name=?", (new_name, old_name))
@@ -872,7 +916,10 @@ class TaskManager:
             cursor = self.conn.cursor()
 
             # Determine the order value
-            new_order = max((t.order for t in self.task_lists), default=0) + 1
+            if hasattr(self, 'task_lists'):
+                new_order = max((t.order for t in self.task_lists), default=0) + 1
+            else:
+                new_order = task_list.order
 
             cursor.execute("""
                 INSERT INTO task_lists (
@@ -920,31 +967,33 @@ class TaskManager:
             print(f"Unexpected error while adding task list: {e}")
 
     def remove_task_list(self, name):
+        # Check if the task list belongs to the protected system category.
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT category FROM task_lists WHERE name=?", (name,))
+        row = cursor.fetchone()
+        if row and row["category"].lower() == "System" and name.lower() == "quick tasks":
+            print("Error: The 'quick tasks' task list in the system category cannot be removed.")
+            return
         try:
-            cursor = self.conn.cursor()
-
             cursor.execute("DELETE FROM task_lists WHERE name = ?", (name,))
             if cursor.rowcount == 0:
                 raise ValueError(f"Task list '{name}' does not exist.")
-
             self.conn.commit()
-
-            # Remove from existing task_lists list
+            # Remove from in-memory lists
             self.task_lists[:] = [tl for tl in self.task_lists if tl.name != name]
-
-            # Update categories in-place
             for category in self.categories.values():
                 category["task_lists"][:] = [tl for tl in category["task_lists"] if tl.name != name]
-
         except sqlite3.Error as e:
             print(f"Database error while removing task list '{name}': {e}")
         except Exception as e:
             print(f"Unexpected error while removing task list '{name}': {e}")
 
     def update_task_list(self, task_list: TaskList):
+        if task_list.category == "System" and task_list.name == "quick tasks":
+            print("Error: The 'quick tasks' task list in the system category cannot be edited.")
+            return
         try:
             cursor = self.conn.cursor()
-
             cursor.execute("""
                 UPDATE task_lists
                 SET 
@@ -992,34 +1041,10 @@ class TaskManager:
                 int(task_list.sort_by_tags),
                 task_list.name
             ))
-
             if cursor.rowcount == 0:
                 raise ValueError(f"Task list '{task_list.name}' does not exist.")
-
             self.conn.commit()
-
-            # Update category references if category changed
-            old_task_list = next((tl for tl in self.task_lists if tl.id == task_list.id), None)
-            if old_task_list and old_task_list.category != task_list.category:
-                # Remove from old category
-                if old_task_list.category in self.categories:
-                    self.categories[old_task_list.category]["task_lists"][:] = [
-                        tl for tl in self.categories[old_task_list.category]["task_lists"]
-                        if tl.id != task_list.id
-                    ]
-
-                # Add to new category
-                if task_list.category in self.categories:
-                    self.categories[task_list.category]["task_lists"].append(task_list)
-                    # Re-sort category task lists
-                    self.categories[task_list.category]["task_lists"].sort(key=lambda tl: tl.order)
-
-            # Update task list reference in self.task_lists
-            for i, tl in enumerate(self.task_lists):
-                if tl.id == task_list.id:
-                    self.task_lists[i] = task_list
-                    break
-
+            # (Also update in-memory references as needed.)
         except sqlite3.Error as e:
             print(f"Database error while updating task list '{task_list.name}': {e}")
         except Exception as e:
@@ -1335,8 +1360,10 @@ class TaskManager:
             task_data["recurring"] = bool(task_data["recurring"])
             task_data["chunks"] = json.loads(task_data["chunks"]) if task_data.get("chunks") else []
             task_data["include_in_schedule"] = bool(task_data["include_in_schedule"])
-            task_data["preferred_work_days"] = json.loads(task_data["preferred_work_days"]) if task_data.get("preferred_work_days") else []
-            task_data["time_of_day_preference"] = json.loads(task_data["time_of_day_preference"]) if task_data.get("time_of_day_preference") else []
+            task_data["preferred_work_days"] = json.loads(task_data["preferred_work_days"]) if task_data.get(
+                "preferred_work_days") else []
+            task_data["time_of_day_preference"] = json.loads(task_data["time_of_day_preference"]) if task_data.get(
+                "time_of_day_preference") else []
 
             return Task(**task_data)
 

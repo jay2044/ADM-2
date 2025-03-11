@@ -787,6 +787,7 @@ class ScheduleManager:
 
         # --- Step 2. Prepare Chunks ---
         all_chunks = self.chunks
+        all_chunks.sort(key=lambda chunk: getattr(chunk.task, 'global_weight', float('-inf')), reverse=True)
 
         # --- Step 4. Build Allowed Assignments ---
         # For every (chunk, block) pair, record the rating and the full chunk weight (scaled).
@@ -1239,8 +1240,8 @@ class DaySchedule:
 
             # 2) "Added date" logic: tasks added a while ago become more urgent,
             #    or (depending on your logic) tasks just added might get a small bonus for scheduling soon.
-            if hasattr(task, "added_datetime") and task.added_datetime:
-                days_from_added_to_block = (self.date - task.added_datetime.date()).days
+            if hasattr(task, "added_date_time") and task.added_date_time:
+                days_from_added_to_block = (self.date - task.added_date_time.date()).days
                 # Example: more points if the block date is near the added date, decaying over time.
                 # You can tweak the formula to meet your preference:
                 #   - a large negative slope encourages scheduling sooner,

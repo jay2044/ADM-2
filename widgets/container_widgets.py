@@ -612,14 +612,25 @@ class CustomTreeWidget(QTreeWidget):
             old_parent = dragged_item.parent()
             new_parent = target_item if target_item in top_level_items else target_item.parent()
 
-            if old_parent != new_parent:
+            if new_parent is not None:
+                if new_parent.text(0) == "System":
+                    event.ignore()
+                    return
+
                 task_list_name = dragged_item.text(0)
                 new_category_name = new_parent.text(0) if new_parent else None
-                if new_category_name == "Uncategorized":
+                if new_category_name.lower() == "uncategorized":
                     new_category_name = None
+
                 task_list = next((tl for tl in self.task_manager.task_lists if tl.name == task_list_name), None)
-                task_list.category = new_category_name
-                self.task_manager.update_task_list(task_list)
+
+                if task_list and task_list.name.lower() == "quick tasks":
+                    event.ignore()
+                    return
+
+                if task_list:
+                    task_list.category = new_category_name
+                    self.task_manager.update_task_list(task_list)
 
         super().dropEvent(event)
 
@@ -904,6 +915,12 @@ class TaskListCollection(QWidget):
                     return
 
                 item_type = data.get('type')
+
+                if item_type == 'category' and data.get('name') == 'System':
+                    return
+                if item_type == 'task_list' and data['info'].category == 'System' and data[
+                    'info'].name == 'quick tasks':
+                    return
 
                 if item_type == 'task_list':
                     # Task list item
