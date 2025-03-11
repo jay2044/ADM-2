@@ -604,13 +604,11 @@ class HourScaleWidget(QWidget):
         for i, hour in enumerate(self.hours):
             cell_text = hour if i % 2 == 0 else "-"
             cell_widget = HourCell(cell_text, self)
-            # cell_widget.setFixedHeight(self.custom_heights.get(i, 20))
             self.layout.addWidget(cell_widget, stretch=20)
 
     def set_height(self, start_index, end_index, height):
         range_size = (max(start_index, end_index) - min(start_index, end_index))
         if range_size == 0:
-            # The block is effectively zero length or same hour => do nothing or pick a default
             return
 
         height_per_cell = int(height / range_size)
@@ -621,19 +619,32 @@ class HourScaleWidget(QWidget):
                 widget.resize(widget.width(), height_per_cell)
                 self.layout.setStretchFactor(widget, height_per_cell)
 
+    def parse_hour_string(self, hour_str):
+        if 'AM' in hour_str or 'PM' in hour_str:
+            hour, period = hour_str.split()
+            hour = int(hour) % 12
+            if period == 'PM':
+                hour += 12
+            return hour
+        else:
+            return int(hour_str)
+
     def set_height_by_widget(self, start_hour, end_hour, widget):
-        """Set the height of intervals to match the height of another widget."""
-        hours = self.hours
-        start_index = hours.index(start_hour)
-        end_index = hours.index(end_hour)
+        # Convert hour strings to integer values
+        start_hour = self.parse_hour_string(start_hour)
+        end_hour = self.parse_hour_string(end_hour)
+
+        start_index = (start_hour - self.day_start_time.hour) % 24
+        end_index = (end_hour - self.day_start_time.hour) % 24
         widget_height = widget.base_height
+
         self.set_height(start_index, end_index, widget_height)
 
     def highlight_current_hour(self):
         current_time = QTime.currentTime()
         current_hour = current_time.hour()
-        start_hour = 4
-        hour_index = current_hour - start_hour if current_hour >= start_hour else (current_hour + 24 - start_hour)
+        start_hour = self.day_start_time.hour
+        hour_index = (current_hour - start_hour) % 24
 
         for i in range(len(self.hours)):
             widget = self.layout.itemAt(i).widget()
@@ -641,12 +652,15 @@ class HourScaleWidget(QWidget):
                 widget.setStyleSheet("background-color: rgba(0, 0, 0, 128);")
             elif i == hour_index:
                 widget.setStyleSheet("background-color: rgba(3, 204, 163, 128); font-weight: bold;")
+            else:
+                widget.setStyleSheet("background-color: none;")
 
     def start_auto_update(self):
         timer = QTimer(self)
         timer.timeout.connect(self.highlight_current_hour)
-        timer.start(3600000)
+        timer.start(60000)  # Update every minute instead of every hour for better accuracy
         self.highlight_current_hour()
+
 
 
 class DraggableListWidget(QListWidget):
