@@ -126,6 +126,105 @@ class ScheduleSettingsDialog(QDialog):
         self.accept()
 
 
+class WeightCoefficientsDialog(QDialog):
+    def __init__(self, schedule_settings, parent=None):
+        super().__init__(parent)
+        self.schedule_settings = schedule_settings
+        self.default_values = {
+            'alpha': 0.4,
+            'beta': 0.3,
+            'gamma': 0.1,
+            'delta': 0.2,
+            'epsilon': 0.2,
+            'zeta': 0.3,
+            'eta': 0.2,
+            'theta': 0.1,
+            'K': 100,
+            'T_q': 3600,
+            'C': 1000
+        }
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("Configure Weighting Coefficients")
+        main_layout = QVBoxLayout(self)
+        self.form_layout = QFormLayout()
+        self.widgets = {}
+        self.add_weight_slider("alpha", "Time-Since-Added Weight (α)", "Determines how strongly the time since a task was added affects scheduling priority.", 0, 100, self.schedule_settings.alpha * 100, True)
+        self.add_weight_slider("beta", "Time-Estimate Weight (β)", "Determines how strongly the estimated task duration affects scheduling priority.", 0, 100, self.schedule_settings.beta * 100, True)
+        self.add_weight_slider("gamma", "Effort-Level Weight (γ)", "Determines how strongly the task's effort level affects scheduling priority.", 0, 100, self.schedule_settings.gamma * 100, True)
+        self.add_weight_slider("delta", "Urgency Weight (δ)", "Determines how strongly task urgency affects scheduling priority.", 0, 100, self.schedule_settings.delta * 100, True)
+        self.add_weight_slider("epsilon", "Flexibility Weight (ε)", "Determines how strongly task flexibility influences scheduling.", 0, 100, self.schedule_settings.epsilon * 100, True)
+        self.add_weight_slider("zeta", "Recurrence Frequency Weight (ζ)", "Determines how strongly task recurrence frequency affects scheduling.", 0, 100, self.schedule_settings.zeta * 100, True)
+        self.add_weight_slider("eta", "Preferred Workday Alignment Weight (η)", "Determines how strongly a task's alignment with preferred workdays affects scheduling.", 0, 100, self.schedule_settings.eta * 100, True)
+        self.add_weight_slider("theta", "Progress Weight (θ)", "Determines how strongly count-based progress affects scheduling priority.", 0, 100, self.schedule_settings.theta * 100, True)
+        self.add_weight_slider("K", "Quick Task Boost (K)", "A fixed boost weight for quick tasks. Higher values give a larger boost.", 0, 1000, self.schedule_settings.K, False)
+        self.add_weight_slider("T_q", "Decay Time Constant (T_q)", "Determines how slowly the bonus decays (in seconds). Higher means slower decay.", 0, 10000, self.schedule_settings.T_q, False)
+        self.add_weight_slider("C", "Critical Task Constant (C)", "A high constant ensuring critical tasks are prioritized. Larger values increase the boost.", 0, 10000, self.schedule_settings.C, False)
+        main_layout.addLayout(self.form_layout)
+        btn_layout = QHBoxLayout()
+        self.reset_button = QPushButton("Reset to Defaults")
+        self.reset_button.clicked.connect(self.reset_defaults)
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_settings)
+        btn_layout.addWidget(self.reset_button)
+        btn_layout.addWidget(self.save_button)
+        main_layout.addLayout(btn_layout)
+
+    def add_weight_slider(self, key, title, explanation, min_val, max_val, initial, is_float):
+        title_label = QLabel(title)
+        explanation_label = QLabel(explanation)
+        explanation_label.setStyleSheet("font-size: 10pt; color: gray;")
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(min_val, max_val)
+        slider.setValue(int(initial))
+        value_label = QLabel()
+        if is_float:
+            value_label.setText(f"{slider.value()/100:.2f}")
+        else:
+            value_label.setText(str(slider.value()))
+        slider.valueChanged.connect(lambda val, k=key, is_f=is_float, lbl=value_label: self.update_value_label(val, is_f, lbl))
+        container = QWidget()
+        v_layout = QVBoxLayout(container)
+        v_layout.addWidget(title_label)
+        v_layout.addWidget(explanation_label)
+        h_layout = QHBoxLayout()
+        h_layout.addWidget(slider)
+        h_layout.addWidget(value_label)
+        v_layout.addLayout(h_layout)
+        self.form_layout.addRow(container)
+        self.widgets[key] = slider
+
+    def update_value_label(self, val, is_float, label):
+        if is_float:
+            label.setText(f"{val/100:.2f}")
+        else:
+            label.setText(str(val))
+
+    def reset_defaults(self):
+        for key, default in self.default_values.items():
+            if key in self.widgets:
+                slider = self.widgets[key]
+                if isinstance(default, float):
+                    slider.setValue(int(default * 100))
+                else:
+                    slider.setValue(default)
+
+    def save_settings(self):
+        self.schedule_settings.set_alpha(self.widgets["alpha"].value() / 100.0)
+        self.schedule_settings.set_beta(self.widgets["beta"].value() / 100.0)
+        self.schedule_settings.set_gamma(self.widgets["gamma"].value() / 100.0)
+        self.schedule_settings.set_delta(self.widgets["delta"].value() / 100.0)
+        self.schedule_settings.set_epsilon(self.widgets["epsilon"].value() / 100.0)
+        self.schedule_settings.set_zeta(self.widgets["zeta"].value() / 100.0)
+        self.schedule_settings.set_eta(self.widgets["eta"].value() / 100.0)
+        self.schedule_settings.set_theta(self.widgets["theta"].value() / 100.0)
+        self.schedule_settings.set_K(self.widgets["K"].value())
+        self.schedule_settings.set_T_q(self.widgets["T_q"].value())
+        self.schedule_settings.set_C(self.widgets["C"].value())
+        self.accept()
+
+
 class DatePickerCalendar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1010,10 +1109,12 @@ class TimeBlockManagerWidget(QWidget):
 
 
 class SuggestionPanel(QWidget):
-    def __init__(self):
+    def __init__(self, parent):
         super().__init__()
         self.setMaximumWidth(400)
         main_layout = QVBoxLayout(self)
+
+        self.parent = parent
 
         self.toolbar = QToolBar()
         self.toolbar.setStyleSheet("QToolBar { border: none; }")
@@ -1033,7 +1134,9 @@ class SuggestionPanel(QWidget):
         main_layout.addWidget(self.list_widget)
 
     def configure_weights(self):
-        print("configure bruh")
+        dialog = WeightCoefficientsDialog(self.parent.schedule_manager.schedule_settings)
+        if dialog.exec():
+            pass
 
 
 class ScheduleViewWidget(QWidget):
@@ -1151,7 +1254,7 @@ class ScheduleViewWidget(QWidget):
         self.date_picker.calendar.selectionChanged.connect(self.date_changed_handler)
         self.date_label = QLabel("Selected Date: ")
         self.time_block_manager = TimeBlockManagerWidget(self, self.schedule_manager)
-        self.suggestion_panel = SuggestionPanel()
+        self.suggestion_panel = SuggestionPanel(self)
         self.expandedLayout.addWidget(self.date_picker, 0, 0)
         self.expandedLayout.addWidget(self.time_block_manager, 1, 0)
         self.expandedLayout.addWidget(self.suggestion_panel, 0, 1, 2, 1)
