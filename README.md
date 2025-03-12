@@ -25,6 +25,12 @@ It intelligently handles shifting priorities, conflicts, and unexpected changes,
 
 ---
 
+## 📖 **Learn More**  
+👉 **[Explore All Features](./docs/overview)** – Get a deep dive into every capability ADM-2 offers.  
+👉 **[Technologies Behind ADM-2](./docs/technologies.md)** – See the tools and frameworks that power ADM-2.  
+
+---
+
 ## Key Features  
 
 ### Flexible Task Management  
