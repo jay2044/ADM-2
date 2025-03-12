@@ -55,6 +55,10 @@ def parse_time_schedule(schedule_data: dict) -> dict:
     return parsed_schedule
 
 
+import sqlite3
+from datetime import time
+
+
 class ScheduleSettings:
     def __init__(self, db_path='data/adm.db'):
         self.db_path = db_path
@@ -75,7 +79,18 @@ class ScheduleSettings:
                     off_peak_start TEXT,
                     off_peak_end TEXT,
                     task_notifications INTEGER,
-                    task_status_popup_frequency INTEGER
+                    task_status_popup_frequency INTEGER,
+                    alpha REAL,
+                    beta REAL,
+                    gamma REAL,
+                    delta REAL,
+                    epsilon REAL,
+                    zeta REAL,
+                    eta REAL,
+                    theta REAL,
+                    K INTEGER,
+                    T_q INTEGER,
+                    C INTEGER
                 )
             ''')
 
@@ -86,24 +101,56 @@ class ScheduleSettings:
             cursor.execute("SELECT * FROM schedule_settings LIMIT 1")
             row = cursor.fetchone()
             if row:
-                self.day_start = self.parse_time(row[1])
-                self.ideal_sleep_duration = row[2]
-                self.overtime_flexibility = row[3]
-                self.hours_of_day_available = row[4]
-                self.peak_productivity_hours = (self.parse_time(row[5]), self.parse_time(row[6]))
-                self.off_peak_hours = (self.parse_time(row[7]), self.parse_time(row[8]))
-                self.task_notifications = bool(row[9])
-                self.task_status_popup_frequency = row[10]
+                self.day_start = self.parse_time(row["day_start"])
+                self.ideal_sleep_duration = row["ideal_sleep_duration"]
+                self.overtime_flexibility = row["overtime_flexibility"]
+                self.hours_of_day_available = row["hours_of_day_available"]
+                self.peak_productivity_hours = (
+                    self.parse_time(row["peak_productivity_start"]), self.parse_time(row["peak_productivity_end"]))
+                self.off_peak_hours = (self.parse_time(row["off_peak_start"]), self.parse_time(row["off_peak_end"]))
+                self.task_notifications = bool(row["task_notifications"])
+                self.task_status_popup_frequency = row["task_status_popup_frequency"]
+
+                # Load weighting coefficients
+                self.alpha = row["alpha"]
+                self.beta = row["beta"]
+                self.gamma = row["gamma"]
+                self.delta = row["delta"]
+                self.epsilon = row["epsilon"]
+                self.zeta = row["zeta"]
+                self.eta = row["eta"]
+                self.theta = row["theta"]
+                self.K = row["K"]
+                self.T_q = row["T_q"]
+                self.C = row["C"]
+
             else:
-                self.day_start = time(4, 0)
-                self.ideal_sleep_duration = 8.0
-                self.overtime_flexibility = "auto"
-                self.hours_of_day_available = 24.0 - self.ideal_sleep_duration
-                self.peak_productivity_hours = (time(17, 0), time(19, 0))
-                self.off_peak_hours = (time(22, 0), time(6, 0))
-                self.task_notifications = True
-                self.task_status_popup_frequency = 20
-                self.save_settings()
+                self.set_default_settings()
+
+    def set_default_settings(self):
+        self.day_start = time(4, 0)
+        self.ideal_sleep_duration = 8.0
+        self.overtime_flexibility = "auto"
+        self.hours_of_day_available = 24.0 - self.ideal_sleep_duration
+        self.peak_productivity_hours = (time(17, 0), time(19, 0))
+        self.off_peak_hours = (time(22, 0), time(6, 0))
+        self.task_notifications = True
+        self.task_status_popup_frequency = 20
+
+        # Default weighting coefficients
+        self.alpha = 0.4
+        self.beta = 0.3
+        self.gamma = 0.1
+        self.delta = 0.2
+        self.epsilon = 0.2
+        self.zeta = 0.3
+        self.eta = 0.2
+        self.theta = 0.1
+        self.K = 100
+        self.T_q = 3600
+        self.C = 1000
+
+        self.save_settings()
 
     def save_settings(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -113,8 +160,9 @@ class ScheduleSettings:
                 INSERT INTO schedule_settings (
                     day_start, ideal_sleep_duration, overtime_flexibility,
                     hours_of_day_available, peak_productivity_start, peak_productivity_end,
-                    off_peak_start, off_peak_end, task_notifications, task_status_popup_frequency
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    off_peak_start, off_peak_end, task_notifications, task_status_popup_frequency,
+                    alpha, beta, gamma, delta, epsilon, zeta, eta, theta, K, T_q, C
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 self.day_start.strftime("%H:%M"),
                 self.ideal_sleep_duration,
@@ -125,7 +173,9 @@ class ScheduleSettings:
                 self.off_peak_hours[0].strftime("%H:%M"),
                 self.off_peak_hours[1].strftime("%H:%M"),
                 int(self.task_notifications),
-                self.task_status_popup_frequency
+                self.task_status_popup_frequency,
+                self.alpha, self.beta, self.gamma, self.delta, self.epsilon,
+                self.zeta, self.eta, self.theta, self.K, self.T_q, self.C
             ))
             conn.commit()
 
@@ -136,6 +186,52 @@ class ScheduleSettings:
             return time(hours, minutes)
         return None
 
+    # === Setters for configuring values ===
+    def set_alpha(self, value):
+        self.alpha = value
+        self.save_settings()
+
+    def set_beta(self, value):
+        self.beta = value
+        self.save_settings()
+
+    def set_gamma(self, value):
+        self.gamma = value
+        self.save_settings()
+
+    def set_delta(self, value):
+        self.delta = value
+        self.save_settings()
+
+    def set_epsilon(self, value):
+        self.epsilon = value
+        self.save_settings()
+
+    def set_zeta(self, value):
+        self.zeta = value
+        self.save_settings()
+
+    def set_eta(self, value):
+        self.eta = value
+        self.save_settings()
+
+    def set_theta(self, value):
+        self.theta = value
+        self.save_settings()
+
+    def set_K(self, value):
+        self.K = value
+        self.save_settings()
+
+    def set_T_q(self, value):
+        self.T_q = value
+        self.save_settings()
+
+    def set_C(self, value):
+        self.C = value
+        self.save_settings()
+
+    # Example usage of existing settings
     def set_day_start(self, new_time):
         self.day_start = new_time
         self.save_settings()
@@ -169,7 +265,6 @@ class ScheduleSettings:
         self.save_settings()
 
 
-# --- Modified TimeBlock class (add get_available_count method) ---
 class TimeBlock:
     def __init__(self, block_id=None, name="", date=None,
                  list_categories=None, task_tags=None,
@@ -235,21 +330,20 @@ class ScheduleManager:
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
 
-        # Weighting coefficients
-        self.alpha = 0.4
-        self.beta = 0.3
-        self.gamma = 0.1
-        self.delta = 0.2
-        self.epsilon = 0.2
-        self.zeta = 0.3
-        self.eta = 0.2
-        self.theta = 0.1
-        # K: Fixed boost weight for quick tasks.
-        # T_q: Decay time constant (in seconds).
-        # C: Very high constant ensuring placed tasks always appear at the top.
-        self.K = 100
-        self.T_q = 3600
-        self.C = 1000
+        # Load weighting coefficients from settings
+        self.alpha = self.schedule_settings.alpha
+        self.beta = self.schedule_settings.beta
+        self.gamma = self.schedule_settings.gamma
+        self.delta = self.schedule_settings.delta
+        self.epsilon = self.schedule_settings.epsilon
+        self.zeta = self.schedule_settings.zeta
+        self.eta = self.schedule_settings.eta
+        self.theta = self.schedule_settings.theta
+
+        # Load fixed constants from settings
+        self.K = self.schedule_settings.K
+        self.T_q = self.schedule_settings.T_q
+        self.C = self.schedule_settings.C
 
         self.time_blocks = []
         self.load_time_blocks()
@@ -1187,6 +1281,11 @@ class DaySchedule:
         return total
 
     def get_suitable_timeblocks_with_rating(self, chunk):
+        """
+        Suggests time blocks for the given chunk, sorted by rating in descending order.
+        Incorporates weighting coefficients (alpha, beta, gamma, delta, epsilon, etc.)
+        only if they're relevant to the rating.
+        """
 
         def compute_time_bonus(t, interval, max_bonus, threshold=60):
             """Existing logic for peak/off-peak hour bonuses."""
@@ -1217,70 +1316,83 @@ class DaySchedule:
         task = chunk.task
         today = datetime.now().date()
 
+        # For easy access to coefficients from your manager/settings:
+        alpha = self.schedule_manager_instance.alpha
+        beta = self.schedule_manager_instance.beta
+        gamma = self.schedule_manager_instance.gamma
+        delta = self.schedule_manager_instance.delta
+        epsilon = self.schedule_manager_instance.epsilon
+        zeta = self.schedule_manager_instance.zeta
+        eta_ = self.schedule_manager_instance.eta
+        theta_ = self.schedule_manager_instance.theta
+
         for block in self.time_blocks:
             if block.block_type == "unavailable":
                 continue
-            # If your block-qualifying logic is more involved, handle it here
             if not self.qualifies(task, block):
                 continue
 
-            # For time-based chunks that are manual (not auto-splittable), skip if not enough capacity.
+            # For time-based chunks that are manual (not auto-splittable), skip if not enough capacity
             if chunk.unit == "time" and chunk.chunk_type != "auto":
                 if block.get_available_time() < chunk.size:
                     continue
 
-            # Base rating
-            rating = 10
+            # ---------------------------------------------------------------------------------------
+            # Compute sub-ratings for each factor you have and multiply by the weighting coefficients
+            # ---------------------------------------------------------------------------------------
 
-            # 1) Due Date Influence (existing)
+            # 1) Due Date Influence
+            due_date_score = 0
             if task.due_datetime:
                 days_until_due = (task.due_datetime.date() - self.date).days
-                # For example, tasks closer to due date get a higher rating
-                rating += 100 / (days_until_due + 1)
+                # Example scoring: tasks with fewer days_until_due get a higher (or lower) rating
+                # For demonstration, let's invert the days_until_due and clamp it:
+                # e.g. (100 / (days_until_due+1)) => bigger when days_until_due is small
+                due_date_score = 100 / (days_until_due + 1)
+            # Weighted portion of rating
+            rating_due_date = alpha * due_date_score
 
-            # 2) "Added date" logic: tasks added a while ago become more urgent,
-            #    or (depending on your logic) tasks just added might get a small bonus for scheduling soon.
+            # 2) Added Date Influence
+            added_date_score = 0
             if hasattr(task, "added_date_time") and task.added_date_time:
                 days_from_added_to_block = (self.date - task.added_date_time.date()).days
-                # Example: more points if the block date is near the added date, decaying over time.
-                # You can tweak the formula to meet your preference:
-                #   - a large negative slope encourages scheduling sooner,
-                #   - a gentle slope might allow tasks to drift later.
-                # Here, it caps at +30 if we schedule within 0 days, and decays by 1 point per day.
-                # Once 30 days pass from the added date, no bonus remains.
-                added_bonus = max(0, 30 - days_from_added_to_block)
-                rating += added_bonus
+                # Example: big bonus if scheduled soon, decays over time
+                added_date_score = max(0, 30 - days_from_added_to_block)
+            rating_added_date = beta * added_date_score
 
             # 3) Priority
-            # If priority is high, add a bigger bonus. Adjust the multiplier to your needs.
+            priority_score = 0
             if hasattr(task, "priority"):
-                rating += max(0, (task.priority - 2) * 10)
+                # If priority is high, you can scale that more
+                priority_score = max(0, (task.priority - 2) * 10)
+            rating_priority = gamma * priority_score
 
-            # 4) Flexibility (hypothetical attribute):
-            # If the task is labeled "flexible", we might reduce the rating for early scheduling.
-            # Conversely, if it's "inflexible", we might *increase* the rating to schedule sooner.
-            # This is just an illustration:
+            # 4) Flexibility
+            flexibility_score = 0
             if hasattr(task, "flexibility"):
                 if task.flexibility == "high":
-                    # If it's highly flexible, penalize scheduling too soon
-                    rating -= 10
+                    flexibility_score = -10  # penalize scheduling soon
                 elif task.flexibility == "low":
-                    # If it's low flexibility, reward scheduling as early as possible
-                    rating += 10
+                    flexibility_score = 10  # encourage scheduling asap
+            rating_flexibility = delta * flexibility_score
 
             # 5) Days from "today"
-            days_from_today = (self.date - today).days
             # Possibly incorporate how far in the future it is
+            days_from_today = (self.date - today).days
+            days_from_today_score = 0
             if getattr(task, "priority", 0) >= 8:
-                # This snippet is your existing example
-                rating += max(0, 100 - days_from_today * 10)
+                days_from_today_score = max(0, 100 - days_from_today * 10)
+            rating_days_from_today = epsilon * days_from_today_score
 
-            # 6) Preferred Work Days (existing snippet)
+            # 6) Preferred Work Days
+            preferred_days_score = 0
             if task.preferred_work_days:
                 if self.date.strftime("%A")[:3] in task.preferred_work_days:
-                    rating += 50
+                    preferred_days_score = 50
+            rating_preferred_days = zeta * preferred_days_score
 
-            # 7) Time-of-day preferences (existing snippet)
+            # 7) Time-of-day preferences
+            time_of_day_score = 0
             pref_intervals = {
                 "Morning": (time(6, 0), time(10, 0)),
                 "Afternoon": (time(12, 0), time(16, 0)),
@@ -1291,23 +1403,40 @@ class DaySchedule:
                 for pref in task.time_of_day_preference:
                     if pref in pref_intervals:
                         bonus = compute_time_bonus(block.start_time, pref_intervals[pref], 50)
-                        rating += bonus
-                        break  # Once matched, break; adjust if you want to allow multiple bonuses
+                        time_of_day_score += bonus
+                        # break if you only want to apply the first match:
+                        break
+            rating_time_of_day = eta_ * time_of_day_score
 
-            # 8) Effort level (existing snippet)
+            # 8) Effort level vs. peak/off-peak
+            effort_score = 0
             if task.effort_level:
                 if task.effort_level == "High":
                     peak_start, peak_end = self.schedule_settings.peak_productivity_hours
-                    bonus = compute_time_bonus(block.start_time, (peak_start, peak_end), 50)
-                    rating += bonus
+                    effort_score = compute_time_bonus(block.start_time, (peak_start, peak_end), 50)
                 elif task.effort_level == "Low":
                     off_start, off_end = self.schedule_settings.off_peak_hours
-                    bonus = compute_time_bonus(block.start_time, (off_start, off_end), 30)
-                    rating += bonus
+                    effort_score = compute_time_bonus(block.start_time, (off_start, off_end), 30)
+            rating_effort = theta_ * effort_score
 
+            # Combine sub-ratings
+            rating = (
+                    rating_due_date +
+                    rating_added_date +
+                    rating_priority +
+                    rating_flexibility +
+                    rating_days_from_today +
+                    rating_preferred_days +
+                    rating_time_of_day +
+                    rating_effort
+            )
+
+            # Optionally, you can add a baseline
+            rating += 10  # Example baseline offset
+
+            # Store the block & rating
             suitable.append((block, rating))
 
         # Sort highest rating first
         suitable.sort(key=lambda x: x[1], reverse=True)
         return suitable
-
