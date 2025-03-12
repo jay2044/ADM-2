@@ -7,6 +7,7 @@ from .task_progress_widgets import *
 import random
 from datetime import datetime, time
 
+
 class TaskListWidget(QListWidget):
     def __init__(self, task_list, parent):
         super().__init__()
@@ -374,6 +375,14 @@ class TaskWidget(QWidget):
             self.due_label.setText("")
             self.due_label.setStyleSheet(f"color: {DEFAULT_COLOR}; font-size: 14px;")
             return
+
+        if isinstance(self.task.due_datetime, str):
+            try:
+                # Try parsing with 'T' separator first
+                self.task.due_datetime = datetime.strptime(self.task.due_datetime, "%Y-%m-%dT%H:%M")
+            except ValueError:
+                # If it fails, try parsing without the 'T'
+                self.task.due_datetime = datetime.strptime(self.task.due_datetime, "%Y-%m-%d %H:%M")
 
         due_date = self.task.due_datetime.date()
         today = datetime.now().date()

@@ -107,17 +107,23 @@ class TagInputWidget(QWidget):
     def get_tags(self):
         return self.tag_list
 
+    def set_tags(self, tags):
+        # Clear existing tags
+        for i in reversed(range(self.tags_layout.count())):
+            tag_widget = self.tags_layout.itemAt(i).widget()
+            if tag_widget:
+                tag_widget.deleteLater()
 
-class CustomDateEdit(QDateEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setCalendarPopup(True)
-        self.setObjectName("customDateEdit")
+        self.tag_list.clear()
 
-    def focusInEvent(self, event):
-        super().focusInEvent(event)
-        if self.date() == QDate(2000, 1, 1):
-            self.setDate(QDate.currentDate())
+        # Add new tags
+        for tag in tags:
+            if tag not in self.tag_list:
+                self.add_existing_tag(tag)
+                self.tag_list.append(tag)
+
+        # Reset suggestions
+        self.reset_suggestions()
 
 
 class PeriodSelectionCalendar(QWidget):
@@ -257,6 +263,65 @@ class PeriodSelectionCalendar(QWidget):
         return {"added_date_time": self.added_date_time, "added_state": added_state,
                 "due_date_time": self.due_date_time, "due_state": due_state}
 
+    def setSelectedDates(self, start_dt=None, due_dt=None):
+
+        # --- 1) Clear everything first, if needed ---
+        self._clearDates()
+
+        # --- 2) Set 'added_date_time' from start_dt ---
+        if start_dt:
+            # If it's a Python datetime, extract its date (and possibly time).
+            if isinstance(start_dt, datetime):
+                qd = QDate(start_dt.year, start_dt.month, start_dt.day)
+                self.added_date_time = qd
+            elif isinstance(start_dt, QDate):
+                self.added_date_time = start_dt
+            elif isinstance(start_dt, QDateTime):
+                self.added_date_time = start_dt.date()
+            elif isinstance(start_dt, str):
+                # If it's a string, convert using QDate.fromString()
+                qd = QDate.fromString(start_dt, "yyyy-MM-dd")
+                if qd.isValid():
+                    self.added_date_time = qd
+
+        # --- 3) Set 'due_date_time' from due_dt ---
+        if due_dt:
+            # If it's a Python datetime
+            if isinstance(due_dt, datetime):
+                qdt = QDateTime(QDate(due_dt.year, due_dt.month, due_dt.day), QTime(due_dt.hour, due_dt.minute))
+                self.due_date_time = qdt
+                self.dueTimeEdit.setTime(qdt.time())
+            # If it's just a QDate
+            elif isinstance(due_dt, QDate):
+                self.due_date_time = due_dt
+                # If you want to preserve any time previously set, you can do so,
+                # otherwise default to what's currently in self.dueTimeEdit.
+                self.dueTimeEdit.setTime(self.dueTimeEdit.time())
+            # If it's already a QDateTime
+            elif isinstance(due_dt, QDateTime):
+                self.due_date_time = due_dt
+                self.dueTimeEdit.setTime(due_dt.time())
+
+        # --- 4) Update self._state to match how many dates are set. ---
+        # 0 -> no due_date yet, 1 -> have a due_date but not the 'added' date, 2 -> have both
+        if due_dt and start_dt:
+            self._state = 2
+        elif self.due_date_time:
+            self._state = 1
+        else:
+            self._state = 0
+
+        # --- 5) Refresh display & highlight ---
+        self._refreshDisplay()
+
+        # Optionally, select the due date in the QCalendarWidget so it shows up as the current selection.
+        # If you want the user to visually see the 'due' date selected:
+        if self.due_date_time:
+            if isinstance(self.due_date_time, QDateTime):
+                self.calendar.setSelectedDate(self.due_date_time.date())
+            else:
+                self.calendar.setSelectedDate(self.due_date_time)
+
     def _onDueTimeChanged(self, time):
         if isinstance(self.due_date_time, QDate):
             self.due_date_time = QDateTime(self.due_date_time, time)
@@ -289,6 +354,8 @@ class OptionSelector(QWidget):
         self.button_group = QButtonGroup(self)
         self.button_group.setExclusive(True)
 
+        self.buttons = []  # Store references to buttons
+
         for option in options:
             btn = QPushButton(option)
             btn.setCheckable(True)
@@ -299,6 +366,8 @@ class OptionSelector(QWidget):
 
             if option == default_value:
                 btn.setChecked(True)
+
+            self.buttons.append(btn)  # Store the button
             button_layout.addWidget(btn)
 
         container = QWidget()
@@ -310,6 +379,13 @@ class OptionSelector(QWidget):
     def get_selection(self):
         checked_button = self.button_group.checkedButton()
         return checked_button.text() if checked_button else None
+
+    def set_selection(self, value):
+        # Loop through buttons and check the one that matches the value
+        for btn in self.buttons:
+            if btn.text() == value:
+                btn.setChecked(True)
+                break
 
 
 class MultiOptionSelector(QWidget):
@@ -874,6 +950,100 @@ class ChunkingSelectionWidget(QWidget):
             "count_required": self.count_selector.value()
         }
 
+    def set_selections(self, selections):
+        self.clear_all_chunk_widgets()
+        # --- Set Mode and Overall Total ---
+        mode = selections.get("mode", "time")
+        self.current_mode = mode
+        if mode == "time":
+            self.btn_time_mode.setChecked(True)
+            self.stacked.setCurrentIndex(0)
+            overall = selections.get("time_estimate", 0)
+            # Convert overall time (in hours) to hours and minutes.
+            hours = int(overall)
+            minutes = int(round((overall - hours) * 60))
+            self.time_estimate_selector.set_time_estimate(hours, minutes)
+        else:
+            self.btn_count_mode.setChecked(True)
+            self.stacked.setCurrentIndex(1)
+            count_required = selections.get("count_required", 0)
+            self.count_selector.setValue(count_required)
+
+        # --- Set Min and Max ---
+        # Both for time and count modes, we assume min and max are provided in hours.
+        # Convert to minutes.
+        min_hours = selections.get("min", 0)
+        max_hours = selections.get("max", 0)
+        min_minutes = int(min_hours * 60)
+        max_minutes = int(max_hours * 60)
+        self.min_spinbox.setValue(min_minutes)
+        self.max_spinbox.setValue(max_minutes)
+
+        # --- Clear Existing Chunk Widgets ---
+        if mode == "time":
+            container_layout = self.page_time_layout
+            # Remove existing time chunk widgets.
+            for i in reversed(range(container_layout.count())):
+                item = container_layout.takeAt(i)
+                if item.widget():
+                    item.widget().deleteLater()
+            self.time_chunks.clear()
+        else:
+            container_layout = self.page_count_layout
+            # Remove existing count chunk widgets.
+            for i in reversed(range(container_layout.count())):
+                item = container_layout.takeAt(i)
+                if item.widget():
+                    item.widget().deleteLater()
+            self.count_chunks.clear()
+
+        # --- Create New Chunk Widgets ---
+        chunks_data = selections.get("chunks", [])
+        for chunk in chunks_data:
+            if mode == "time":
+                # For time mode, chunk size is in hours; convert to minutes.
+                size_hours = chunk.get("size", 0)
+                chunk_size = int(round(size_hours * 60))
+            else:
+                # For count mode, size is used as-is.
+                chunk_size = int(chunk.get("size", 0))
+
+            new_chunk = ChunkItem(mode, chunk_size, self)
+            new_chunk.setRange(self.min_spinbox.value(), self.max_spinbox.value())
+            # Set the chunk type (e.g., "auto" or "manual").
+            new_chunk.type_combo.setCurrentText(chunk.get("type", "Auto").capitalize())
+            container_layout.addWidget(new_chunk)
+            if mode == "time":
+                self.time_chunks.append(new_chunk)
+            else:
+                self.count_chunks.append(new_chunk)
+            new_chunk.spin.valueChanged.connect(lambda v, ch=new_chunk: self.on_chunk_value_changed(ch, v))
+            new_chunk.type_combo.currentIndexChanged.connect(lambda idx, ch=new_chunk: self.on_chunk_type_changed(ch))
+
+        # --- Final Updates ---
+        self.update_global_max()
+        self.update_chunk_ranges()
+        self.update_chunk_list()
+
+    def clear_all_chunk_widgets(self):
+        """
+        Removes all chunk widgets from both time and count layouts,
+        and clears the time_chunks / count_chunks lists.
+        """
+        # Clear time chunks layout
+        for i in reversed(range(self.page_time_layout.count())):
+            item = self.page_time_layout.takeAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+        self.time_chunks.clear()
+
+        # Clear count chunks layout
+        for i in reversed(range(self.page_count_layout.count())):
+            item = self.page_count_layout.takeAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+        self.count_chunks.clear()
+
 
 class AddTaskDialog(QDialog):
     def __init__(self, parent=None, task_list=None):
@@ -1086,6 +1256,79 @@ class AddTaskDialog(QDialog):
         }
 
         return task_data
+
+    def edit_mode(self, task):
+        """
+        Puts the dialog into edit mode by pre-filling all fields from an existing task.
+        This includes basic fields, option selectors, tags, recurrence settings, period/date selections,
+        preferred work days/time preferences, and chunking details.
+        """
+        # Keep a reference to the task being edited and update the window title.
+        self.editing_task = task
+        self.setWindowTitle("Edit Task")
+
+        # --- Basic Fields ---
+        self.name_edit.setText(task.name)
+        self.description_edit.setText(task.description or "")
+        self.include_in_schedule_checkbox.setChecked(task.include_in_schedule)
+
+        # --- Option Selectors ---
+        # Priority, Flexibility, and Effort Level should reflect the task’s current values.
+        self.priority_selector.set_selection(str(task.priority))
+        self.flexibility_selector.set_selection(task.flexibility)
+        self.effort_level_selector.set_selection(task.effort_level)
+
+        # --- Tags ---
+        # Use TagInputWidget's set_tags method to pre-populate the task's tags.
+        self.tag_selector.set_tags(task.tags)
+
+        # --- Recurrence Settings ---
+        self.recurring_checkbox.setChecked(task.recurring)
+        if task.recurring:
+            # Show recurrence options when task is recurring.
+            self.toggle_recurrence_options(Qt.CheckState.Checked.value)
+            # Determine which recurrence widget to use.
+            if isinstance(task.recur_every, int):
+                self.every_n_days_radio.setChecked(True)
+                self.every_n_days_spinbox.setValue(task.recur_every)
+                self.specific_weekdays_radio.setChecked(False)
+            elif isinstance(task.recur_every, list):
+                self.specific_weekdays_radio.setChecked(True)
+                # Assuming your MultiOptionSelector has a set_selected() method.
+                self.specific_weekdays_widget.set_selected(task.recur_every)
+                self.every_n_days_radio.setChecked(False)
+            else:
+                # Hide recurrence details if recur_every is not set.
+                self.every_n_days_widget.hide()
+                self.specific_weekdays_widget.hide()
+        else:
+            self.toggle_recurrence_options(Qt.CheckState.Unchecked.value)
+
+        # --- Period Selection ---
+        # Pre-populate start date and due date using the PeriodSelectionCalendar widget.
+        # (Assuming PeriodSelectionCalendar provides a setSelectedDates() method.)
+        if hasattr(self.period_selector, "setSelectedDates"):
+            self.period_selector.setSelectedDates(task.start_date, task.due_datetime)
+        # Otherwise, you might consider setting its internal variables directly if needed.
+
+        # --- Preferred Days and Time of Day ---
+        # Pre-select the preferred work days and time-of-day preferences.
+        if hasattr(self.preferred_day_of_week_selector, "set_selected"):
+            self.preferred_day_of_week_selector.set_selected(task.preferred_work_days)
+        if hasattr(self.preferred_time_of_day, "set_selected"):
+            self.preferred_time_of_day.set_selected(task.time_of_day_preference)
+
+        # --- Chunking / Time Count Selection ---
+        # Update the chunking widget with the task's estimate, count, chunks, and preferences.
+        if hasattr(self.time_count_chunk_selector, "set_selections"):
+            self.time_count_chunk_selector.set_selections({
+                "time_estimate": task.time_estimate,
+                "count_required": task.count_required,
+                "chunks": task.chunks,
+                "mode": task.chunk_preference,
+                "min": task.min_chunk_size,
+                "max": task.max_chunk_size
+            })
 
 
 class DraggableBlockTimeScaleWidget(QWidget):

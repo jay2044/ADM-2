@@ -616,7 +616,7 @@ class TimeBlockWidget(QWidget):
     def __init__(self, parent, time_block: TimeBlock):
         super().__init__(parent)
 
-        self.setMinimumWidth(200)
+        self.setMinimumWidth(300)
 
         self.time_block = time_block
         self.name = self.time_block.name

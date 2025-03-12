@@ -1,83 +1,40 @@
-# Advanced Day Manager (ADM)
+# Advanced Day Manager (ADM-2)  
+### Clarity amidst chaos  
+I built ADM-2 to reliably manage complex schedules and bring order to the overwhelming flow of daily tasks. Imagine starting your day with a perfectly structured schedule—each task thoughtfully placed into a time block that fits your available hours and priorities, with clear gaps showing exactly how much free time you have left. ADM-2 tracks your progress in real time, adjusting the schedule dynamically as you complete tasks, so you always know if you’re ahead or behind—and by exactly how much.  
 
-*Advanced Day Manager* (ADM) is a feature-packed, open-source task management and scheduling application designed to help
-you streamline your day. ADM combines robust task management with automated scheduling capabilities, enabling you to
-prioritize tasks, track progress, and generate a structured daily plan—all in one place.
+![Home View](home_view.png)
+![Schedule View](schedule_view.png)
 
-## Key Features
+## **Why Time Management Feels Impossible**  
+Managing time effectively is hard. Tasks pile up, priorities shift, and available hours disappear faster than expected. Traditional to-do list apps fail because they treat tasks as static lists, leaving you to figure out how to fit everything into your day manually.  
 
-- **Flexible Task Management:**  
-  Create tasks with rich attributes like descriptions, due dates, priorities, categories, estimates, and resources.
-  Quickly mark tasks as completed or important, and easily organize them into lists and categories.
+➡️ **Tasks shift constantly:** Meetings get rescheduled, deadlines change, and new commitments pop up.  
+➡️ **Rigid scheduling fails:** Most tools create fixed schedules that don’t adapt to these real-life changes.  
+➡️ **No understanding of context:** To-do lists don’t account for how difficult or flexible a task is—or when you work best.  
 
-- **Subtasks & Recurring Tasks:**  
-  Break down large tasks into subtasks and let ADM handle recurring tasks automatically. It can reopen recurring tasks
-  on a set schedule so you never lose track of ongoing responsibilities.
+**ADM-2 solves this by handling complexity for you.** It creates a structured yet flexible daily schedule that adapts dynamically as your day unfolds—handling priority changes, conflicts, and real-time progress tracking automatically.  
 
-- **Automated Scheduling (Coming Soon):**  
-  Generate a daily schedule based on your tasks, their priorities, time estimates, and flexibility. ADM will suggest an
-  optimal daily plan, showing you how much time you’ll spend on various tasks and providing insights into your workload
-  distribution.
+## **How It Works**  
+1. **Define Tasks and Lists** – Create categories and task lists, then add tasks with up to **15 attributes** to classify them. These attributes determine how tasks are prioritized, scheduled, and adjusted within the schedule.  
+2. **Generate Schedule** – ADM-2 builds a structured daily schedule by assigning tasks to available time blocks based on priority, effort, and available hours.  
+3. **Track Progress** – As tasks are completed, the schedule updates in real time, shifting tasks and recalculating available time.  
+4. **Handle Conflicts** – If tasks overlap or deadlines change, ADM-2 automatically adjusts the schedule to resolve conflicts.  
+5. **Manual Adjustments** – The user can override or adjust the schedule at any time without breaking the underlying structure.  
 
-- **Calendar & History Views:**  
-  Visualize tasks on a calendar for a quick overview of deadlines and due dates. Review completed tasks in the history
-  section and restore them if needed.
+## **How It’s Different**  
+ADM-2 isn’t just another to-do list or calendar—it’s a **real-time scheduling engine** designed to handle complexity. Here’s how it stands out:  
 
-- **Integrated Productivity Tools:** 
-  Track your effort using count and time-based progress bars, manage task-related resources, and maintain notes within
-  the app.
+✅ **Dynamic Scheduling:** Adjusts task order and time blocks automatically as progress is made.  
+✅ **Real-Time Conflict Resolution:** If a task runs over time or a new task is added, the schedule self-corrects without needing manual input.  
+✅ **Intelligent Prioritization:** Tasks are scheduled based on effort, priority, flexibility, and context—not just order of input.  
+✅ **Context-Aware Scheduling:** ADM-2 considers when you work best (e.g., peak hours) and schedules high-effort tasks accordingly.  
+✅ **Smart Rebalancing:** If tasks are delayed or completed early, ADM-2 automatically rebalances the remaining schedule to maximize productivity.  
+✅ **Manual Override Without Breaking:** You can manually adjust the schedule, and ADM-2 will intelligently adapt without losing structure.  
 
-- **Customizable Sorting & Filtering:**  
-  Sort tasks by priority, queue, stack, or filter by categories and keywords. Multi-selection mode allows bulk
-  operations like mass deletion or moving tasks across lists.
+## **Who It’s For**  
+- **Students** – Manage classes, assignments, and study sessions while balancing free time.  
+- **Professionals** – Handle work projects, deadlines, and meetings without losing track.  
+- **Creatives** – Organize long-term projects and creative output with structured planning.  
+- **Goal-Oriented Individuals** – Maintain focus on both short-term and long-term goals with dynamic tracking and adjustment.  
 
-## Themes (Coming Soon)
-
-Personalize with custom CSS themes. This feature will allow you to choose or create your own themes
-to match your aesthetic preferences. A dedicated setup will enable easy theme installation and switching for both
-Windows and Linux users.
-
-## Installation & Running
-
-### Upcoming Installer (Windows & Linux)
-
-I am working on a user-friendly installers for Windows and Linux. This option will allow you to set up ADM with minimal
-effort. **Coming Soon!**
-
-### Manual Setup
-
-1. **Clone the Repository:**
-   ```bash
-   git clone git clone https://github.com/yourusername/ADM-2.git
-   cd adm
-   ```
-
-2. **Install Dependencies:**
-   Use `requirements.txt` to quickly install all required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run ADM:**
-   ```bash
-   python main.py
-   ```
-
-Once running, you can start creating lists, adding tasks, and exploring ADM’s scheduling tools.
-
-## Contributing
-
-Contributions from the open-source community are more than welcome. Whether you want to add new features, fix bugs,
-improve documentation, or create your own plugins, I appreciate your interest. Feel free to open an issue or submit a
-pull request.
-
-## License
-
-This project is licensed under the [MIT License](https://opensource.org/license/mit). By contributing to ADM, you agree
-that your contributions will be licensed under the same terms.
-
----
-
-ADM is continuously evolving. Its focus on flexible organization, automated scheduling, and user control aims to make it
-indispensable for everyone—from students juggling assignments to professionals looking to optimize their workflow.  
-Try ADM today and take the next step toward effortless day management!
+👉 **Defining each task takes some upfront effort**—you’ll need to provide details like effort, priority, flexibility, and time estimates—but this is a trade-off that’s well worth the results. By giving ADM-2 enough context, it can create a highly accurate, adaptable schedule that reflects your real-life workload and adjusts dynamically as things change.

@@ -81,7 +81,7 @@ class TaskDetailDock(QDockWidget):
         # Edit Button
         self.edit_button = QPushButton("Edit")
         self.edit_button.setFixedSize(60, 24)
-        self.edit_button.clicked.connect(self.toggle_edit_mode)
+        self.edit_button.clicked.connect(self.open_edit_task_dialogue)
         self.header_layout.addWidget(self.edit_button)
 
         # Close Button
@@ -402,6 +402,47 @@ class TaskDetailDock(QDockWidget):
             self.is_edit_mode = True
             self.edit_button.hide()
             self.switch_to_edit_mode()
+
+    def open_edit_task_dialogue(self):
+        # Create the edit dialog, providing the parent and task list context.
+        dialog = AddTaskDialog(self.parent, task_list=self.task_list_widget.task_list)
+        # Pre-fill the dialog with the current task data.
+        dialog.edit_mode(self.task)
+
+        # Open the dialog modally.
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Retrieve the updated task data from the dialog.
+            task_data = dialog.get_task_data()
+
+            # Update the task's attributes.
+            self.task.name = task_data.get("name")
+            self.task.description = task_data.get("description", "")
+            self.task.priority = int(task_data.get("priority", 5))
+            self.task.flexibility = task_data.get("flexibility", "Flexible")
+            self.task.effort_level = task_data.get("effort_level", "Medium")
+            # Assume tag data is returned under key 'tags' or similar (adjust if needed)
+            self.task.tags = task_data.get("tags", [])
+            self.task.recurring = task_data.get("recurring", False)
+            self.task.recur_every = task_data.get("recur_every")
+            self.task.start_date = task_data.get("start_date")
+            self.task.due_datetime = task_data.get("due_datetime")
+            self.task.preferred_work_days = task_data.get("preferred_work_days", [])
+            self.task.time_of_day_preference = task_data.get("time_of_day_preference", [])
+            self.task.time_estimate = task_data.get("time_estimate", 0.0)
+            self.task.count_required = task_data.get("count_required", 0)
+            self.task.chunks = task_data.get("chunks", [])
+            self.task.chunk_preference = task_data.get("chunk_preference")
+            self.task.min_chunk_size = task_data.get("min_chunk_size", 0.0)
+            self.task.max_chunk_size = task_data.get("max_chunk_size", 0.0)
+            self.task.notes = task_data.get("notes", "")
+            self.task.include_in_schedule = task_data.get("include_in_schedule", False)
+
+            # Update the task in your task manager.
+            self.parent.task_manager.update_task(self.task)
+            # Emit a signal to refresh task list views.
+            global_signals.task_list_updated.emit()
+            # Refresh the details display.
+            self.display_task_details()
 
     def add_labeled_widget(self, label_text, widget):
         layout = QHBoxLayout()
