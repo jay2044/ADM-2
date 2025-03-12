@@ -1399,7 +1399,7 @@ class CalendarDock(QDockWidget):
 
 class ScheduleViewDock(QDockWidget):
     def __init__(self, parent):
-        super(ScheduleViewDock, self).__init__("Schedule",parent)
+        super(ScheduleViewDock, self).__init__("Schedule", parent)
         self.type = "schedule"
         self.parent = parent
         self.task_manager = self.parent.task_manager

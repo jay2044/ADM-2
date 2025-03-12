@@ -787,7 +787,7 @@ class ScheduleManager:
 
     def chunk_tasks(self):
         chunks = []
-        recurrence_end_date = datetime.now() + timedelta(days=int(len(self.day_schedules))-1)
+        recurrence_end_date = datetime.now() + timedelta(days=int(len(self.day_schedules)) - 1)
 
         for task in self.active_tasks:
             for chunk_data in task.chunks:
@@ -862,6 +862,7 @@ class ScheduleManager:
                             current_date += timedelta(days=1)
 
         return chunks
+
     def solve_schedule_with_cp(self):
         """
         This method uses OR-Tools CP-SAT to assign task chunks to available time blocks.
