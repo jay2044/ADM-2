@@ -150,17 +150,39 @@ class WeightCoefficientsDialog(QDialog):
         main_layout = QVBoxLayout(self)
         self.form_layout = QFormLayout()
         self.widgets = {}
-        self.add_weight_slider("alpha", "Time-Since-Added Weight (α)", "Determines how strongly the time since a task was added affects scheduling priority.", 0, 100, self.schedule_settings.alpha * 100, True)
-        self.add_weight_slider("beta", "Time-Estimate Weight (β)", "Determines how strongly the estimated task duration affects scheduling priority.", 0, 100, self.schedule_settings.beta * 100, True)
-        self.add_weight_slider("gamma", "Effort-Level Weight (γ)", "Determines how strongly the task's effort level affects scheduling priority.", 0, 100, self.schedule_settings.gamma * 100, True)
-        self.add_weight_slider("delta", "Urgency Weight (δ)", "Determines how strongly task urgency affects scheduling priority.", 0, 100, self.schedule_settings.delta * 100, True)
-        self.add_weight_slider("epsilon", "Flexibility Weight (ε)", "Determines how strongly task flexibility influences scheduling.", 0, 100, self.schedule_settings.epsilon * 100, True)
-        self.add_weight_slider("zeta", "Recurrence Frequency Weight (ζ)", "Determines how strongly task recurrence frequency affects scheduling.", 0, 100, self.schedule_settings.zeta * 100, True)
-        self.add_weight_slider("eta", "Preferred Workday Alignment Weight (η)", "Determines how strongly a task's alignment with preferred workdays affects scheduling.", 0, 100, self.schedule_settings.eta * 100, True)
-        self.add_weight_slider("theta", "Progress Weight (θ)", "Determines how strongly count-based progress affects scheduling priority.", 0, 100, self.schedule_settings.theta * 100, True)
-        self.add_weight_slider("K", "Quick Task Boost (K)", "A fixed boost weight for quick tasks. Higher values give a larger boost.", 0, 1000, self.schedule_settings.K, False)
-        self.add_weight_slider("T_q", "Decay Time Constant (T_q)", "Determines how slowly the bonus decays (in seconds). Higher means slower decay.", 0, 10000, self.schedule_settings.T_q, False)
-        self.add_weight_slider("C", "Critical Task Constant (C)", "A high constant ensuring critical tasks are prioritized. Larger values increase the boost.", 0, 10000, self.schedule_settings.C, False)
+        self.add_weight_slider("alpha", "Time-Since-Added Weight (α)",
+                               "Determines how strongly the time since a task was added affects scheduling priority.",
+                               0, 100, self.schedule_settings.alpha * 100, True)
+        self.add_weight_slider("beta", "Time-Estimate Weight (β)",
+                               "Determines how strongly the estimated task duration affects scheduling priority.", 0,
+                               100, self.schedule_settings.beta * 100, True)
+        self.add_weight_slider("gamma", "Effort-Level Weight (γ)",
+                               "Determines how strongly the task's effort level affects scheduling priority.", 0, 100,
+                               self.schedule_settings.gamma * 100, True)
+        self.add_weight_slider("delta", "Urgency Weight (δ)",
+                               "Determines how strongly task urgency affects scheduling priority.", 0, 100,
+                               self.schedule_settings.delta * 100, True)
+        self.add_weight_slider("epsilon", "Flexibility Weight (ε)",
+                               "Determines how strongly task flexibility influences scheduling.", 0, 100,
+                               self.schedule_settings.epsilon * 100, True)
+        self.add_weight_slider("zeta", "Recurrence Frequency Weight (ζ)",
+                               "Determines how strongly task recurrence frequency affects scheduling.", 0, 100,
+                               self.schedule_settings.zeta * 100, True)
+        self.add_weight_slider("eta", "Preferred Workday Alignment Weight (η)",
+                               "Determines how strongly a task's alignment with preferred workdays affects scheduling.",
+                               0, 100, self.schedule_settings.eta * 100, True)
+        self.add_weight_slider("theta", "Progress Weight (θ)",
+                               "Determines how strongly count-based progress affects scheduling priority.", 0, 100,
+                               self.schedule_settings.theta * 100, True)
+        self.add_weight_slider("K", "Quick Task Boost (K)",
+                               "A fixed boost weight for quick tasks. Higher values give a larger boost.", 0, 1000,
+                               self.schedule_settings.K, False)
+        self.add_weight_slider("T_q", "Decay Time Constant (T_q)",
+                               "Determines how slowly the bonus decays (in seconds). Higher means slower decay.", 0,
+                               10000, self.schedule_settings.T_q, False)
+        self.add_weight_slider("C", "Critical Task Constant (C)",
+                               "A high constant ensuring critical tasks are prioritized. Larger values increase the boost.",
+                               0, 10000, self.schedule_settings.C, False)
         main_layout.addLayout(self.form_layout)
         btn_layout = QHBoxLayout()
         self.reset_button = QPushButton("Reset to Defaults")
@@ -180,10 +202,11 @@ class WeightCoefficientsDialog(QDialog):
         slider.setValue(int(initial))
         value_label = QLabel()
         if is_float:
-            value_label.setText(f"{slider.value()/100:.2f}")
+            value_label.setText(f"{slider.value() / 100:.2f}")
         else:
             value_label.setText(str(slider.value()))
-        slider.valueChanged.connect(lambda val, k=key, is_f=is_float, lbl=value_label: self.update_value_label(val, is_f, lbl))
+        slider.valueChanged.connect(
+            lambda val, k=key, is_f=is_float, lbl=value_label: self.update_value_label(val, is_f, lbl))
         container = QWidget()
         v_layout = QVBoxLayout(container)
         v_layout.addWidget(title_label)
@@ -197,7 +220,7 @@ class WeightCoefficientsDialog(QDialog):
 
     def update_value_label(self, val, is_float, label):
         if is_float:
-            label.setText(f"{val/100:.2f}")
+            label.setText(f"{val / 100:.2f}")
         else:
             label.setText(str(val))
 
@@ -985,6 +1008,119 @@ class TimeBlockWidget(QWidget):
             p.timeBlocksLayout.setStretchFactor(self, self.base_height)
 
 
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from PyQt6.QtCore import Qt
+
+
+class TimeBlockItem(QWidget):
+    def __init__(self, time_block):
+        super().__init__()
+        self.time_block = time_block
+        self.initUI()
+
+    def initUI(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(4)
+
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(8)
+
+        color = self.time_block.get('color', (255, 255, 255))
+
+        color_label = QLabel()
+        color_label.setFixedSize(16, 16)
+        color_label.setStyleSheet(f"""
+            background-color: rgb({color[0]}, {color[1]}, {color[2]});
+            border: 1px solid #ccc;
+            border-radius: 2px;
+        """)
+
+        name_label = QLabel(f"<b>{self.time_block.get('name', '')}</b>")
+        name_label.setStyleSheet("font-size: 14px;")
+
+
+
+        top_layout.addWidget(color_label)
+        top_layout.addWidget(name_label)
+        top_layout.addStretch()
+        if self.time_block.get('unavailable'):
+            unavailable_marker = QLabel("🚫")
+            unavailable_marker.setToolTip("Unavailable Time Block")
+            top_layout.addWidget(unavailable_marker)
+
+        main_layout.addLayout(top_layout)
+
+        # Grid layout for the schedule details
+        schedule_layout = QGridLayout()
+        schedule_layout.setSpacing(4)
+        schedule_layout.setColumnStretch(0, 1)
+        schedule_layout.setColumnStretch(1, 1)
+        schedule_layout.setColumnStretch(2, 1)
+
+        schedule = self.time_block.get('schedule', {})
+        formatted_schedule = self.format_schedule(schedule)
+
+        for row, (day, start, end, duration) in enumerate(formatted_schedule):
+            day_label = QLabel(day)
+            day_label.setStyleSheet("color: #555; font-size: 12px; font-weight: bold;")
+            day_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+            time_label = QLabel(f"{start} - {end}")
+            time_label.setStyleSheet("color: #777; font-size: 12px;")
+
+            duration_label = QLabel(f"{duration}")
+            duration_label.setStyleSheet("color: #777; font-size: 12px;")
+
+            schedule_layout.addWidget(day_label, row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+            schedule_layout.addWidget(time_label, row, 1, alignment=Qt.AlignmentFlag.AlignCenter)
+            schedule_layout.addWidget(duration_label, row, 2, alignment=Qt.AlignmentFlag.AlignRight)
+
+        main_layout.addLayout(schedule_layout)
+
+        self.setLayout(main_layout)
+
+    def format_schedule(self, schedule):
+        if not schedule:
+            return []
+
+        formatted_schedule = []
+        for day, times in schedule.items():
+            if len(times) == 2:
+                start_time, end_time = times
+                try:
+                    if isinstance(start_time, time):
+                        start_time_formatted = start_time.strftime('%I:%M %p').lstrip('0')
+                    else:
+                        start = datetime.strptime(start_time, '%H:%M')
+                        start_time_formatted = start.strftime('%I:%M %p').lstrip('0')
+
+                    if isinstance(end_time, time):
+                        end_time_formatted = end_time.strftime('%I:%M %p').lstrip('0')
+                    else:
+                        end = datetime.strptime(end_time, '%H:%M')
+                        end_time_formatted = end.strftime('%I:%M %p').lstrip('0')
+
+                    start = datetime.combine(datetime.today(), start_time) if isinstance(start_time,
+                                                                                         time) else datetime.strptime(
+                        start_time, '%H:%M')
+                    end = datetime.combine(datetime.today(), end_time) if isinstance(end_time,
+                                                                                     time) else datetime.strptime(
+                        end_time, '%H:%M')
+
+                    duration = end - start
+                    hours, minutes = divmod(duration.seconds // 60, 60)
+                    duration_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+
+                    formatted_day = day.capitalize()[:3]
+                    formatted_schedule.append((formatted_day, start_time_formatted, end_time_formatted, duration_str))
+
+                except ValueError:
+                    continue
+
+        return formatted_schedule
+
+
 class TimeBlockManagerWidget(QWidget):
     def __init__(self, parent, schedule_manager):
         super().__init__()
@@ -1014,8 +1150,14 @@ class TimeBlockManagerWidget(QWidget):
     def populate_time_blocks(self):
         self.timeBlockList.clear()
         for time_block in self.schedule_manager.time_blocks:
-            item = QListWidgetItem(time_block.get("name"))
+            item = QListWidgetItem()
+            widget = TimeBlockItem(time_block)
+
+            item.setSizeHint(widget.sizeHint())
+            item.setData(Qt.ItemDataRole.UserRole, time_block)
+
             self.timeBlockList.addItem(item)
+            self.timeBlockList.setItemWidget(item, widget)
 
     def show_context_menu(self, position):
         item = self.timeBlockList.itemAt(position)
@@ -1024,10 +1166,13 @@ class TimeBlockManagerWidget(QWidget):
             edit_action = menu.addAction("Edit")
             delete_action = menu.addAction("Delete")
             action = menu.exec(self.timeBlockList.viewport().mapToGlobal(position))
-            if action == edit_action:
-                self.open_edit_time_block_dialogue(item.text())
-            elif action == delete_action:
-                self.delete_time_block(item.text())
+
+            if action:
+                time_block = item.data(Qt.ItemDataRole.UserRole)
+                if action == edit_action:
+                    self.open_edit_time_block_dialogue(time_block)
+                elif action == delete_action:
+                    self.delete_time_block(time_block.get('name'))
 
     def open_add_time_block_dialogue(self):
         day_start_datetime = datetime.combine(datetime.now().date(), self.schedule_manager.schedule_settings.day_start)
@@ -1063,43 +1208,41 @@ class TimeBlockManagerWidget(QWidget):
             QMessageBox.information(self, "Success", "Time block added successfully!")
             global_signals.refresh_schedule_signal.emit()
 
-    def open_edit_time_block_dialogue(self, time_block_name):
-        for block in self.schedule_manager.time_blocks:
-            if time_block_name == block.get("name"):
-                day_start_datetime = datetime.combine(datetime.now().date(),
-                                                      self.schedule_manager.schedule_settings.day_start)
+    def open_edit_time_block_dialogue(self, time_block):
+        day_start_datetime = datetime.combine(datetime.now().date(),
+                                              self.schedule_manager.schedule_settings.day_start)
 
-                dialog = AddTimeBlockDialog(self, day_start_time=day_start_datetime)
-                dialog.edit_mode(block)
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    time_block_data = dialog.get_time_block_data()
+        dialog = AddTimeBlockDialog(self, day_start_time=day_start_datetime)
+        dialog.edit_mode(time_block)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            time_block_data = dialog.get_time_block_data()
 
-                    if not time_block_data['name']:
-                        QMessageBox.warning(self, "Invalid Input", "Name cannot be empty.")
-                        return
+            if not time_block_data['name']:
+                QMessageBox.warning(self, "Invalid Input", "Name cannot be empty.")
+                return
 
-                    if time_block_data['unavailable']:
-                        new_time_block = {
-                            "name": time_block_data['name'],
-                            "schedule": time_block_data['schedule'],
-                            "color": time_block_data['color'],
-                            "unavailable": 1
-                        }
-                    else:
-                        new_time_block = {
-                            "name": time_block_data['name'],
-                            "schedule": time_block_data['schedule'],
-                            "list_categories": time_block_data['list_categories'],
-                            "task_tags": time_block_data['task_tags'],
-                            "color": time_block_data['color'],
-                            "unavailable": 0
-                        }
+            if time_block_data['unavailable']:
+                new_time_block = {
+                    "name": time_block_data['name'],
+                    "schedule": time_block_data['schedule'],
+                    "color": time_block_data['color'],
+                    "unavailable": 1
+                }
+            else:
+                new_time_block = {
+                    "name": time_block_data['name'],
+                    "schedule": time_block_data['schedule'],
+                    "list_categories": time_block_data['list_categories'],
+                    "task_tags": time_block_data['task_tags'],
+                    "color": time_block_data['color'],
+                    "unavailable": 0
+                }
 
-                    self.schedule_manager.update_time_block(new_time_block)
-                    self.populate_time_blocks()
+            self.schedule_manager.update_time_block(new_time_block)
+            self.populate_time_blocks()
 
-                    QMessageBox.information(self, "Success", "Time block updated successfully!")
-                    global_signals.refresh_schedule_signal.emit()
+            QMessageBox.information(self, "Success", "Time block updated successfully!")
+            global_signals.refresh_schedule_signal.emit()
 
     def delete_time_block(self, time_block_name):
         self.schedule_manager.remove_time_block(time_block_name)

@@ -1723,6 +1723,12 @@ class AddTimeBlockDialog(QDialog):
             QMessageBox.warning(self, "Validation Error", "Name is required.")
             return
 
+        # ✅ Check if name is unique (ignore the current block's name during editing)
+        if not hasattr(self, 'editing_block') or data['name'] != self.editing_block.get('name'):
+            if not self.is_name_unique(data['name']):
+                QMessageBox.warning(self, "Validation Error", f"Time block name '{data['name']}' already exists.")
+                return
+
         # Validate schedule
         if not data['schedule']:
             QMessageBox.warning(self, "Validation Error", "A schedule is required.")
@@ -1735,7 +1741,6 @@ class AddTimeBlockDialog(QDialog):
             return
 
         if not self.unavailable:
-
             # Validate categories or tags
             if not (data['list_categories']['include'] or data['task_tags']['include']):
                 QMessageBox.warning(self, "Validation Error", "At least one tag or category is required.")
@@ -1745,10 +1750,10 @@ class AddTimeBlockDialog(QDialog):
         self.accept()
 
     def edit_mode(self, block):
-        # Set the name
+        self.editing_block = block  # ✅ Keep track of the block being edited
+
         self.name_input.setText(block["name"])
 
-        # Handle "unavailable" state
         self.unavailable = bool(block["unavailable"])
         if self.unavailable:
             self.unavailable_button.setStyleSheet("background: rgb(204, 97, 65);")
@@ -1757,18 +1762,13 @@ class AddTimeBlockDialog(QDialog):
             self.unavailable_button.setStyleSheet("background: none;")
             self.category_tag_picker.setDisabled(False)
 
-        # Set the color
-        self.picked_color = block["color"]  # tuple like (r, g, b)
+        self.picked_color = block["color"]
         self.color_picker_button.setStyleSheet(f"background-color: rgb{self.picked_color};")
         self.schedule_picker.refresh_color(self.picked_color)
 
-        # Populate each day's schedule using the new set_day_schedule() helper.
-        # Here we assume block["schedule"] is a dictionary with keys as day names in lowercase
-        # and values as a tuple/list of two strings, e.g., ("09:00", "10:00").
         for day, widgets in self.schedule_picker.day_widgets.items():
             day = day.lower()
             if day in block["schedule"]:
-                # Parse the stored strings into time objects
                 from_str, to_str = block["schedule"][day]
                 try:
                     from_time = datetime.strptime(from_str, "%H:%M").time()
@@ -1776,14 +1776,12 @@ class AddTimeBlockDialog(QDialog):
                 except Exception as e:
                     print(f"Error parsing time for {day}: {e}")
                     continue
-                # Use the new helper to set this day's schedule
                 self.schedule_picker.set_day_schedule(day, from_time, to_time)
             else:
-                # If no schedule is stored for this day, uncheck and disable the widget.
                 widgets["checkbox"].setChecked(False)
                 widgets["block_widget"].setDisabled(True)
+
         if not self.unavailable:
-            # Set categories and tags as before...
             for item in self.category_tag_picker.category_items:
                 if item.text() in block["list_categories"]["include"]:
                     item._state = 1
@@ -1801,3 +1799,12 @@ class AddTimeBlockDialog(QDialog):
                 else:
                     item._state = 0
                 item._update_style()
+
+    def is_name_unique(self, name):
+        """
+        Check if the time block name is unique.
+        """
+        for block in self.parent.schedule_manager.time_blocks:
+            if block.get('name') == name:
+                return False
+        return True
