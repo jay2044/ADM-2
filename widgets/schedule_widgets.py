@@ -148,42 +148,47 @@ class WeightCoefficientsDialog(QDialog):
     def init_ui(self):
         self.setWindowTitle("Configure Weighting Coefficients")
         main_layout = QVBoxLayout(self)
-        self.form_layout = QFormLayout()
+
+        self.grid_layout = QGridLayout()
         self.widgets = {}
+
         self.add_weight_slider("alpha", "Time-Since-Added Weight (α)",
                                "Determines how strongly the time since a task was added affects scheduling priority.",
-                               0, 100, self.schedule_settings.alpha * 100, True)
+                               0, 100, self.schedule_settings.alpha * 100, True, row=0, col=0)
         self.add_weight_slider("beta", "Time-Estimate Weight (β)",
-                               "Determines how strongly the estimated task duration affects scheduling priority.", 0,
-                               100, self.schedule_settings.beta * 100, True)
+                               "Determines how strongly the estimated task duration affects scheduling priority.",
+                               0, 100, self.schedule_settings.beta * 100, True, row=0, col=1)
         self.add_weight_slider("gamma", "Effort-Level Weight (γ)",
-                               "Determines how strongly the task's effort level affects scheduling priority.", 0, 100,
-                               self.schedule_settings.gamma * 100, True)
+                               "Determines how strongly the task's effort level affects scheduling priority.",
+                               0, 100, self.schedule_settings.gamma * 100, True, row=1, col=0)
         self.add_weight_slider("delta", "Urgency Weight (δ)",
-                               "Determines how strongly task urgency affects scheduling priority.", 0, 100,
-                               self.schedule_settings.delta * 100, True)
+                               "Determines how strongly task urgency affects scheduling priority.",
+                               0, 100, self.schedule_settings.delta * 100, True, row=1, col=1)
         self.add_weight_slider("epsilon", "Flexibility Weight (ε)",
-                               "Determines how strongly task flexibility influences scheduling.", 0, 100,
-                               self.schedule_settings.epsilon * 100, True)
+                               "Determines how strongly task flexibility influences scheduling.",
+                               0, 100, self.schedule_settings.epsilon * 100, True, row=2, col=0)
         self.add_weight_slider("zeta", "Recurrence Frequency Weight (ζ)",
-                               "Determines how strongly task recurrence frequency affects scheduling.", 0, 100,
-                               self.schedule_settings.zeta * 100, True)
+                               "Determines how strongly task recurrence frequency affects scheduling.",
+                               0, 100, self.schedule_settings.zeta * 100, True, row=2, col=1)
         self.add_weight_slider("eta", "Preferred Workday Alignment Weight (η)",
                                "Determines how strongly a task's alignment with preferred workdays affects scheduling.",
-                               0, 100, self.schedule_settings.eta * 100, True)
+                               0, 100, self.schedule_settings.eta * 100, True, row=3, col=0)
         self.add_weight_slider("theta", "Progress Weight (θ)",
-                               "Determines how strongly count-based progress affects scheduling priority.", 0, 100,
-                               self.schedule_settings.theta * 100, True)
+                               "Determines how strongly count-based progress affects scheduling priority.",
+                               0, 100, self.schedule_settings.theta * 100, True, row=3, col=1)
         self.add_weight_slider("K", "Quick Task Boost (K)",
-                               "A fixed boost weight for quick tasks. Higher values give a larger boost.", 0, 1000,
-                               self.schedule_settings.K, False)
+                               "A fixed boost weight for quick tasks. Higher values give a larger boost.",
+                               0, 1000, self.schedule_settings.K, False, row=4, col=0)
         self.add_weight_slider("T_q", "Decay Time Constant (T_q)",
-                               "Determines how slowly the bonus decays (in seconds). Higher means slower decay.", 0,
-                               10000, self.schedule_settings.T_q, False)
+                               "Determines how slowly the bonus decays (in seconds). Higher means slower decay.",
+                               0, 10000, self.schedule_settings.T_q, False, row=4, col=1)
         self.add_weight_slider("C", "Critical Task Constant (C)",
                                "A high constant ensuring critical tasks are prioritized. Larger values increase the boost.",
-                               0, 10000, self.schedule_settings.C, False)
-        main_layout.addLayout(self.form_layout)
+                               0, 10000, self.schedule_settings.C, False, row=5, col=0)
+
+        main_layout.addLayout(self.grid_layout)
+
+        # Button Layout
         btn_layout = QHBoxLayout()
         self.reset_button = QPushButton("Reset to Defaults")
         self.reset_button.clicked.connect(self.reset_defaults)
@@ -193,29 +198,34 @@ class WeightCoefficientsDialog(QDialog):
         btn_layout.addWidget(self.save_button)
         main_layout.addLayout(btn_layout)
 
-    def add_weight_slider(self, key, title, explanation, min_val, max_val, initial, is_float):
+    def add_weight_slider(self, key, title, explanation, min_val, max_val, initial, is_float, row, col):
         title_label = QLabel(title)
         explanation_label = QLabel(explanation)
         explanation_label.setStyleSheet("font-size: 10pt; color: gray;")
+
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_val, max_val)
         slider.setValue(int(initial))
+
         value_label = QLabel()
         if is_float:
             value_label.setText(f"{slider.value() / 100:.2f}")
         else:
             value_label.setText(str(slider.value()))
+
         slider.valueChanged.connect(
             lambda val, k=key, is_f=is_float, lbl=value_label: self.update_value_label(val, is_f, lbl))
+
         container = QWidget()
-        v_layout = QVBoxLayout(container)
-        v_layout.addWidget(title_label)
-        v_layout.addWidget(explanation_label)
+        layout = QVBoxLayout(container)
+        layout.addWidget(title_label)
+        layout.addWidget(explanation_label)
         h_layout = QHBoxLayout()
         h_layout.addWidget(slider)
         h_layout.addWidget(value_label)
-        v_layout.addLayout(h_layout)
-        self.form_layout.addRow(container)
+        layout.addLayout(h_layout)
+
+        self.grid_layout.addWidget(container, row, col)
         self.widgets[key] = slider
 
     def update_value_label(self, val, is_float, label):
@@ -606,7 +616,7 @@ class TimeBlockWidget(QWidget):
     def __init__(self, parent, time_block: TimeBlock):
         super().__init__(parent)
 
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(200)
 
         self.time_block = time_block
         self.name = self.time_block.name
@@ -1001,6 +1011,7 @@ class SuggestionPanel(QWidget):
     def __init__(self, parent):
         super().__init__()
         self.setMaximumWidth(400)
+        self.setMinimumWidth(200)
         main_layout = QVBoxLayout(self)
 
         self.parent = parent
@@ -1295,13 +1306,12 @@ class ScheduleViewWidget(QWidget):
         if hasattr(self, "suggestion_panel"):
             for chunk in self.schedule_manager.chunks:
                 # Skip chunks already shown in the schedule view
-                if chunk.id in displayed_ids:
-                    continue
-                task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager_instance, chunk)
-                item = QListWidgetItem()
-                item.setSizeHint(task_widget.sizeHint())
-                self.suggestion_panel.list_widget.addItem(item)
-                self.suggestion_panel.list_widget.setItemWidget(item, task_widget)
+                if chunk.flagged:
+                    task_widget = ScheduleTaskChunkWidget(self.schedule_manager.task_manager_instance, chunk)
+                    item = QListWidgetItem()
+                    item.setSizeHint(task_widget.sizeHint())
+                    self.suggestion_panel.list_widget.addItem(item)
+                    self.suggestion_panel.list_widget.setItemWidget(item, task_widget)
 
     @property
     def timeBlocksLayout(self):
