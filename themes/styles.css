@@ -17,6 +17,27 @@ QProgressBar::chunk
     background-color: #607cff;
 }
 
+QToolBar {
+    spacing: 6px; /* Add spacing between buttons */
+}
+
+/*!* QToolButton Styling *!*/
+/*QToolButton {*/
+/*    background-color: #1b1b1b;*/
+/*    border: 1px solid #444;*/
+/*    padding: 6px;*/
+/*    border-radius: 4px;*/
+/*}*/
+
+/* Remove Hover and Selection Highlights */
+QToolButton:hover,
+QToolButton:checked,
+QToolButton:pressed {
+    background-color: rgba(96, 124, 255, 0.13);
+    color: #ffffff;
+}
+
+
 /* Style for the whole collection container */
 /*QWidget#TaskListCollection {*/
 /*    background-color: #121212;*/

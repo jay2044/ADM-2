@@ -55,10 +55,6 @@ def parse_time_schedule(schedule_data: dict) -> dict:
     return parsed_schedule
 
 
-import sqlite3
-from datetime import time
-
-
 class ScheduleSettings:
     def __init__(self, db_path='data/adm.db'):
         self.db_path = db_path
@@ -306,7 +302,7 @@ class TimeBlock:
         else:
             hours_passed = 0
 
-        return max(0, (self.duration * (1 - self.buffer_ratio)) - used_time - hours_passed)
+        return max(0, ((self.duration - hours_passed - used_time) * (1 - self.buffer_ratio)))
 
     def add_chunk(self, chunk, rating):
         cid = chunk.id
@@ -791,11 +787,19 @@ class ScheduleManager:
 
     def chunk_tasks(self):
         chunks = []
-        recurrence_end_date = datetime.now() + timedelta(days=48)
+        recurrence_end_date = datetime.now() + timedelta(days=int(len(self.day_schedules))-1)
 
         for task in self.active_tasks:
             for chunk_data in task.chunks:
                 base_chunk_id = chunk_data.get("id")
+
+                # Ensure date is a datetime.date object
+                date_value = chunk_data.get("date")
+                if isinstance(date_value, str):
+                    try:
+                        date_value = datetime.strptime(date_value, "%Y-%m-%d").date()
+                    except ValueError:
+                        date_value = None
 
                 chunk_obj = TaskChunk(
                     id=base_chunk_id,
@@ -805,22 +809,22 @@ class ScheduleManager:
                     size=chunk_data.get("size"),
                     timeblock_ratings=chunk_data.get("timeblock_ratings", []),
                     timeblock=chunk_data.get("time_block"),
-                    date=chunk_data.get("date"),
-                    is_recurring=chunk_data.get("is_recurring", False),
+                    date=date_value,
+                    is_recurring=task.recurring,
                     status=chunk_data.get("status", "active")
                 )
                 chunks.append(chunk_obj)
 
-                if task.recurring and chunk_data.get("is_recurring", False):
+                if task.recurring:
                     recurrence_count = 1
                     if isinstance(task.recur_every, int):
                         try:
-                            base_date = datetime.strptime(chunk_obj.date,
-                                                          "%Y-%m-%d") if chunk_obj.date else datetime.now()
+                            base_date = chunk_obj.date if chunk_obj.date else datetime.now().date()
                         except ValueError:
-                            base_date = datetime.now()
+                            base_date = datetime.now().date()
+
                         next_date = base_date
-                        while next_date < recurrence_end_date:
+                        while next_date < recurrence_end_date.date():
                             next_date += timedelta(days=task.recur_every)
                             recurring_chunk = TaskChunk(
                                 id=f"{base_chunk_id}_{recurrence_count}",
@@ -830,12 +834,13 @@ class ScheduleManager:
                                 size=chunk_data.get("size"),
                                 timeblock_ratings=chunk_data.get("timeblock_ratings", []),
                                 timeblock=chunk_data.get("time_block"),
-                                date=next_date.strftime("%Y-%m-%d"),
+                                date=next_date,
                                 is_recurring=True,
                                 status="locked"
                             )
                             chunks.append(recurring_chunk)
                             recurrence_count += 1
+
                     elif isinstance(task.recur_every, list):
                         current_date = datetime.now().date()
                         while current_date <= recurrence_end_date.date():
@@ -848,15 +853,15 @@ class ScheduleManager:
                                     size=chunk_data.get("size"),
                                     timeblock_ratings=chunk_data.get("timeblock_ratings", []),
                                     timeblock=chunk_data.get("time_block"),
-                                    date=current_date.strftime("%Y-%m-%d"),
+                                    date=current_date,
                                     is_recurring=True,
                                     status="locked"
                                 )
                                 chunks.append(recurring_chunk)
                                 recurrence_count += 1
                             current_date += timedelta(days=1)
-        return chunks
 
+        return chunks
     def solve_schedule_with_cp(self):
         """
         This method uses OR-Tools CP-SAT to assign task chunks to available time blocks.
@@ -1117,14 +1122,25 @@ class ScheduleManager:
                 target_block.add_chunk(chunk, 10000)  # Using a fixed high rating for placed assignments.
                 continue  # Skip to the next chunk.
 
-            # For non-placed chunks, clear any existing timeblock ratings.
-            chunk.timeblock_ratings = []
-            for day in self.day_schedules:
-                # Skip days beyond the task's due date (if set).
-                if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
-                    break
-                ratings = day.get_suitable_timeblocks_with_rating(chunk)
-                chunk.timeblock_ratings.extend(ratings)
+            if chunk.is_recurring:
+                chunk.timeblock_ratings = []
+                for day in self.day_schedules:
+                    if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
+                        break
+                    if day.date == chunk.date:
+                        ratings = day.get_suitable_timeblocks_with_rating(chunk)
+                        chunk.timeblock_ratings.extend(ratings)
+                        break
+
+            else:
+                # For non-placed chunks, clear any existing timeblock ratings.
+                chunk.timeblock_ratings = []
+                for day in self.day_schedules:
+                    # Skip days beyond the task's due date (if set).
+                    if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
+                        break
+                    ratings = day.get_suitable_timeblocks_with_rating(chunk)
+                    chunk.timeblock_ratings.extend(ratings)
 
             # Sort candidates by rating (highest first) and attempt assignment.
             chunk.timeblock_ratings.sort(key=lambda x: x[1], reverse=True)
@@ -1286,6 +1302,10 @@ class DaySchedule:
         Incorporates weighting coefficients (alpha, beta, gamma, delta, epsilon, etc.)
         only if they're relevant to the rating.
         """
+
+        if chunk.is_recurring:
+            if self.date != chunk.date:
+                return []
 
         def compute_time_bonus(t, interval, max_bonus, threshold=60):
             """Existing logic for peak/off-peak hour bonuses."""

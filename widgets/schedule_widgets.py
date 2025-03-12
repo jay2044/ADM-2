@@ -537,7 +537,6 @@ class ScheduleTaskChunkWidget(QWidget):
             recurrence_font.setPointSize(10)  # Small font for subtlety
             self.recurrence_label.setFont(recurrence_font)
             palette = self.recurrence_label.palette()
-            palette.setColor(QPalette.WindowText, QColor(128, 128, 128))  # Light gray color
             self.recurrence_label.setPalette(palette)
             top_layout.addWidget(self.recurrence_label)
 
