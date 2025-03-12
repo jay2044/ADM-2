@@ -271,250 +271,6 @@ class DatePickerCalendar(QWidget):
         print(self.get_selected_date().toString('yyyy-MM-dd'))
 
 
-class ScheduleTaskWidget(QWidget):
-    def __init__(self, task_list_manager: TaskManager, task_or_chunk):
-        super().__init__()
-        self.task_list_manager = task_list_manager
-        if isinstance(task_or_chunk, TaskChunk):
-            self.chunk = task_or_chunk
-            self.task = task_or_chunk.task
-        else:
-            self.task = task_or_chunk
-            self.chunk = None
-        self.is_dragging = False
-        self.no_context = False
-        self.setup_ui()
-        self.setup_timer()
-        self.checkbox.setObjectName("taskCheckbox")
-        self.radio_button.setObjectName("importantRadioButton")
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.show_context_menu)
-
-    def setup_ui(self):
-        self.layout = QHBoxLayout()
-        self.setLayout(self.layout)
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(self.task.status == "completed")
-        self.checkbox.stateChanged.connect(self.task_checked)
-        self.layout.addWidget(self.checkbox)
-        self.task_label = QLabel(self.task.title)
-        self.task_label.setStyleSheet("font-size: 14px; text-decoration: none;")
-        self.task_label.mousePressEvent = self.on_task_label_click
-        self.layout.addWidget(self.task_label)
-        if self.task.count_required or self.task.estimate or self.task.subtasks:
-            self.progress_bar = TaskProgressBar(self.task)
-            self.layout.addWidget(self.progress_bar)
-        self.layout.addStretch()
-        self.due_label = QLabel()
-        self.due_label.setStyleSheet("font-size: 14px;")
-        self.due_label.mousePressEvent = self.pick_due_date
-        self.layout.addWidget(self.due_label)
-        self.radio_button = QRadioButton()
-        self.radio_button.setChecked(self.task.is_important)
-        self.radio_button.toggled.connect(self.mark_important)
-        self.layout.addWidget(self.radio_button)
-        self.update_due_label()
-
-    def on_task_label_click(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.edit_task()
-
-    def show_context_menu(self, position):
-        if not self.no_context:
-            menu = QMenu(self)
-            due_today_action = QAction("Due Today", self)
-            due_today_action.triggered.connect(self.set_due_today)
-            menu.addAction(due_today_action)
-            due_tomorrow_action = QAction("Due Tomorrow", self)
-            due_tomorrow_action.triggered.connect(self.set_due_tomorrow)
-            menu.addAction(due_tomorrow_action)
-            pick_date_action = QAction("Pick a Date", self)
-            pick_date_action.triggered.connect(self.pick_due_date)
-            menu.addAction(pick_date_action)
-            remove_due_date_action = QAction("Remove Due Date", self)
-            remove_due_date_action.triggered.connect(self.remove_due_date)
-            menu.addAction(remove_due_date_action)
-            menu.addSeparator()
-            delete_action = QAction("Delete", self)
-            delete_action.triggered.connect(self.delete_task)
-            menu.addAction(delete_action)
-            menu.exec(self.mapToGlobal(position))
-
-    def set_due_today(self):
-        pass
-
-    def set_due_tomorrow(self):
-        tomorrow = datetime.now() + timedelta(days=1)
-        self.task.due_date = tomorrow.strftime("%Y-%m-%d")
-        self.update_due_label()
-
-    def pick_due_date(self, event):
-        dialog = QDialog(self)
-        dialog.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-        layout = QVBoxLayout(dialog)
-        dialog.setLayout(layout)
-        calendar = QCalendarWidget(dialog)
-        current_due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
-        if current_due_date.toString("yyyy-MM-dd") != "2000-01-01":
-            calendar.setSelectedDate(current_due_date)
-        calendar.selectionChanged.connect(lambda: self.update_due_date_from_calendar(calendar))
-        layout.addWidget(calendar)
-        time_edit = QTimeEdit(dialog)
-        time_edit.setTime(QTime.fromString(self.task.due_time, "HH:mm"))
-        time_edit.setDisplayFormat("h:mm AP")
-        time_edit.timeChanged.connect(lambda: self.update_due_time_from_time_edit(time_edit))
-        layout.addWidget(time_edit)
-        button_layout = QHBoxLayout()
-        clear_date_button = QPushButton("Clear Date", dialog)
-        clear_date_button.clicked.connect(lambda: self.clear_due_date(calendar))
-        button_layout.addWidget(clear_date_button)
-        clear_time_button = QPushButton("Clear Time", dialog)
-        clear_time_button.clicked.connect(lambda: self.clear_due_time(time_edit))
-        button_layout.addWidget(clear_time_button)
-        layout.addLayout(button_layout)
-        dialog.move(
-            self.due_label.mapToGlobal(QPoint(self.due_label.width() // 2, self.due_label.height() // 2)) - QPoint(
-                dialog.width() // 2, dialog.height() // 2))
-        dialog.exec()
-
-    def update_task_due_date(self, due_date):
-        self.task.due_date = due_date
-        self.task_list_manager.update_task(self.task)
-
-    def update_task_due_time(self, due_time):
-        self.task.due_time = due_time
-        self.task_list_manager.update_task(self.task)
-
-    def update_due_date_from_calendar(self, calendar):
-        self.update_task_due_date(calendar.selectedDate().toString("yyyy-MM-dd"))
-        self.update_due_label()
-
-    def update_due_time_from_time_edit(self, time_edit):
-        self.update_task_due_time(time_edit.time().toString("HH:mm"))
-        self.update_due_label()
-
-    def clear_due_date(self, calendar):
-        self.update_task_due_date("2000-01-01")
-        calendar.clearFocus()
-        self.update_due_label()
-
-    def clear_due_time(self, time_edit):
-        self.update_task_due_time("00:00")
-        time_edit.setTime(QTime(0, 0))
-        self.update_due_label()
-
-    def remove_due_date(self):
-        self.task.due_date = "2000-01-01"
-        self.task.due_time = "00:00"
-        self.update_due_label()
-
-    def delete_task(self):
-        self.task_list_manager.delete_task(self.task)
-
-    def update_due_label(self):
-        due_date = QDate.fromString(self.task.due_date, "yyyy-MM-dd")
-        if due_date != QDate(2000, 1, 1):
-            due_date_obj = datetime.strptime(self.task.due_date, "%Y-%m-%d")
-            today = datetime.now().date()
-            tomorrow = today + timedelta(days=1)
-            end_of_week = today + timedelta(days=(6 - today.weekday()))
-            is_this_year = due_date_obj.year == today.year
-            formatted_date = ""
-            color = DEFAULT_COLOR
-            if due_date_obj.date() == today:
-                formatted_date = "Today"
-                color = DUE_TODAY_COLOR
-            elif due_date_obj.date() == tomorrow:
-                formatted_date = "Tomorrow"
-                color = DUE_TOMORROW_COLOR
-            elif due_date_obj.date() < today:
-                day = due_date_obj.day
-                suffix = "th" if 11 <= day <= 13 else ["st", "nd", "rd"][day % 10 - 1] if day % 10 in [1, 2,
-                                                                                                       3] else "th"
-                month_abbr = due_date_obj.strftime("%b")
-                year = f" {due_date_obj.year}" if not is_this_year else ""
-                formatted_date = f"{day}{suffix} {month_abbr}{year}"
-                color = PAST_DUE_COLOR
-            elif today < due_date_obj.date() <= end_of_week:
-                short_weekday = due_date_obj.strftime("%a")
-                formatted_date = short_weekday
-                color = DUE_THIS_WEEK_COLOR
-            else:
-                day = due_date_obj.day
-                suffix = "th" if 11 <= day <= 13 else ["st", "nd", "rd"][day % 10 - 1] if day % 10 in [1, 2,
-                                                                                                       3] else "th"
-                month_abbr = due_date_obj.strftime("%b")
-                year = f" {due_date_obj.year}" if not is_this_year else ""
-                formatted_date = f"{day}{suffix} {month_abbr}{year}"
-            if self.task.due_time != "00:00":
-                due_time_obj = datetime.strptime(self.task.due_time, "%H:%M")
-                formatted_time = due_time_obj.strftime("%I:%M %p").lstrip("0")
-                formatted_date += f" at {formatted_time}"
-            self.due_label.setText(formatted_date)
-            self.due_label.setStyleSheet(f"color: {color}; font-size: 14px;")
-        else:
-            self.due_label.setText("")
-            self.due_label.setStyleSheet("")
-        self.task_list_manager.update_task(self.task)
-
-    def setup_timer(self):
-        self.timer = QTimer(self)
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.edit_task)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.is_dragging = False
-            self.timer.start(250)
-            self.start_pos = event.pos()
-        if event.button() == Qt.MouseButton.RightButton:
-            self.no_context = False
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.RightButton:
-            self.no_context = True
-            return
-        if not self.is_dragging and (event.pos() - self.start_pos).manhattanLength() > QApplication.startDragDistance():
-            self.is_dragging = True
-            self.timer.stop()
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        try:
-            if event.button() == Qt.MouseButton.LeftButton:
-                if self.timer.isActive():
-                    self.timer.stop()
-                    self.edit_task()
-            super().mouseReleaseEvent(event)
-        except Exception as e:
-            print(e)
-
-    def edit_task(self):
-        get_main_window().add_task_detail_dock(self.task)
-
-    def task_checked(self, state):
-        try:
-            self.task.completed = not self.task.completed
-            self.task_list_manager.update_task(self.task)
-            global_signals.task_list_updated.emit()
-        except Exception as e:
-            print(f"Error in task_checked: {e}")
-
-    def mark_important(self):
-        try:
-            if self.radio_button.isChecked():
-                self.task.mark_as_important()
-                self.task.priority = 7
-            else:
-                self.task.unmark_as_important()
-                self.task.priority = 0
-            self.task_list_manager.update_task(self.task)
-            global_signals.task_list_updated.emit()
-        except Exception as e:
-            print(f"Error in mark_important: {e}")
-
-
 class ScheduleTaskChunkWidget(QWidget):
     def __init__(self, task_list_manager, chunk):
         super().__init__()
@@ -928,11 +684,8 @@ class TimeBlockWidget(QWidget):
         self.task_list = DraggableListWidget(self)
         self.frame_layout.addWidget(self.task_list)
 
-    def init_ui_empty(self):
-        self.setup_frame("No chunks", (47, 47, 47))
-
     def init_ui_unavailable(self):
-        self.setup_frame("Unavailable", (231, 131, 97))
+        self.setup_frame(self.name, (231, 131, 97))
 
     def load_tasks(self):
         for chunk in self.chunks:
@@ -1008,10 +761,6 @@ class TimeBlockWidget(QWidget):
             p.timeBlocksLayout.setStretchFactor(self, self.base_height)
 
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
-from PyQt6.QtCore import Qt
-
-
 class TimeBlockItem(QWidget):
     def __init__(self, time_block):
         super().__init__()
@@ -1038,8 +787,6 @@ class TimeBlockItem(QWidget):
 
         name_label = QLabel(f"<b>{self.time_block.get('name', '')}</b>")
         name_label.setStyleSheet("font-size: 14px;")
-
-
 
         top_layout.addWidget(color_label)
         top_layout.addWidget(name_label)

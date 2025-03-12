@@ -1216,7 +1216,7 @@ class DaySchedule:
         final_blocks = []
         current_dt = day_start
 
-        # 5) Insert user blocks (or unscheduled gaps) up to day_end
+        # 5) Insert user blocks (or Open Block gaps) up to day_end
         for block in user_blocks:
             block_start_dt = datetime.combine(self.date, block.start_time)
             block_end_dt = datetime.combine(self.date, block.end_time)
@@ -1234,7 +1234,7 @@ class DaySchedule:
             if current_dt < block_start_dt:
                 gap_block = TimeBlock(
                     block_id=None,
-                    name="Unscheduled",
+                    name="Open Block",
                     date=self.date,
                     block_type="system_defined",
                     color=(200, 200, 200),
@@ -1251,7 +1251,7 @@ class DaySchedule:
         if current_dt < day_end:
             gap_block = TimeBlock(
                 block_id=None,
-                name="Unscheduled",
+                name="Open Block",
                 date=self.date,
                 block_type="system_defined",
                 color=(200, 200, 200),
