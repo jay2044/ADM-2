@@ -12,6 +12,7 @@ I built ADM-2 to reliably manage complex schedules and bring order to the overwh
 
 It intelligently handles shifting priorities, conflicts, and unexpected changes, so you can stay focused and in control, no matter how unpredictable your day becomes.  
 
+---
 
 ### **Screenshots**  
 
