@@ -4,7 +4,6 @@
 ## Advanced Day Manager (ADM-2)
 
 
----
 > ### Clarity amidst chaos
 
 **Advanced Day Manager (ADM-2) is a feature-packed, open-source task management and scheduling application** designed to help you streamline your day. ADM combines robust task management with automated scheduling capabilities, enabling you to prioritize tasks, track progress, and generate a structured daily plan—all in one place.  
