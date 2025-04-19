@@ -555,6 +555,7 @@ class TaskList:
         self.sort_by_priority = kwargs.get("sort_by_priority", False)
         self.sort_by_due_datetime = kwargs.get("sort_by_due_datetime", False)
         self.sort_by_tags = kwargs.get("sort_by_tags", False)
+        self.sort_by_time_estimate = kwargs.get("sort_by_time_estimate", False)
 
         self.tasks = kwargs.get("tasks", [])
         self.progress = self.calculate_progress()
@@ -660,6 +661,17 @@ class TaskList:
         self.tasks.sort(key=lambda t: t.list_order)
 
     def get_tasks(self):
+        print(f"DEBUG TaskList.get_tasks: name={self.name} due={self.sort_by_due_datetime} estimate={self.sort_by_time_estimate} queue={self.sort_by_queue} stack={self.sort_by_stack} priority={self.sort_by_priority}")
+        # Sort by due date if toggled
+        if self.sort_by_due_datetime:
+            tasks_sorted = [t for t in self.tasks if t.status not in ["Completed","Failed"]]
+            tasks_sorted.sort(key=lambda t: t.due_datetime or datetime.max)
+            return tasks_sorted
+        # Sort by time estimate if toggled
+        if self.sort_by_time_estimate:
+            tasks_sorted = [t for t in self.tasks if t.status not in ["Completed","Failed"]]
+            tasks_sorted.sort(key=lambda t: t.time_estimate or 0)
+            return tasks_sorted
         important_tasks = [
             task
             for task in self.tasks
@@ -734,6 +746,7 @@ class TaskList:
         self.sort_by_priority = False
         self.sort_by_due_datetime = False
         self.sort_by_tags = False
+        self.sort_by_time_estimate = False
 
     def __str__(self):
         return "\n".join(
@@ -787,7 +800,8 @@ class TaskManager:
             sort_by_stack BOOLEAN NOT NULL DEFAULT 0,
             sort_by_priority BOOLEAN NOT NULL DEFAULT 0,
             sort_by_due_datetime BOOLEAN NOT NULL DEFAULT 0,
-            sort_by_tags BOOLEAN NOT NULL DEFAULT 0
+            sort_by_tags BOOLEAN NOT NULL DEFAULT 0,
+            sort_by_time_estimate BOOLEAN NOT NULL DEFAULT 0
         );
         """
 
@@ -882,6 +896,10 @@ class TaskManager:
             task_list_data["sort_by_tags"] = from_bool_int(
                 task_list_data["sort_by_tags"]
             )
+            task_list_data["sort_by_time_estimate"] = from_bool_int(
+                task_list_data["sort_by_time_estimate"]
+            )
+            print(f"DEBUG load_task_lists: list={task_list_data.get('name')} due={task_list_data.get('sort_by_due_datetime')} estimate={task_list_data.get('sort_by_time_estimate')}")
             # Create the TaskList object first
             task_list = TaskList(**task_list_data)
             # Now load its tasks from the DB and assign them
@@ -937,6 +955,7 @@ class TaskManager:
                 sort_by_priority=False,
                 sort_by_due_datetime=False,
                 sort_by_tags=False,
+                sort_by_time_estimate=False,
                 tasks=[],
             )
             self.add_task_list(quick_tasks)
@@ -1231,9 +1250,48 @@ class TaskManager:
         cursor = None
         try:
             cursor = self.conn.cursor()
-            # ... (Determine order logic) ...
+            # Determine order if not set
+            if task_list.order is None:
+                cursor.execute("SELECT MAX(`order`) FROM task_lists")
+                max_order = cursor.fetchone()[0]
+                task_list.order = max_order + 1 if max_order is not None else 1
+
             cursor.execute(
-                # ... INSERT statement ...
+                """
+                INSERT INTO task_lists (
+                    `order`, name, description, category, notifications_enabled,
+                    archived, in_trash, creation_date, default_start_date,
+                    default_due_datetime, default_time_of_day_preference,
+                    default_flexibility, default_effort_level, default_priority,
+                    default_preferred_work_days, consider_in_schedule,
+                    sort_by_queue, sort_by_stack, sort_by_priority,
+                    sort_by_due_datetime, sort_by_tags, sort_by_time_estimate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_list.order,
+                    task_list.name,
+                    task_list.description,
+                    task_list.category,
+                    to_bool_int(task_list.notifications_enabled),
+                    to_bool_int(task_list.archived),
+                    to_bool_int(task_list.in_trash),
+                    task_list.creation_date.strftime("%Y-%m-%d") if task_list.creation_date else None,
+                    task_list.default_start_date.strftime("%Y-%m-%d") if task_list.default_start_date else None,
+                    task_list.default_due_datetime.strftime("%Y-%m-%d %H:%M") if task_list.default_due_datetime else None,
+                    task_list.default_time_of_day_preference,
+                    task_list.default_flexibility,
+                    task_list.default_effort_level,
+                    task_list.default_priority,
+                    safe_json_dumps(task_list.default_preferred_work_days, "[]", "default_preferred_work_days"),
+                    to_bool_int(task_list.consider_in_schedule),
+                    to_bool_int(task_list.sort_by_queue),
+                    to_bool_int(task_list.sort_by_stack),
+                    to_bool_int(task_list.sort_by_priority),
+                    to_bool_int(task_list.sort_by_due_datetime),
+                    to_bool_int(task_list.sort_by_tags),
+                    to_bool_int(task_list.sort_by_time_estimate)
+                )
             )
             self.conn.commit()
             # Get the newly assigned ID if it's autoincrement (assuming it is)
@@ -1315,10 +1373,36 @@ class TaskManager:
         cursor = None
         try:
             cursor = self.conn.cursor()
-            # ... (rest of UPDATE execution logic) ...
+            print(f"DEBUG update_task_list: saving list={task_list.name} due={task_list.sort_by_due_datetime} estimate={task_list.sort_by_time_estimate}")
             cursor.execute(
-                # ... UPDATE statement ...
+                "UPDATE task_lists SET `order` = ?, name = ?, description = ?, category = ?, notifications_enabled = ?, archived = ?, in_trash = ?, creation_date = ?, default_start_date = ?, default_due_datetime = ?, default_time_of_day_preference = ?, default_flexibility = ?, default_effort_level = ?, default_priority = ?, default_preferred_work_days = ?, consider_in_schedule = ?, sort_by_queue = ?, sort_by_stack = ?, sort_by_priority = ?, sort_by_due_datetime = ?, sort_by_tags = ?, sort_by_time_estimate = ? WHERE id = ?",
+                (
+                    task_list.order,
+                    task_list.name,
+                    task_list.description,
+                    task_list.category,
+                    to_bool_int(task_list.notifications_enabled),
+                    to_bool_int(task_list.archived),
+                    to_bool_int(task_list.in_trash),
+                    task_list.creation_date.strftime("%Y-%m-%d") if task_list.creation_date else None,
+                    task_list.default_start_date.strftime("%Y-%m-%d") if task_list.default_start_date else None,
+                    task_list.default_due_datetime.strftime("%Y-%m-%d %H:%M") if task_list.default_due_datetime else None,
+                    task_list.default_time_of_day_preference,
+                    task_list.default_flexibility,
+                    task_list.default_effort_level,
+                    task_list.default_priority,
+                    safe_json_dumps(task_list.default_preferred_work_days, "[]", "default_preferred_work_days"),
+                    to_bool_int(task_list.consider_in_schedule),
+                    to_bool_int(task_list.sort_by_queue),
+                    to_bool_int(task_list.sort_by_stack),
+                    to_bool_int(task_list.sort_by_priority),
+                    to_bool_int(task_list.sort_by_due_datetime),
+                    to_bool_int(task_list.sort_by_tags),
+                    to_bool_int(task_list.sort_by_time_estimate),
+                    task_list.id
+                )
             )
+            print(f"DEBUG update_task_list: executed update, rowcount={cursor.rowcount}")
             if cursor.rowcount == 0:
                 print(
                     f"Warning: Task list '{task_list.name}' not found in database for update."

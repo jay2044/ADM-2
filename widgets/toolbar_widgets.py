@@ -45,6 +45,8 @@ class TaskListToolbar(QToolBar):
         self.add_action("Q", parent, parent.set_queue)
         self.add_action("S", parent, parent.set_stack)
         self.add_action("P", parent, parent.priority_sort)
+        self.add_action("D", parent, parent.set_due)
+        self.add_action("E", parent, parent.set_time_estimate)
         self.add_action("MS", parent, parent.toggle_multi_select)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 

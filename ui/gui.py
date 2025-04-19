@@ -133,10 +133,10 @@ class MainWindow(QMainWindow):
         # self.calendar_dock.setObjectName("calendarDock")
         # self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.calendar_dock)
         # self.calendar_dock.hide()
-        self.calendar_dock = ScheduleViewDock(self)
-        self.calendar_dock.setObjectName("calendarDock")
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.calendar_dock)
-        self.calendar_dock.hide()
+        self.schedule_view_dock = ScheduleViewDock(self)
+        self.schedule_view_dock.setObjectName("calendarDock")
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.schedule_view_dock)
+        self.schedule_view_dock.hide()
 
     def closeEvent(self, event):
         self.save_settings()
@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
         self.history_dock.toggle_history()
 
     def toggle_calendar(self):
-        self.calendar_dock.setVisible(not self.calendar_dock.isVisible())
+        self.schedule_view_dock.setVisible(not self.schedule_view_dock.isVisible())
 
     def add_task_detail_dock(self, task):
         task_list_widget = self.stacked_task_list.get_task_list_widget_by_task(task.id)
@@ -274,6 +274,7 @@ class MainWindow(QMainWindow):
             current_widget.load_tasks()
 
         self.history_dock.update_history()
-        # self.calendar_dock.update_calendar()
+        global_signals.refresh_schedule_signal.emit()
+        self.schedule_view_dock.widget.load_time_blocks()
 
         print("Task list has been updated globally")

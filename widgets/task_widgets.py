@@ -27,9 +27,14 @@ class TaskListWidget(QListWidget):
     def multi_selection_mode(self):
         self.clear()
 
-        filtered = False
-        if self.task_list.sort_by_queue or self.task_list.sort_by_stack or self.task_list.sort_by_priority:
-            filtered = True
+        # Determine if any sorting filter is active
+        filtered = any([
+            self.task_list.sort_by_queue,
+            self.task_list.sort_by_stack,
+            self.task_list.sort_by_priority,
+            self.task_list.sort_by_due_datetime,
+            self.task_list.sort_by_time_estimate,
+        ])
         priority_filter = self.task_list.sort_by_priority
 
         try:
@@ -81,6 +86,7 @@ class TaskListWidget(QListWidget):
                         self.delete_task(task)
                         print(f"Deleted {item.text()}")
                         self.takeItem(index)
+        global_signals.task_list_updated.emit()
 
     def move_selected_items(self):
         tasks_to_move = self.get_selected_items()
@@ -114,7 +120,6 @@ class TaskListWidget(QListWidget):
             if item and item.text() in tasks_to_move:
                 for task in tasks:
                     if task.name == item.text():
-                        # Update task with the new list name
                         task.list_name = new_list_name
                         self.manager.update_task(task)
                         print(f"Moved {item.text()} to {new_list_name}")
@@ -156,9 +161,14 @@ class TaskListWidget(QListWidget):
                 self.manager.update_task_list(self.task_list)
 
     def load_tasks(self):
-        filtered = False
-        if self.task_list.sort_by_queue or self.task_list.sort_by_stack or self.task_list.sort_by_priority:
-            filtered = True
+        # Determine if any sorting filter is active
+        filtered = any([
+            self.task_list.sort_by_queue,
+            self.task_list.sort_by_stack,
+            self.task_list.sort_by_priority,
+            self.task_list.sort_by_due_datetime,
+            self.task_list.sort_by_time_estimate,
+        ])
         priority_filter = self.task_list.sort_by_priority
         # try:
         self.clear()
@@ -192,6 +202,7 @@ class TaskListWidget(QListWidget):
                     break
         except Exception as e:
             print(f"Error in delete_task: {e}")
+        global_signals.task_list_updated.emit()
 
     def startDrag(self, supportedActions):
         print("yo")

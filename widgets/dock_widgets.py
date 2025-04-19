@@ -786,6 +786,10 @@ class TaskListDockStacked(QDockWidget):
             self.toolbar.actions()[2].setChecked(current_task_list.sort_by_stack)
             self.toolbar.actions()[3].setCheckable(True)
             self.toolbar.actions()[3].setChecked(current_task_list.sort_by_priority)
+            self.toolbar.actions()[4].setCheckable(True)
+            self.toolbar.actions()[4].setChecked(current_task_list.sort_by_due_datetime)
+            self.toolbar.actions()[5].setCheckable(True)
+            self.toolbar.actions()[5].setChecked(current_task_list.sort_by_time_estimate)
         except Exception as e:
             print(e)
 
@@ -881,6 +885,38 @@ class TaskListDockStacked(QDockWidget):
 
         except Exception as e:
             print(f"Error in priority_sort: {e}")
+
+    def set_due(self):
+        try:
+            current_widget = self.get_current_task_list_widget()
+            if not current_widget:
+                return
+            task_list = current_widget.task_list
+            task_list.sort_by_due_datetime = not task_list.sort_by_due_datetime
+            task_list.sort_by_queue = False
+            task_list.sort_by_stack = False
+            task_list.sort_by_priority = False
+            self.update_toolbar()
+            current_widget.load_tasks()
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in set_due: {e}")
+
+    def set_time_estimate(self):
+        try:
+            current_widget = self.get_current_task_list_widget()
+            if not current_widget:
+                return
+            task_list = current_widget.task_list
+            task_list.sort_by_time_estimate = not task_list.sort_by_time_estimate
+            task_list.sort_by_queue = False
+            task_list.sort_by_stack = False
+            task_list.sort_by_priority = False
+            self.update_toolbar()
+            current_widget.load_tasks()
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in set_time_estimate: {e}")
 
     def toggle_multi_select(self):
         current_task_list_widget = self.get_current_task_list_widget()
@@ -1061,6 +1097,32 @@ class TaskListDock(QDockWidget):
             self.task_manager.update_task_list(task_list)
         except Exception as e:
             print(f"Error in priority_sort: {e}")
+
+    def set_due(self):
+        try:
+            task_list = self.task_list_widget.task_list
+            task_list.sort_by_due_datetime = not task_list.sort_by_due_datetime
+            task_list.sort_by_queue = False
+            task_list.sort_by_stack = False
+            task_list.sort_by_priority = False
+            self._update_toolbar_state()
+            self.task_list_widget.load_tasks()
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in set_due: {e}")
+
+    def set_time_estimate(self):
+        try:
+            task_list = self.task_list_widget.task_list
+            task_list.sort_by_time_estimate = not task_list.sort_by_time_estimate
+            task_list.sort_by_queue = False
+            task_list.sort_by_stack = False
+            task_list.sort_by_priority = False
+            self._update_toolbar_state()
+            self.task_list_widget.load_tasks()
+            self.task_manager.update_task_list(task_list)
+        except Exception as e:
+            print(f"Error in set_time_estimate: {e}")
 
     def start_drag(self):
         self.dragging = True
@@ -1456,8 +1518,6 @@ class ScheduleViewDock(QDockWidget):
             QDockWidget.DockWidgetFeature.DockWidgetFloatable |
             QDockWidget.DockWidgetFeature.DockWidgetClosable
         )
-
-    from datetime import datetime
 
     def setup_ui(self):
         self.widget = ScheduleViewWidget(self.schedule_manager)
