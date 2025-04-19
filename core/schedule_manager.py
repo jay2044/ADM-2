@@ -8,6 +8,7 @@ from ortools.sat.python import cp_model
 import math
 
 from core.task_manager import *
+from core.utils import *
 
 
 def time_to_string(t: time) -> str:
@@ -50,31 +51,33 @@ def parse_time_schedule(schedule_data: dict) -> dict:
         else:
             end_time = end_str
 
-        parsed_schedule[day] = [start_time, end_time]
-
+        parsed_schedule[day] = (start_time, end_time)
     return parsed_schedule
 
 
 class ScheduleSettings:
-    def __init__(self, db_path='data/adm.db'):
+    def __init__(self, db_path="data/adm.db"):
         self.db_path = db_path
         self.create_table()
         self.load_settings()
 
     def create_table(self):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''
+        with sqlite3.connect(
+            self.db_path, detect_types=sqlite3.PARSE_DECLTYPES
+        ) as conn:
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS schedule_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    day_start TEXT,
+                    day_start TIME,
                     ideal_sleep_duration REAL,
                     overtime_flexibility TEXT,
                     hours_of_day_available REAL,
-                    peak_productivity_start TEXT,
-                    peak_productivity_end TEXT,
-                    off_peak_start TEXT,
-                    off_peak_end TEXT,
-                    task_notifications INTEGER,
+                    peak_productivity_start TIME,
+                    peak_productivity_end TIME,
+                    off_peak_start TIME,
+                    off_peak_end TIME,
+                    task_notifications BOOLEAN NOT NULL DEFAULT 1,
                     task_status_popup_frequency INTEGER,
                     alpha REAL,
                     beta REAL,
@@ -88,23 +91,28 @@ class ScheduleSettings:
                     T_q INTEGER,
                     C INTEGER
                 )
-            ''')
+            """
+            )
 
     def load_settings(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(
+            self.db_path, detect_types=sqlite3.PARSE_DECLTYPES
+        ) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM schedule_settings LIMIT 1")
             row = cursor.fetchone()
             if row:
-                self.day_start = self.parse_time(row["day_start"])
+                self.day_start = row["day_start"]
                 self.ideal_sleep_duration = row["ideal_sleep_duration"]
                 self.overtime_flexibility = row["overtime_flexibility"]
                 self.hours_of_day_available = row["hours_of_day_available"]
                 self.peak_productivity_hours = (
-                    self.parse_time(row["peak_productivity_start"]), self.parse_time(row["peak_productivity_end"]))
-                self.off_peak_hours = (self.parse_time(row["off_peak_start"]), self.parse_time(row["off_peak_end"]))
-                self.task_notifications = bool(row["task_notifications"])
+                    row["peak_productivity_start"],
+                    row["peak_productivity_end"],
+                )
+                self.off_peak_hours = (row["off_peak_start"], row["off_peak_end"])
+                self.task_notifications = from_bool_int(row["task_notifications"])
                 self.task_status_popup_frequency = row["task_status_popup_frequency"]
 
                 # Load weighting coefficients
@@ -149,36 +157,50 @@ class ScheduleSettings:
         self.save_settings()
 
     def save_settings(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(
+            self.db_path, detect_types=sqlite3.PARSE_DECLTYPES
+        ) as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM schedule_settings")
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO schedule_settings (
                     day_start, ideal_sleep_duration, overtime_flexibility,
                     hours_of_day_available, peak_productivity_start, peak_productivity_end,
                     off_peak_start, off_peak_end, task_notifications, task_status_popup_frequency,
                     alpha, beta, gamma, delta, epsilon, zeta, eta, theta, K, T_q, C
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                self.day_start.strftime("%H:%M"),
-                self.ideal_sleep_duration,
-                self.overtime_flexibility,
-                self.hours_of_day_available,
-                self.peak_productivity_hours[0].strftime("%H:%M"),
-                self.peak_productivity_hours[1].strftime("%H:%M"),
-                self.off_peak_hours[0].strftime("%H:%M"),
-                self.off_peak_hours[1].strftime("%H:%M"),
-                int(self.task_notifications),
-                self.task_status_popup_frequency,
-                self.alpha, self.beta, self.gamma, self.delta, self.epsilon,
-                self.zeta, self.eta, self.theta, self.K, self.T_q, self.C
-            ))
+            """,
+                (
+                    self.day_start,
+                    self.ideal_sleep_duration,
+                    self.overtime_flexibility,
+                    self.hours_of_day_available,
+                    self.peak_productivity_hours[0],
+                    self.peak_productivity_hours[1],
+                    self.off_peak_hours[0],
+                    self.off_peak_hours[1],
+                    to_bool_int(self.task_notifications),
+                    self.task_status_popup_frequency,
+                    self.alpha,
+                    self.beta,
+                    self.gamma,
+                    self.delta,
+                    self.epsilon,
+                    self.zeta,
+                    self.eta,
+                    self.theta,
+                    self.K,
+                    self.T_q,
+                    self.C,
+                ),
+            )
             conn.commit()
 
     @staticmethod
     def parse_time(time_str):
         if time_str:
-            hours, minutes = map(int, time_str.split(':'))
+            hours, minutes = map(int, time_str.split(":"))
             return time(hours, minutes)
         return None
 
@@ -262,16 +284,30 @@ class ScheduleSettings:
 
 
 class TimeBlock:
-    def __init__(self, block_id=None, name="", date=None,
-                 list_categories=None, task_tags=None,
-                 block_type="user_defined", color=None):
+    def __init__(
+        self,
+        block_id=None,
+        name="",
+        date=None,
+        list_categories=None,
+        task_tags=None,
+        block_type="user_defined",
+        color=None,
+    ):
         self.id = block_id if block_id else uuid.uuid4().int
         self.name = name
         self.date = date
-        self.list_categories = list_categories if list_categories else {"include": [], "exclude": []}
+        self.list_categories = (
+            list_categories if list_categories else {"include": [], "exclude": []}
+        )
         self.task_tags = task_tags if task_tags else {"include": [], "exclude": []}
         self.block_type = block_type
-        if color and isinstance(color, tuple) and len(color) == 3 and all(isinstance(c, int) for c in color):
+        if (
+            color
+            and isinstance(color, tuple)
+            and len(color) == 3
+            and all(isinstance(c, int) for c in color)
+        ):
             self.color = color
         elif block_type == "system_defined":
             self.color = (47, 47, 47)
@@ -293,7 +329,7 @@ class TimeBlock:
         if self.date and self.start_time and self.end_time:
             now = datetime.now()
             block_start = datetime.combine(self.date, self.start_time)
-            block_end = (block_start + timedelta(hours=self.duration))
+            block_end = block_start + timedelta(hours=self.duration)
 
             if block_start <= now <= block_end:
                 hours_passed = (now - block_start).total_seconds() / 3600
@@ -302,7 +338,9 @@ class TimeBlock:
         else:
             hours_passed = 0
 
-        return max(0, ((self.duration - hours_passed - used_time) * (1 - self.buffer_ratio)))
+        return max(
+            0, ((self.duration - hours_passed - used_time) * (1 - self.buffer_ratio))
+        )
 
     def add_chunk(self, chunk, rating):
         cid = chunk.id
@@ -357,7 +395,8 @@ class ScheduleManager:
 
     def create_tables(self):
         with self.conn:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS time_blocks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT DEFAULT '',
@@ -367,7 +406,8 @@ class ScheduleManager:
                     color TEXT DEFAULT '',
                     unavailable INTEGER DEFAULT 0
                 )
-            """)
+            """
+            )
 
     def load_time_blocks(self):
         """
@@ -385,15 +425,21 @@ class ScheduleManager:
                 # Parse JSON fields
                 schedule_json = row["schedule"]
                 if schedule_json:
-                    schedule_dict = json.loads(schedule_json)
+                    schedule_dict = safe_json_loads(schedule_json)
                     # Convert any string times into actual time objects
                     # schedule_dict = parse_time_schedule(schedule_dict)
                 else:
                     schedule_dict = {}
-                list_categories = json.loads(row["list_categories"]) if row["list_categories"] else {
-                    "include": [], "exclude": []
-                }
-                task_tags = json.loads(row["task_tags"]) if row["task_tags"] else {"include": [], "exclude": []}
+                list_categories = (
+                    safe_json_loads(row["list_categories"])
+                    if row["list_categories"]
+                    else {"include": [], "exclude": []}
+                )
+                task_tags = (
+                    safe_json_loads(row["task_tags"])
+                    if row["task_tags"]
+                    else {"include": [], "exclude": []}
+                )
 
                 # Convert color string to a tuple
                 color_str = row["color"]
@@ -412,7 +458,7 @@ class ScheduleManager:
                     "list_categories": list_categories,
                     "task_tags": task_tags,
                     "color": color,
-                    "unavailable": int(row["unavailable"]) if row["unavailable"] else 0
+                    "unavailable": int(row["unavailable"]) if row["unavailable"] else 0,
                 }
                 self.time_blocks.append(block)
 
@@ -437,16 +483,19 @@ class ScheduleManager:
                 schedule_dict = time_block["schedule"]
                 # Convert any datetime.time objects to strings
                 schedule_dict = convert_times_in_schedule(schedule_dict)
-                schedule_json = json.dumps(schedule_dict)
+                schedule_json = safe_json_dumps(schedule_dict)
             else:
                 schedule_json = "{}"
-            list_cats_json = json.dumps(
-                time_block["list_categories"]) if "list_categories" in time_block else json.dumps({
-                "include": [], "exclude": []
-            })
-            task_tags_json = json.dumps(time_block["task_tags"]) if "task_tags" in time_block else json.dumps({
-                "include": [], "exclude": []
-            })
+            list_cats_json = (
+                safe_json_dumps(time_block["list_categories"])
+                if "list_categories" in time_block
+                else safe_json_dumps({"include": [], "exclude": []})
+            )
+            task_tags_json = (
+                safe_json_dumps(time_block["task_tags"])
+                if "task_tags" in time_block
+                else safe_json_dumps({"include": [], "exclude": []})
+            )
 
             color_str = ""
             if "color" in time_block and time_block["color"]:
@@ -455,7 +504,8 @@ class ScheduleManager:
             unavailable = time_block.get("unavailable", 0)
 
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO time_blocks (
                     name,
                     schedule,
@@ -464,14 +514,16 @@ class ScheduleManager:
                     color,
                     unavailable
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                time_block["name"],
-                schedule_json,
-                list_cats_json,
-                task_tags_json,
-                color_str,
-                unavailable
-            ))
+            """,
+                (
+                    time_block["name"],
+                    schedule_json,
+                    list_cats_json,
+                    task_tags_json,
+                    color_str,
+                    unavailable,
+                ),
+            )
             self.conn.commit()
 
             new_id = cursor.lastrowid
@@ -549,18 +601,23 @@ class ScheduleManager:
                 schedule_dict = updated_block["schedule"]
                 # Convert any datetime.time objects to strings
                 schedule_dict = convert_times_in_schedule(schedule_dict)
-                schedule_json = json.dumps(schedule_dict)
+                schedule_json = safe_json_dumps(schedule_dict)
             else:
                 schedule_json = "{}"
-            list_cats_json = json.dumps(updated_block.get("list_categories", {"include": [], "exclude": []}))
-            task_tags_json = json.dumps(updated_block.get("task_tags", {"include": [], "exclude": []}))
+            list_cats_json = safe_json_dumps(
+                updated_block.get("list_categories", {"include": [], "exclude": []})
+            )
+            task_tags_json = safe_json_dumps(
+                updated_block.get("task_tags", {"include": [], "exclude": []})
+            )
             color_str = ""
             if "color" in updated_block and updated_block["color"]:
                 color_str = str(updated_block["color"])
             unavailable = updated_block.get("unavailable", 0)
 
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE time_blocks
                 SET
                     name = ?,
@@ -569,14 +626,16 @@ class ScheduleManager:
                     task_tags = ?,
                     color = ?,
                     unavailable = ?
-            """, (
-                updated_block.get("name", ""),
-                schedule_json,
-                list_cats_json,
-                task_tags_json,
-                color_str,
-                unavailable
-            ))
+            """,
+                (
+                    updated_block.get("name", ""),
+                    schedule_json,
+                    list_cats_json,
+                    task_tags_json,
+                    color_str,
+                    unavailable,
+                ),
+            )
             if cursor.rowcount == 0:
                 print(f"Time block with ID {block_name} not found in database.")
                 return False
@@ -627,7 +686,7 @@ class ScheduleManager:
                         list_categories=block.get("list_categories"),
                         task_tags=block.get("task_tags"),
                         block_type="user_defined",
-                        color=block.get("color")
+                        color=block.get("color"),
                     )
                     new_block.start_time = start_time
                     new_block.end_time = end_time
@@ -647,7 +706,9 @@ class ScheduleManager:
         priority_weight = self.alpha * task.priority
 
         if task.due_datetime:
-            days_left = max(1, (task.due_datetime - datetime.now()).total_seconds() / (24 * 3600))
+            days_left = max(
+                1, (task.due_datetime - datetime.now()).total_seconds() / (24 * 3600)
+            )
             urgency_weight = self.beta * (1 / days_left)
         else:
             urgency_weight = self.beta * 0.5
@@ -656,7 +717,9 @@ class ScheduleManager:
         flexibility_weight = self.gamma * flexibility_map.get(task.flexibility, 1)
 
         if task.added_date_time:
-            added_time_weight = self.delta * ((datetime.now() - task.added_date_time).total_seconds() / max_added_time)
+            added_time_weight = self.delta * (
+                (datetime.now() - task.added_date_time).total_seconds() / max_added_time
+            )
         else:
             added_time_weight = self.delta * 0.5
 
@@ -674,33 +737,55 @@ class ScheduleManager:
             time_logged_weight = 0
 
         # Quick task weight Q = K * exp(-t / T_q)
-        if hasattr(task, 'quick') and task.quick:
-            t = (datetime.now() - task.added_date_time).total_seconds() if task.added_date_time else 0
+        if hasattr(task, "quick") and task.quick:
+            t = (
+                (datetime.now() - task.added_date_time).total_seconds()
+                if task.added_date_time
+                else 0
+            )
             quick_task_weight = self.K * math.exp(-t / self.T_q)
         else:
             quick_task_weight = 0
 
         # Manually scheduled weight M = C if task is manually scheduled
-        manually_weight = self.C if hasattr(task, 'manually_scheduled') and task.manually_scheduled else 0
+        manually_weight = (
+            self.C
+            if hasattr(task, "manually_scheduled") and task.manually_scheduled
+            else 0
+        )
 
-        return (priority_weight + urgency_weight + flexibility_weight + added_time_weight +
-                effort_weight + time_estimate_weight + time_logged_weight +
-                quick_task_weight + manually_weight)
+        return (
+            priority_weight
+            + urgency_weight
+            + flexibility_weight
+            + added_time_weight
+            + effort_weight
+            + time_estimate_weight
+            + time_logged_weight
+            + quick_task_weight
+            + manually_weight
+        )
 
     def update_task_global_weights(self):
 
-        max_added_time = max(
-            (datetime.now() - task.added_date_time).total_seconds()
-            for task in self.active_tasks if task.added_date_time
-        ) if any(task.added_date_time for task in self.active_tasks) else 1
+        max_added_time = (
+            max(
+                (datetime.now() - task.added_date_time).total_seconds()
+                for task in self.active_tasks
+                if task.added_date_time
+            )
+            if any(task.added_date_time for task in self.active_tasks)
+            else 1
+        )
 
         max_time_estimate = max(
             (task.time_estimate for task in self.active_tasks if task.time_estimate),
-            default=1
+            default=1,
         )
 
         total_weight = sum(
-            self.task_weight_formula(task, max_added_time, max_time_estimate) for task in self.active_tasks
+            self.task_weight_formula(task, max_added_time, max_time_estimate)
+            for task in self.active_tasks
         )
 
         if total_weight == 0:
@@ -708,7 +793,8 @@ class ScheduleManager:
 
         for task in self.active_tasks:
             global_weight = (
-                    self.task_weight_formula(task, max_added_time, max_time_estimate) / total_weight
+                self.task_weight_formula(task, max_added_time, max_time_estimate)
+                / total_weight
             )
             task.global_weight = global_weight
             self.task_manager_instance.update_task(task)
@@ -734,7 +820,11 @@ class ScheduleManager:
         # Determine the latest due date among active tasks (if any)
         latest_due_date = None
         if self.active_tasks and any(task.due_datetime for task in self.active_tasks):
-            latest_due_date = max(task.due_datetime.date() for task in self.active_tasks if task.due_datetime)
+            latest_due_date = max(
+                task.due_datetime.date()
+                for task in self.active_tasks
+                if task.due_datetime
+            )
 
         min_end_date = today + timedelta(days=MIN_SCHEDULE_DAYS - 1)
         max_end_date = today + timedelta(days=MAX_SCHEDULE_DAYS - 1)
@@ -787,7 +877,9 @@ class ScheduleManager:
 
     def chunk_tasks(self):
         chunks = []
-        recurrence_end_date = datetime.now() + timedelta(days=int(len(self.day_schedules)) - 1)
+        recurrence_end_date = datetime.now() + timedelta(
+            days=int(len(self.day_schedules)) - 1
+        )
 
         for task in self.active_tasks:
             for chunk_data in task.chunks:
@@ -811,7 +903,7 @@ class ScheduleManager:
                     timeblock=chunk_data.get("time_block"),
                     date=date_value,
                     is_recurring=task.recurring,
-                    status=chunk_data.get("status", "active")
+                    status=chunk_data.get("status", "active"),
                 )
                 chunks.append(chunk_obj)
 
@@ -819,7 +911,11 @@ class ScheduleManager:
                     recurrence_count = 1
                     if isinstance(task.recur_every, int):
                         try:
-                            base_date = chunk_obj.date if chunk_obj.date else datetime.now().date()
+                            base_date = (
+                                chunk_obj.date
+                                if chunk_obj.date
+                                else datetime.now().date()
+                            )
                         except ValueError:
                             base_date = datetime.now().date()
 
@@ -832,11 +928,13 @@ class ScheduleManager:
                                 chunk_type=chunk_data.get("type"),
                                 unit=chunk_data.get("unit"),
                                 size=chunk_data.get("size"),
-                                timeblock_ratings=chunk_data.get("timeblock_ratings", []),
+                                timeblock_ratings=chunk_data.get(
+                                    "timeblock_ratings", []
+                                ),
                                 timeblock=chunk_data.get("time_block"),
                                 date=next_date,
                                 is_recurring=True,
-                                status="locked"
+                                status="locked",
                             )
                             chunks.append(recurring_chunk)
                             recurrence_count += 1
@@ -851,11 +949,13 @@ class ScheduleManager:
                                     chunk_type=chunk_data.get("type"),
                                     unit=chunk_data.get("unit"),
                                     size=chunk_data.get("size"),
-                                    timeblock_ratings=chunk_data.get("timeblock_ratings", []),
+                                    timeblock_ratings=chunk_data.get(
+                                        "timeblock_ratings", []
+                                    ),
                                     timeblock=chunk_data.get("time_block"),
                                     date=current_date,
                                     is_recurring=True,
-                                    status="locked"
+                                    status="locked",
                                 )
                                 chunks.append(recurring_chunk)
                                 recurrence_count += 1
@@ -868,7 +968,7 @@ class ScheduleManager:
         This method uses OR-Tools CP-SAT to assign task chunks to available time blocks.
         It creates decision variables for each (chunk, block) pair, enforces full allocation,
         capacity, and minimum/maximum allocation constraints, and maximizes an objective based
-        on task ratings. After solving, it updates each time block’s assigned chunks; if any
+        on task ratings. After solving, it updates each time block's assigned chunks; if any
         chunk has an unscheduled remainder, that chunk is flagged.
         """
         scale = 10  # Scale factor: converts fractional hours to integers
@@ -887,7 +987,10 @@ class ScheduleManager:
 
         # --- Step 2. Prepare Chunks ---
         all_chunks = self.chunks
-        all_chunks.sort(key=lambda chunk: getattr(chunk.task, 'global_weight', float('-inf')), reverse=True)
+        all_chunks.sort(
+            key=lambda chunk: getattr(chunk.task, "global_weight", float("-inf")),
+            reverse=True,
+        )
 
         # --- Step 4. Build Allowed Assignments ---
         # For every (chunk, block) pair, record the rating and the full chunk weight (scaled).
@@ -897,13 +1000,13 @@ class ScheduleManager:
             # Convert chunk's total size to scaled units.
             full_weight = int(chunk.size * scale + 0.5)
 
-            for (block_obj, rating) in chunk.timeblock_ratings:
+            for block_obj, rating in chunk.timeblock_ratings:
                 # If the block is flagged "unavailable," you can skip it here, or
                 # handle it earlier so that chunk.timeblock_ratings never includes it.
 
                 allowed_assignments[(chunk.id, block_obj.id)] = {
                     "rating": rating,
-                    "full_weight": full_weight
+                    "full_weight": full_weight,
                 }
 
         # --- Step 5. Create the CP-SAT Model ---
@@ -915,7 +1018,9 @@ class ScheduleManager:
         for (c_id, b_id), data in allowed_assignments.items():
             assign[(c_id, b_id)] = model.NewBoolVar(f"assign_{c_id}_{b_id}")
             full_weight = data["full_weight"]
-            alloc[(c_id, b_id)] = model.NewIntVar(0, full_weight, f"alloc_{c_id}_{b_id}")
+            alloc[(c_id, b_id)] = model.NewIntVar(
+                0, full_weight, f"alloc_{c_id}_{b_id}"
+            )
 
         # Unscheduled variables and chunk parameters.
         unsched_manual = {}
@@ -943,7 +1048,9 @@ class ScheduleManager:
                 unsched_manual[chunk.id] = model.NewBoolVar(f"unsched_{chunk.id}")
             else:
                 # For auto chunks, unscheduled is an integer variable (units left unscheduled).
-                unsched_auto[chunk.id] = model.NewIntVar(0, chunk_weight[chunk.id], f"unsched_{chunk.id}")
+                unsched_auto[chunk.id] = model.NewIntVar(
+                    0, chunk_weight[chunk.id], f"unsched_{chunk.id}"
+                )
 
         # --- Constraints ---
 
@@ -952,13 +1059,17 @@ class ScheduleManager:
         # For manual chunks, the chunk must be fully assigned in one block or marked unscheduled.
         for chunk in [c for c in all_chunks if c.chunk_type == "manual"]:
             possible_assignments = []
-            for (cid, b_id) in assign:
+            for cid, b_id in assign:
                 if cid == chunk.id:
                     possible_assignments.append(assign[(cid, b_id)])
                     # If assigned to a block, then allocation must equal the full chunk weight.
-                    model.Add(alloc[(cid, b_id)] == chunk_weight[chunk.id]).OnlyEnforceIf(assign[(cid, b_id)])
+                    model.Add(
+                        alloc[(cid, b_id)] == chunk_weight[chunk.id]
+                    ).OnlyEnforceIf(assign[(cid, b_id)])
                     # Otherwise, no allocation is made.
-                    model.Add(alloc[(cid, b_id)] == 0).OnlyEnforceIf(assign[(cid, b_id)].Not())
+                    model.Add(alloc[(cid, b_id)] == 0).OnlyEnforceIf(
+                        assign[(cid, b_id)].Not()
+                    )
             # Ensure that the chunk is assigned exactly once or left unscheduled.
             model.Add(sum(possible_assignments) + unsched_manual[chunk.id] == 1)
 
@@ -966,18 +1077,26 @@ class ScheduleManager:
         # Also, for each assignment, if it is made, the allocation must be between the min and max allowed.
         for chunk in [c for c in all_chunks if c.chunk_type == "auto"]:
             possible_allocs = []
-            for (cid, b_id) in alloc:
+            for cid, b_id in alloc:
                 if cid == chunk.id:
                     # Enforce a minimum allocation if this assignment is made.
                     m = chunk_min[chunk.id]
-                    model.Add(alloc[(cid, b_id)] >= m).OnlyEnforceIf(assign[(cid, b_id)])
+                    model.Add(alloc[(cid, b_id)] >= m).OnlyEnforceIf(
+                        assign[(cid, b_id)]
+                    )
                     # Enforce a maximum allocation if this assignment is made.
                     M = chunk_max[chunk.id]
-                    model.Add(alloc[(cid, b_id)] <= M).OnlyEnforceIf(assign[(cid, b_id)])
+                    model.Add(alloc[(cid, b_id)] <= M).OnlyEnforceIf(
+                        assign[(cid, b_id)]
+                    )
                     # If not assigned, then allocation must be zero.
-                    model.Add(alloc[(cid, b_id)] == 0).OnlyEnforceIf(assign[(cid, b_id)].Not())
+                    model.Add(alloc[(cid, b_id)] == 0).OnlyEnforceIf(
+                        assign[(cid, b_id)].Not()
+                    )
                     possible_allocs.append(alloc[(cid, b_id)])
-            model.Add(sum(possible_allocs) + unsched_auto[chunk.id] == chunk_weight[chunk.id])
+            model.Add(
+                sum(possible_allocs) + unsched_auto[chunk.id] == chunk_weight[chunk.id]
+            )
             # Note: The flexibility of splitting is inherent in allowing multiple assignments
             # that each must satisfy the min and max limits.
 
@@ -985,7 +1104,7 @@ class ScheduleManager:
         # The total allocated units in each time block must not exceed its available capacity.
         for block in all_blocks:
             block_allocs = []
-            for (c_id, b_id) in alloc:
+            for c_id, b_id in alloc:
                 if b_id == block.id:
                     block_allocs.append(alloc[(c_id, b_id)])
             model.Add(sum(block_allocs) <= block_capacity[block.id])
@@ -1024,14 +1143,16 @@ class ScheduleManager:
                 # we record the block object and the allocated hours.
                 block_allocations = []
                 total_assigned_scaled = 0
-                for (c_id, b_id) in assign:
+                for c_id, b_id in assign:
                     if c_id == chunk.id:
                         if solver.Value(assign[(c_id, b_id)]) == 1:
                             alloc_units = solver.Value(alloc[(c_id, b_id)])
                             if alloc_units > 0:
                                 allocated_hours = alloc_units / scale
                                 total_assigned_scaled += alloc_units
-                                block_obj = next((b for b in all_blocks if b.id == b_id), None)
+                                block_obj = next(
+                                    (b for b in all_blocks if b.id == b_id), None
+                                )
                                 block_allocations.append((block_obj, allocated_hours))
 
                 # Retrieve the unscheduled value using the appropriate unsched list.
@@ -1045,7 +1166,9 @@ class ScheduleManager:
                         # Manual chunks should be assigned fully to one block.
                         if len(block_allocations) == 1:
                             block_obj, alloc_hours = block_allocations[0]
-                            rating = allowed_assignments.get((chunk.id, block_obj.id), {}).get("rating", 100)
+                            rating = allowed_assignments.get(
+                                (chunk.id, block_obj.id), {}
+                            ).get("rating", 100)
                             block_obj.add_chunk(chunk, rating)
                             print(
                                 f"Manual Chunk {chunk.id} assigned fully to Block {block_obj.id} "
@@ -1057,15 +1180,21 @@ class ScheduleManager:
                     unsched_hours = unsched_amt / scale
                     if unsched_amt > 0:
                         chunk.flagged = True
-                        print(f"Auto Chunk {chunk.id} UNSCHEDULED for {unsched_hours:.2f} hours")
+                        print(
+                            f"Auto Chunk {chunk.id} UNSCHEDULED for {unsched_hours:.2f} hours"
+                        )
 
                     # If allocated to multiple blocks, split the chunk.
                     if len(block_allocations) > 1:
-                        hours_list = [alloc_hours for (_, alloc_hours) in block_allocations]
+                        hours_list = [
+                            alloc_hours for (_, alloc_hours) in block_allocations
+                        ]
                         subchunks = chunk.split(hours_list)
                         for i, (block_obj, alloc_hours) in enumerate(block_allocations):
                             subchunk = subchunks[i]
-                            rating = allowed_assignments.get((chunk.id, block_obj.id), {}).get("rating", 100)
+                            rating = allowed_assignments.get(
+                                (chunk.id, block_obj.id), {}
+                            ).get("rating", 100)
                             block_obj.add_chunk(subchunk, rating)
                             print(
                                 f"Auto Chunk {chunk.task.name} split → {subchunk.task.name}, assigned {alloc_hours:.2f} hours "
@@ -1073,7 +1202,9 @@ class ScheduleManager:
                             )
                     elif len(block_allocations) == 1:
                         block_obj, alloc_hours = block_allocations[0]
-                        rating = allowed_assignments.get((chunk.id, block_obj.id), {}).get("rating", 100)
+                        rating = allowed_assignments.get(
+                            (chunk.id, block_obj.id), {}
+                        ).get("rating", 100)
                         block_obj.add_chunk(chunk, rating)
                         print(
                             f"Auto Chunk {chunk.task.name} assigned {alloc_hours:.2f} hours "
@@ -1099,7 +1230,9 @@ class ScheduleManager:
                         continue
 
                 # Find the DaySchedule matching the target date.
-                matching_day = next((day for day in self.day_schedules if day.date == target_date), None)
+                matching_day = next(
+                    (day for day in self.day_schedules if day.date == target_date), None
+                )
                 if matching_day is None:
                     chunk.flagged = True
                     continue
@@ -1107,8 +1240,12 @@ class ScheduleManager:
                 # Find the specific timeblock within the DaySchedule.
                 # Assume chunk.timeblock holds the id of the target timeblock.
                 target_block = next(
-                    (block for block in matching_day.time_blocks if str(block.id) == str(chunk.timeblock)),
-                    None
+                    (
+                        block
+                        for block in matching_day.time_blocks
+                        if str(block.id) == str(chunk.timeblock)
+                    ),
+                    None,
                 )
                 if target_block is None:
                     chunk.flagged = True
@@ -1120,13 +1257,18 @@ class ScheduleManager:
                         continue
 
                 # Assign the placed chunk to the target timeblock.
-                target_block.add_chunk(chunk, 10000)  # Using a fixed high rating for placed assignments.
+                target_block.add_chunk(
+                    chunk, 10000
+                )  # Using a fixed high rating for placed assignments.
                 continue  # Skip to the next chunk.
 
             if chunk.is_recurring:
                 chunk.timeblock_ratings = []
                 for day in self.day_schedules:
-                    if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
+                    if (
+                        chunk.task.due_datetime
+                        and day.date > chunk.task.due_datetime.date()
+                    ):
                         break
                     if day.date == chunk.date:
                         ratings = day.get_suitable_timeblocks_with_rating(chunk)
@@ -1138,7 +1280,10 @@ class ScheduleManager:
                 chunk.timeblock_ratings = []
                 for day in self.day_schedules:
                     # Skip days beyond the task's due date (if set).
-                    if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
+                    if (
+                        chunk.task.due_datetime
+                        and day.date > chunk.task.due_datetime.date()
+                    ):
                         break
                     ratings = day.get_suitable_timeblocks_with_rating(chunk)
                     chunk.timeblock_ratings.extend(ratings)
@@ -1190,7 +1335,7 @@ class DaySchedule:
             block.buffer_ratio = buffer_ratio
 
     def generate_schedule(self):
-        target_day = self.date.strftime('%A').lower()
+        target_day = self.date.strftime("%A").lower()
 
         # 1) The day starts at self.schedule_settings.day_start
         day_start = datetime.combine(self.date, self.schedule_settings.day_start)
@@ -1208,10 +1353,16 @@ class DaySchedule:
         )
         sleep_block.start_time = day_end.time()
         sleep_block.end_time = (day_end + timedelta(hours=self.sleep_time)).time()
-        sleep_block.duration = (timedelta(hours=self.sleep_time).total_seconds()) / 3600.0
+        sleep_block.duration = (
+            timedelta(hours=self.sleep_time).total_seconds()
+        ) / 3600.0
 
         # 4) Gather user‑defined blocks for this date
-        user_blocks = self.schedule_manager_instance.get_user_defined_timeblocks_for_date(self.date)
+        user_blocks = (
+            self.schedule_manager_instance.get_user_defined_timeblocks_for_date(
+                self.date
+            )
+        )
         user_blocks.sort(key=lambda b: b.start_time)
 
         final_blocks = []
@@ -1242,7 +1393,9 @@ class DaySchedule:
                 )
                 gap_block.start_time = current_dt.time()
                 gap_block.end_time = block_start_dt.time()
-                gap_block.duration = (block_start_dt - current_dt).total_seconds() / 3600
+                gap_block.duration = (
+                    block_start_dt - current_dt
+                ).total_seconds() / 3600
                 final_blocks.append(gap_block)
 
             final_blocks.append(block)
@@ -1376,7 +1529,9 @@ class DaySchedule:
             # 2) Added Date Influence
             added_date_score = 0
             if hasattr(task, "added_date_time") and task.added_date_time:
-                days_from_added_to_block = (self.date - task.added_date_time.date()).days
+                days_from_added_to_block = (
+                    self.date - task.added_date_time.date()
+                ).days
                 # Example: big bonus if scheduled soon, decays over time
                 added_date_score = max(0, 30 - days_from_added_to_block)
             rating_added_date = beta * added_date_score
@@ -1418,12 +1573,14 @@ class DaySchedule:
                 "Morning": (time(6, 0), time(10, 0)),
                 "Afternoon": (time(12, 0), time(16, 0)),
                 "Evening": (time(16, 0), time(20, 0)),
-                "Night": (time(20, 0), time(23, 0))
+                "Night": (time(20, 0), time(23, 0)),
             }
             if task.time_of_day_preference:
                 for pref in task.time_of_day_preference:
                     if pref in pref_intervals:
-                        bonus = compute_time_bonus(block.start_time, pref_intervals[pref], 50)
+                        bonus = compute_time_bonus(
+                            block.start_time, pref_intervals[pref], 50
+                        )
                         time_of_day_score += bonus
                         # break if you only want to apply the first match:
                         break
@@ -1433,23 +1590,29 @@ class DaySchedule:
             effort_score = 0
             if task.effort_level:
                 if task.effort_level == "High":
-                    peak_start, peak_end = self.schedule_settings.peak_productivity_hours
-                    effort_score = compute_time_bonus(block.start_time, (peak_start, peak_end), 50)
+                    peak_start, peak_end = (
+                        self.schedule_settings.peak_productivity_hours
+                    )
+                    effort_score = compute_time_bonus(
+                        block.start_time, (peak_start, peak_end), 50
+                    )
                 elif task.effort_level == "Low":
                     off_start, off_end = self.schedule_settings.off_peak_hours
-                    effort_score = compute_time_bonus(block.start_time, (off_start, off_end), 30)
+                    effort_score = compute_time_bonus(
+                        block.start_time, (off_start, off_end), 30
+                    )
             rating_effort = theta_ * effort_score
 
             # Combine sub-ratings
             rating = (
-                    rating_due_date +
-                    rating_added_date +
-                    rating_priority +
-                    rating_flexibility +
-                    rating_days_from_today +
-                    rating_preferred_days +
-                    rating_time_of_day +
-                    rating_effort
+                rating_due_date
+                + rating_added_date
+                + rating_priority
+                + rating_flexibility
+                + rating_days_from_today
+                + rating_preferred_days
+                + rating_time_of_day
+                + rating_effort
             )
 
             # Optionally, you can add a baseline
