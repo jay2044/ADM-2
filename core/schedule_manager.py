@@ -9,6 +9,7 @@ import math
 
 from core.task_manager import *
 from core.utils import *
+from core.signals import global_signals
 
 
 def time_to_string(t: time) -> str:
@@ -393,6 +394,14 @@ class ScheduleManager:
 
         self.generate_schedule()
 
+        # whenever any task is added/updated/removed, refresh weights
+        global_signals.task_list_updated.connect(self._on_tasks_changed)
+
+    def _on_tasks_changed(self):
+        # this will in turn re‐weight and re‐assign if you like
+        self.update_task_global_weights()
+        self.generate_schedule()
+
     def create_tables(self):
         with self.conn:
             self.conn.execute(
@@ -763,7 +772,10 @@ class ScheduleManager:
         )
 
     def update_task_global_weights(self):
+        # always pull the latest tasks
+        self.active_tasks = self.task_manager_instance.get_active_tasks()
 
+        # then compute your max_added_time, etc.
         max_added_time = (
             max(
                 (datetime.now() - task.added_date_time).total_seconds()
