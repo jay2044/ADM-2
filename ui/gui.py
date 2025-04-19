@@ -4,6 +4,7 @@ from PyQt6.QtGui import QFont
 from widgets.dock_widgets import *
 from core.task_manager import *
 from core.signals import global_signals
+import json
 
 area_map = {
     "DockWidgetArea.LeftDockWidgetArea": Qt.DockWidgetArea.LeftDockWidgetArea,
@@ -133,31 +134,44 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def save_settings(self):
-        settings = QSettings(ORG_NAME, APP_NAME)
+        settings = self.settings  # QSettings(ORG_NAME, APP_NAME)
+        # Save the full mainWindowState (geometry + dock locations)
         settings.setValue(SETTINGS_MAIN_WINDOW_STATE, self.saveState())
-
-        open_dock_widgets = []
-        for dock in self.findChildren(TaskListDock):
-            if dock.isVisible():
-                dock_info = {
-                    'objectName': dock.objectName(),
-                    'task_list_name': dock.task_list_name
-                }
-                open_dock_widgets.append(dock_info)
-        settings.setValue(SETTINGS_OPEN_DOCK_WIDGETS, json.dumps(open_dock_widgets))
+        # Build a list of open TaskDetail docks by task ID
+        open_docks = []
+        for dock in self.findChildren(TaskDetailDock):
+            # parse the task ID out of its objectName
+            # since we set it to "TaskDetailDock_<id>"
+            _, tid = dock.objectName().split("_", 1)
+            open_docks.append({'task_id': tid, 'objectName': dock.objectName()})
+        settings.setValue(SETTINGS_OPEN_DOCK_WIDGETS, json.dumps(open_docks))
 
     def load_settings(self):
         try:
-            settings = QSettings(ORG_NAME, APP_NAME)
-
-            open_dock_widgets = json.loads(settings.value(SETTINGS_OPEN_DOCK_WIDGETS, "[]"))
-            for dock_info in open_dock_widgets:
-                dock = TaskListDock(dock_info['task_list_name'], self)
-                dock.setObjectName(dock_info['objectName'])
-                dock.setWindowTitle(dock_info['task_list_name'])
-                self.addDockWidget(DEFAULT_DOCK_AREA, dock)
-
-            self.restoreState(settings.value(SETTINGS_MAIN_WINDOW_STATE))
+            settings = self.settings  # QSettings(ORG_NAME, APP_NAME)
+            # 1) Recreate all task-detail docks exactly as before
+            raw = settings.value(SETTINGS_OPEN_DOCK_WIDGETS, "[]")
+            try:
+                open_docks = json.loads(raw)
+            except Exception:
+                open_docks = []
+            for info in open_docks:
+                # info contains 'task_id' and 'objectName'
+                task_id = info['task_id']
+                # find task object by id
+                task = next((t for tl in self.task_manager.task_lists
+                             for t in tl.tasks if t.id == task_id), None)
+                if not task:
+                    continue
+                # this will assign the very same objectName
+                self.add_task_detail_dock(task)
+            # 2) Now restore the saved dock layout
+            ba = settings.value(SETTINGS_MAIN_WINDOW_STATE)
+            if isinstance(ba, QByteArray):
+                self.restoreState(ba)
+            else:
+                # if it was saved as a Python bytes or str, convert:
+                self.restoreState(QByteArray.fromBase64(ba.encode() if isinstance(ba, str) else ba))
         except Exception as e:
             print(e)
 
@@ -178,9 +192,10 @@ class MainWindow(QMainWindow):
                 dock.activateWindow()
                 return
 
-        unique_id = random.randint(1000, 9999)
+        # Use the task ID so that objectName is reproducible
+        dock_name = f"TaskDetailDock_{task.id}"
         task_detail_dock = TaskDetailDock(task, task_list_widget, parent=self)
-        task_detail_dock.setObjectName(f"TaskListDock_{task.name}_{unique_id}")
+        task_detail_dock.setObjectName(dock_name)
         task_detail_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
 
         existing_docks = [

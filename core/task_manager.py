@@ -822,7 +822,11 @@ class TaskManager:
             task_list_data["sort_by_tags"] = from_bool_int(
                 task_list_data["sort_by_tags"]
             )
-            task_lists.append(TaskList(**task_list_data))
+            # Create the TaskList object first
+            task_list = TaskList(**task_list_data)
+            # Now load its tasks from the DB and assign them
+            task_list.tasks = self.get_tasks_by_list_name(task_list.name)
+            task_lists.append(task_list)
         return task_lists
 
     def initialize_system_category(self):
