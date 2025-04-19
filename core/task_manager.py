@@ -1160,11 +1160,7 @@ class TaskManager:
                     task_list.default_flexibility,
                     task_list.default_effort_level,
                     task_list.default_priority,
-                    (
-                        safe_json_dumps(task_list.default_preferred_work_days)
-                        if task_list.default_preferred_work_days
-                        else None
-                    ),
+                    safe_json_dumps(task_list.default_preferred_work_days, '[]', 'default_preferred_work_days'),
                     int(task_list.consider_in_schedule),
                     int(task_list.sort_by_queue),
                     int(task_list.sort_by_stack),
@@ -1274,11 +1270,7 @@ class TaskManager:
                     task_list.default_flexibility,
                     task_list.default_effort_level,
                     task_list.default_priority,
-                    (
-                        safe_json_dumps(task_list.default_preferred_work_days)
-                        if task_list.default_preferred_work_days
-                        else None
-                    ),
+                    safe_json_dumps(task_list.default_preferred_work_days, '[]', 'default_preferred_work_days'),
                     int(task_list.consider_in_schedule),
                     int(task_list.sort_by_queue),
                     int(task_list.sort_by_stack),
@@ -1382,8 +1374,8 @@ class TaskManager:
                     task.name,
                     task.description,
                     task.notes,
-                    safe_json_dumps(task.tags) if task.tags else None,
-                    safe_json_dumps(task.resources) if task.resources else None,
+                    safe_json_dumps(task.tags, '[]', 'tags') if task.tags else None,
+                    safe_json_dumps(task.resources, '[]', 'resources') if task.resources else None,
                     task.start_date.strftime("%Y-%m-%d") if task.start_date else None,
                     (
                         task.due_datetime.strftime("%Y-%m-%d %H:%M")
@@ -1403,33 +1395,25 @@ class TaskManager:
                     task.list_order,
                     task.list_name,
                     int(task.recurring),
-                    safe_json_dumps(task.recur_every) if task.recur_every else None,
+                    safe_json_dumps(task.recur_every, 'null', 'recur_every') if task.recur_every else None,
                     task.recurrences,
                     task.time_estimate,
                     task.time_logged,
                     task.count_required,
                     task.count_completed,
-                    safe_json_dumps(task.chunks) if task.chunks else "[]",
+                    safe_json_dumps(task.chunks, '[]', 'chunks') if task.chunks else "[]",
                     task.chunk_preference,
                     task.min_chunk_size,
                     task.max_chunk_size,
-                    safe_json_dumps(task.subtasks) if task.subtasks else "[]",
-                    safe_json_dumps(task.dependencies) if task.dependencies else None,
+                    safe_json_dumps(task.subtasks, '[]', 'subtasks') if task.subtasks else "[]",
+                    safe_json_dumps(task.dependencies, '[]', 'dependencies') if task.dependencies else None,
                     task.status,
                     task.flexibility,
                     task.effort_level,
                     task.priority,
                     task.previous_priority,
-                    (
-                        safe_json_dumps(task.preferred_work_days)
-                        if task.preferred_work_days
-                        else "[]"
-                    ),
-                    (
-                        safe_json_dumps(task.time_of_day_preference)
-                        if task.time_of_day_preference
-                        else "[]"
-                    ),
+                    safe_json_dumps(task.preferred_work_days, '[]', 'preferred_work_days'),
+                    safe_json_dumps(task.time_of_day_preference, '[]', 'time_of_day_preference'),
                     int(task.include_in_schedule),
                     task.global_weight,
                 ),
@@ -1539,8 +1523,8 @@ class TaskManager:
                     task.name,
                     task.description,
                     task.notes,
-                    safe_json_dumps(task.tags) if task.tags else None,
-                    safe_json_dumps(task.resources) if task.resources else None,
+                    safe_json_dumps(task.tags, '[]', 'tags') if task.tags else None,
+                    safe_json_dumps(task.resources, '[]', 'resources') if task.resources else None,
                     task.start_date.isoformat() if task.start_date else None,
                     task.due_datetime.isoformat() if task.due_datetime else None,
                     task.added_date_time.isoformat() if task.added_date_time else None,
@@ -1552,33 +1536,25 @@ class TaskManager:
                     task.list_order,
                     task.list_name,
                     int(task.recurring),
-                    safe_json_dumps(task.recur_every) if task.recur_every else None,
+                    safe_json_dumps(task.recur_every, 'null', 'recur_every') if task.recur_every else None,
                     task.recurrences,
                     task.time_estimate,
                     task.time_logged,
                     task.count_required,
                     task.count_completed,
-                    safe_json_dumps(task.chunks) if task.chunks else "[]",
+                    safe_json_dumps(task.chunks, '[]', 'chunks') if task.chunks else "[]",
                     task.chunk_preference,
                     task.min_chunk_size,
                     task.max_chunk_size,
-                    safe_json_dumps(task.subtasks) if task.subtasks else "[]",
-                    safe_json_dumps(task.dependencies) if task.dependencies else None,
+                    safe_json_dumps(task.subtasks, '[]', 'subtasks') if task.subtasks else "[]",
+                    safe_json_dumps(task.dependencies, '[]', 'dependencies') if task.dependencies else None,
                     task.status,
                     task.flexibility,
                     task.effort_level,
                     task.priority,
                     task.previous_priority,
-                    (
-                        safe_json_dumps(task.preferred_work_days)
-                        if task.preferred_work_days
-                        else "[]"
-                    ),
-                    (
-                        safe_json_dumps(task.time_of_day_preference)
-                        if task.time_of_day_preference
-                        else "[]"
-                    ),
+                    safe_json_dumps(task.preferred_work_days, '[]', 'preferred_work_days'),
+                    safe_json_dumps(task.time_of_day_preference, '[]', 'time_of_day_preference'),
                     int(task.include_in_schedule),
                     task.global_weight,
                     task.id,

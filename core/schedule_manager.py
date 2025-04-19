@@ -483,19 +483,11 @@ class ScheduleManager:
                 schedule_dict = time_block["schedule"]
                 # Convert any datetime.time objects to strings
                 schedule_dict = convert_times_in_schedule(schedule_dict)
-                schedule_json = safe_json_dumps(schedule_dict)
+                schedule_json = safe_json_dumps(schedule_dict, '{}', 'schedule')
             else:
                 schedule_json = "{}"
-            list_cats_json = (
-                safe_json_dumps(time_block["list_categories"])
-                if "list_categories" in time_block
-                else safe_json_dumps({"include": [], "exclude": []})
-            )
-            task_tags_json = (
-                safe_json_dumps(time_block["task_tags"])
-                if "task_tags" in time_block
-                else safe_json_dumps({"include": [], "exclude": []})
-            )
+            list_cats_json = safe_json_dumps(time_block["list_categories"], '{"include":[],"exclude":[]}', 'list_categories')
+            task_tags_json = safe_json_dumps(time_block["task_tags"], '{"include":[],"exclude":[]}', 'task_tags')
 
             color_str = ""
             if "color" in time_block and time_block["color"]:
@@ -601,14 +593,18 @@ class ScheduleManager:
                 schedule_dict = updated_block["schedule"]
                 # Convert any datetime.time objects to strings
                 schedule_dict = convert_times_in_schedule(schedule_dict)
-                schedule_json = safe_json_dumps(schedule_dict)
+                schedule_json = safe_json_dumps(schedule_dict, '{}', 'schedule')
             else:
                 schedule_json = "{}"
             list_cats_json = safe_json_dumps(
-                updated_block.get("list_categories", {"include": [], "exclude": []})
+                updated_block.get("list_categories", {"include":[],"exclude":[]}), 
+                '{"include":[],"exclude":[]}', 
+                'list_categories'
             )
             task_tags_json = safe_json_dumps(
-                updated_block.get("task_tags", {"include": [], "exclude": []})
+                updated_block.get("task_tags", {"include":[],"exclude":[]}), 
+                '{"include":[],"exclude":[]}', 
+                'task_tags'
             )
             color_str = ""
             if "color" in updated_block and updated_block["color"]:
