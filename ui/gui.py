@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
 from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QTimer
 from widgets.dock_widgets import *
 from core.task_manager import *
 from core.signals import global_signals
@@ -42,7 +43,15 @@ class MainWindow(QMainWindow):
         self.load_settings()
         self.setAcceptDrops(True)
         self.setup_signals()
+        self.setup_schedule_timer()
         # self.reset_settings()
+
+    def setup_schedule_timer(self):
+        # Setup the timer for periodic schedule refresh
+        self._schedule_timer = QTimer(self)
+        self._schedule_timer.setInterval(60_000) # 60 seconds
+        self._schedule_timer.timeout.connect(global_signals.refresh_schedule_signal.emit)
+        self._schedule_timer.start()
 
     def reset_settings(self):
         confirm = QMessageBox.question(

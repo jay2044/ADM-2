@@ -394,8 +394,9 @@ class ScheduleManager:
 
         self.generate_schedule()
 
-        # whenever any task is added/updated/removed, refresh weights
+        # Connect signals
         global_signals.task_list_updated.connect(self._on_tasks_changed)
+        global_signals.refresh_schedule_signal.connect(self.refresh_schedule)
 
     def _on_tasks_changed(self):
         # this will in turn re‐weight and re‐assign if you like
@@ -533,6 +534,7 @@ class ScheduleManager:
             self.time_blocks.append(time_block)
 
             cursor.close()
+            global_signals.refresh_schedule_signal.emit()
             return new_id
 
         except sqlite3.Error as e:
@@ -569,6 +571,7 @@ class ScheduleManager:
 
             self.time_blocks.remove(block_to_remove)
             cursor.close()
+            global_signals.refresh_schedule_signal.emit()
             return True
 
         except sqlite3.Error as e:
@@ -662,6 +665,7 @@ class ScheduleManager:
             
             # Update the existing dictionary in the list
             self.time_blocks[existing_index].update(block_for_memory)
+            global_signals.refresh_schedule_signal.emit()
             return True
 
         except sqlite3.Error as e:
