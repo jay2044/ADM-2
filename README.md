@@ -39,42 +39,6 @@ It intelligently handles shifting priorities, conflicts, and unexpected changes,
 
 ---
 
-## Key Features  
-
-### Flexible Task Management  
-- **Category** – Represents a top-level grouping to organize tasks across different areas of life (e.g., Work, Personal, Projects). Each category can hold multiple task lists.  
-- **Task List** – A collection of tasks under a category that can be enabled or disabled for scheduling. Task lists allow bulk organization and filtering of related tasks.  
-- **Task** – Create tasks with rich attributes like descriptions, due dates, priorities, categories, time estimates, and resources. Tasks are scheduled into time blocks based on available hours and scheduling rules.  
-- Quickly mark tasks as completed or important.  
-- Organize tasks into lists and categories with ease.  
-
-### Subtasks and Recurring Tasks  
-- Break down large tasks into manageable subtasks.  
-- Handle recurring tasks automatically based on custom schedules.  
-- Reopen recurring tasks automatically to avoid losing track of ongoing responsibilities.  
-
-### Automated Scheduling  
-- **Time Block** – A defined period in the schedule where tasks are placed. Time blocks can be user-defined or automatically generated based on task attributes and availability.  
-- **Schedule** – The structured daily plan built from time blocks. The schedule updates dynamically in real time as tasks are completed, delayed, or reprioritized.  
-- Generate a daily schedule based on task priorities, time estimates, flexibility, and preferred working hours.  
-- Adjust dynamically based on real-time progress and shifting priorities.  
-- Handles conflicts between overlapping tasks without user input.  
-
-### Calendar and History Views  
-- Visualize tasks on a calendar for a quick overview of deadlines and due dates.  
-- Review completed tasks in the history section and restore them if needed.  
-
-### Integrated Productivity Tools  
-- Track effort using count and time-based progress bars.  
-- Manage task-related resources and maintain notes within the app.  
-- Receive proactive suggestions for improving workflow.  
-
-### Customizable Sorting and Filtering  
-- Sort tasks by priority, urgency, time estimate, or category.  
-- Apply custom filters and multi-selection for batch task management.   
-
----
-
 ## Why Time Management Feels Impossible  
 Managing time effectively is hard. Tasks pile up, priorities shift, and available hours disappear faster than expected. Traditional to-do list apps fail because they treat tasks as static lists, leaving you to figure out how to fit everything into your day manually.  
 
@@ -114,6 +78,42 @@ ADM-2 isn’t just another to-do list or calendar—it’s a **real-time schedul
 - **Goal-Oriented Individuals** – Maintain focus on both short-term and long-term goals with dynamic tracking and adjustment.  
 
 Defining each task takes some upfront effort—you’ll need to provide details like effort, priority, flexibility, and time estimates—but this is a trade-off that’s well worth the results. By giving ADM-2 enough context, it can create a highly accurate, adaptable schedule that reflects your real-life workload and adjusts dynamically as things change.  
+
+---
+
+## Key Features  
+
+### Flexible Task Management  
+- **Category** – Represents a top-level grouping to organize tasks across different areas of life (e.g., Work, Personal, Projects). Each category can hold multiple task lists.  
+- **Task List** – A collection of tasks under a category that can be enabled or disabled for scheduling. Task lists allow bulk organization and filtering of related tasks.  
+- **Task** – Create tasks with rich attributes like descriptions, due dates, priorities, categories, time estimates, and resources. Tasks are scheduled into time blocks based on available hours and scheduling rules.  
+- Quickly mark tasks as completed or important.  
+- Organize tasks into lists and categories with ease.  
+
+### Subtasks and Recurring Tasks  
+- Break down large tasks into manageable subtasks.  
+- Handle recurring tasks automatically based on custom schedules.  
+- Reopen recurring tasks automatically to avoid losing track of ongoing responsibilities.  
+
+### Automated Scheduling  
+- **Time Block** – A defined period in the schedule where tasks are placed. Time blocks can be user-defined or automatically generated based on task attributes and availability.  
+- **Schedule** – The structured daily plan built from time blocks. The schedule updates dynamically in real time as tasks are completed, delayed, or reprioritized.  
+- Generate a daily schedule based on task priorities, time estimates, flexibility, and preferred working hours.  
+- Adjust dynamically based on real-time progress and shifting priorities.  
+- Handles conflicts between overlapping tasks without user input.  
+
+### Calendar and History Views  
+- Visualize tasks on a calendar for a quick overview of deadlines and due dates.  
+- Review completed tasks in the history section and restore them if needed.  
+
+### Integrated Productivity Tools  
+- Track effort using count and time-based progress bars.  
+- Manage task-related resources and maintain notes within the app.  
+- Receive proactive suggestions for improving workflow.  
+
+### Customizable Sorting and Filtering  
+- Sort tasks by priority, urgency, time estimate, or category.  
+- Apply custom filters and multi-selection for batch task management.   
 
 ---
 
