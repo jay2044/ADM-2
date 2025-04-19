@@ -36,9 +36,15 @@ class TaskChunk:
 
     def update_status(self):
         if self.date and self.is_recurring:
-            if isinstance(self.date, (date, datetime)) and self.date == datetime.today().date():
+            if (
+                isinstance(self.date, (date, datetime))
+                and self.date == datetime.today().date()
+            ):
                 return "active"
-            elif isinstance(self.date, (date, datetime)) and self.date > datetime.today().date():
+            elif (
+                isinstance(self.date, (date, datetime))
+                and self.date > datetime.today().date()
+            ):
                 return "locked"
         return "active"
 
@@ -57,19 +63,19 @@ class TaskChunk:
             total_ratio = sum(ratios)
             # Guard against division by zero if ratios is empty or sums to zero
             if total_ratio <= 0:
-                return [self] # Cannot split if total ratio is not positive
-                
+                return [self]  # Cannot split if total ratio is not positive
+
             if self.unit == "time":
                 subchunks = [
                     TaskChunk(
                         # Generate new unique IDs for subchunks
-                        str(uuid.uuid4()), 
+                        str(uuid.uuid4()),
                         self.task,
                         self.chunk_type,
                         self.unit,
                         size=(self.size * r) / total_ratio,
-                        timeblock_ratings=self.timeblock_ratings, # Subchunks might need re-rating
-                        timeblock=None, # Subchunks are initially unassigned
+                        timeblock_ratings=self.timeblock_ratings,  # Subchunks might need re-rating
+                        timeblock=None,  # Subchunks are initially unassigned
                         date=self.date,
                         is_recurring=self.is_recurring,
                         status=self.status,
@@ -93,13 +99,13 @@ class TaskChunk:
                 subchunks = [
                     TaskChunk(
                         # Generate new unique IDs for subchunks
-                        str(uuid.uuid4()), 
+                        str(uuid.uuid4()),
                         self.task,
                         self.chunk_type,
                         self.unit,
                         size=(self.size * r) / total_ratio,
-                        timeblock_ratings=self.timeblock_ratings, # Subchunks might need re-rating
-                        timeblock=None, # Subchunks are initially unassigned
+                        timeblock_ratings=self.timeblock_ratings,  # Subchunks might need re-rating
+                        timeblock=None,  # Subchunks are initially unassigned
                         date=self.date,
                         is_recurring=self.is_recurring,
                         status=self.status,
@@ -123,7 +129,7 @@ class TaskChunk:
 
 
 class Task:
-    default_progress_order = ['subtasks', 'count', 'time']
+    default_progress_order = ["subtasks", "count", "time"]
 
     def __init__(self, **kwargs):
 
@@ -330,7 +336,7 @@ class Task:
             return date_str
 
         # Create a copy to avoid mutating the original list
-        fmts = list(formats) 
+        fmts = list(formats)
         # Add format with fractional seconds
         fmts.append("%Y-%m-%dT%H:%M:%S.%f")
 
@@ -342,10 +348,10 @@ class Task:
                 continue
         # If parsing fails with all formats, try ISO format as a last resort
         try:
-            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         except ValueError:
-            pass # Ignore ISO format parse error if it fails
-            
+            pass  # Ignore ISO format parse error if it fails
+
         raise ValueError(
             f"Date '{date_str}' does not match any of the provided formats: {fmts} or ISO format"
         )
@@ -353,20 +359,22 @@ class Task:
     def _progress_by_subtasks(self):
         """Calculate progress based on completed subtasks. Returns 0-100 float or None."""
         if self.subtasks:
-            completed_subtasks = sum(1 for subtask in self.subtasks if subtask.get("completed", False))
+            completed_subtasks = sum(
+                1 for subtask in self.subtasks if subtask.get("completed", False)
+            )
             total_subtasks = len(self.subtasks)
             if total_subtasks > 0:
                 return (completed_subtasks / total_subtasks) * 100
             else:
-                return 0.0 # Treat as 0% if list exists but is empty
-        return None # No subtasks defined
+                return 0.0  # Treat as 0% if list exists but is empty
+        return None  # No subtasks defined
 
     def _progress_by_count(self):
         """Calculate progress based on item count. Returns 0-100 float or None."""
         if self.count_required > 0:
             return (self.count_completed / self.count_required) * 100
         # If count_required is 0 or not set, this method isn't applicable
-        return None 
+        return None
 
     def _progress_by_time(self):
         """Calculate progress based on time logged vs estimate. Returns 0-100 float or None."""
@@ -381,9 +389,9 @@ class Task:
         """Calculates task progress based on a configurable order of strategies."""
         order = order or self.default_progress_order
         strategy_map = {
-            'subtasks': self._progress_by_subtasks,
-            'count': self._progress_by_count,
-            'time': self._progress_by_time,
+            "subtasks": self._progress_by_subtasks,
+            "count": self._progress_by_count,
+            "time": self._progress_by_time,
         }
 
         for strategy_name in order:
@@ -392,8 +400,8 @@ class Task:
                 percentage = progress_func()
                 if percentage is not None:
                     # First applicable strategy found, return its value
-                    return percentage 
-        
+                    return percentage
+
         # If no strategy yielded a valid percentage, return 0.0
         return 0.0
 
@@ -591,20 +599,20 @@ class TaskList:
 
     def calculate_progress(self):
         if not self.tasks:
-            return 0.0 # No tasks, 0% progress
-        
+            return 0.0  # No tasks, 0% progress
+
         total_progress = 0
         tasks_with_progress = 0
         for task in self.tasks:
-             # Assuming task.progress is already calculated (0-100)
-             # We only average tasks that meaningfully contribute (e.g., have subtasks/count/time)
-             # A task returning 0 progress from calculate_progress might be counted or ignored based on definition.
-             # Let's assume task.progress accurately reflects its state.
-             total_progress += task.progress
-             tasks_with_progress += 1 # Count every task for the average
-             
+            # Assuming task.progress is already calculated (0-100)
+            # We only average tasks that meaningfully contribute (e.g., have subtasks/count/time)
+            # A task returning 0 progress from calculate_progress might be counted or ignored based on definition.
+            # Let's assume task.progress accurately reflects its state.
+            total_progress += task.progress
+            tasks_with_progress += 1  # Count every task for the average
+
         if tasks_with_progress == 0:
-             return 0.0 # Avoid division by zero if no tasks were counted
+            return 0.0  # Avoid division by zero if no tasks were counted
 
         return total_progress / tasks_with_progress
 
@@ -1117,13 +1125,18 @@ class TaskManager:
             # Update in-memory structure
             self.categories[category_name] = {"order": new_order, "task_lists": []}
         except sqlite3.IntegrityError as e:
-            print(f"Error adding category '{category_name}': {e}") # Likely duplicate name
-            if self.conn: self.conn.rollback()
+            print(
+                f"Error adding category '{category_name}': {e}"
+            )  # Likely duplicate name
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(f"Unexpected error while adding category '{category_name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
 
     def remove_category(self, category_name):
         if category_name.lower() == "system":
@@ -1136,15 +1149,18 @@ class TaskManager:
             self.conn.commit()
             # Reload categories from DB to reflect change
             self.categories = self.load_categories()
-        except sqlite3.Error as e: # Changed from IntegrityError to general Error
+        except sqlite3.Error as e:  # Changed from IntegrityError to general Error
             print(f"Error removing category '{category_name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(f"Unexpected error while removing category '{category_name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
-            
+            if cursor:
+                cursor.close()
+
     def rename_category(self, old_name, new_name):
         if old_name.lower() == "system":
             print("Error: The system category cannot be renamed.")
@@ -1158,20 +1174,23 @@ class TaskManager:
             # Check if the row was actually updated
             if cursor.rowcount == 0:
                 print(f"Warning: Category '{old_name}' not found for renaming.")
-            else:    
+            else:
                 self.conn.commit()
             # Reload categories to reflect changes
-            self.categories = self.load_categories() 
-        except sqlite3.IntegrityError as e: # Could be duplicate new_name
+            self.categories = self.load_categories()
+        except sqlite3.IntegrityError as e:  # Could be duplicate new_name
             print(f"Error renaming category from '{old_name}' to '{new_name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(
                 f"Unexpected error while renaming category from '{old_name}' to '{new_name}': {e}"
             )
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
 
     def update_category_order(self, category_name, new_order):
         cursor = None
@@ -1182,22 +1201,31 @@ class TaskManager:
                 (new_order, category_name),
             )
             if cursor.rowcount == 0:
-                 print(f"Warning: Category '{category_name}' not found for order update.")
+                print(
+                    f"Warning: Category '{category_name}' not found for order update."
+                )
             else:
-                 self.conn.commit()
-                 # Update in-memory order
-                 if category_name in self.categories:
-                     self.categories[category_name]["order"] = new_order
-                 else: # Might need reload if category wasn't loaded correctly initially
-                     print(f"Warning: Category '{category_name}' updated in DB but not found in memory cache.")
+                self.conn.commit()
+                # Update in-memory order
+                if category_name in self.categories:
+                    self.categories[category_name]["order"] = new_order
+                else:  # Might need reload if category wasn't loaded correctly initially
+                    print(
+                        f"Warning: Category '{category_name}' updated in DB but not found in memory cache."
+                    )
         except sqlite3.Error as e:
             print(f"Failed to update order for category '{category_name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
-            print(f"Unexpected error while updating category order for '{category_name}': {e}")
-            if self.conn: self.conn.rollback()
+            print(
+                f"Unexpected error while updating category order for '{category_name}': {e}"
+            )
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
 
     def add_task_list(self, task_list: TaskList):
         cursor = None
@@ -1209,30 +1237,34 @@ class TaskManager:
             )
             self.conn.commit()
             # Get the newly assigned ID if it's autoincrement (assuming it is)
-            task_list.id = cursor.lastrowid 
-            
+            task_list.id = cursor.lastrowid
+
             # Add to in-memory lists
-            if not hasattr(self, 'task_lists'): self.task_lists = []
+            if not hasattr(self, "task_lists"):
+                self.task_lists = []
             self.task_lists.append(task_list)
             if task_list.category not in self.categories:
                 # Handle case where category might not exist in memory yet
                 # Option 1: Add it dynamically (might mess up order)
                 # self.categories[task_list.category] = {'order': some_default_order, 'task_lists': [task_list]}
                 # Option 2: Reload categories (safer but potentially slower)
-                self.categories = self.load_categories() 
+                self.categories = self.load_categories()
                 # Option 3: Log warning and proceed
                 # print(f"Warning: Category '{task_list.category}' not found in memory cache when adding task list '{task_list.name}'")
             else:
-                 self.categories[task_list.category]["task_lists"].append(task_list)
+                self.categories[task_list.category]["task_lists"].append(task_list)
 
         except sqlite3.Error as e:
             print(f"Database error while adding task_list '{task_list.name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(f"Unexpected error while adding task list '{task_list.name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
 
     def remove_task_list(self, name):
         cursor = None
@@ -1241,10 +1273,12 @@ class TaskManager:
             # Check if protected system task list first
             cursor.execute("SELECT category FROM task_lists WHERE name=?", (name,))
             row = cursor.fetchone()
-            if (row and row["category"] == "System" and name == "quick tasks"):
-                print("Error: The 'quick tasks' list in the system category cannot be removed.")
+            if row and row["category"] == "System" and name == "quick tasks":
+                print(
+                    "Error: The 'quick tasks' list in the system category cannot be removed."
+                )
                 return
-                
+
             # Proceed with deletion
             cursor.execute("DELETE FROM task_lists WHERE name = ?", (name,))
             if cursor.rowcount == 0:
@@ -1257,55 +1291,69 @@ class TaskManager:
                     category["task_lists"][:] = [
                         tl for tl in category["task_lists"] if tl.name != name
                     ]
-                    
+
         except sqlite3.Error as e:
             print(f"Database error while removing task list '{name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(f"Unexpected error while removing task list '{name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
 
     def update_task_list(self, task_list: TaskList):
         # Check protected status first
         if task_list.category == "System" and task_list.name == "quick tasks":
-            print("Error: The 'quick tasks' list in the system category cannot be edited.")
+            print(
+                "Error: The 'quick tasks' list in the system category cannot be edited."
+            )
             return
-            
+
         cursor = None
         try:
             cursor = self.conn.cursor()
             # ... (rest of UPDATE execution logic) ...
             cursor.execute(
-                 # ... UPDATE statement ...
+                # ... UPDATE statement ...
             )
             if cursor.rowcount == 0:
-                print(f"Warning: Task list '{task_list.name}' not found in database for update.")
+                print(
+                    f"Warning: Task list '{task_list.name}' not found in database for update."
+                )
             else:
                 self.conn.commit()
                 # Update in-memory representation (find and update/replace)
                 found_in_memory = False
                 for i, tl in enumerate(self.task_lists):
-                     if tl.id == task_list.id: # Assuming ID is reliable
-                          # Replace the old object with the updated one
-                          self.task_lists[i] = task_list 
-                          found_in_memory = True
-                          break
+                    if tl.id == task_list.id:  # Assuming ID is reliable
+                        # Replace the old object with the updated one
+                        self.task_lists[i] = task_list
+                        found_in_memory = True
+                        break
                 if found_in_memory:
-                     # Also update within categories dictionary
-                     self.categories = self.load_categories() # Reload to ensure consistency
+                    # Also update within categories dictionary
+                    self.categories = (
+                        self.load_categories()
+                    )  # Reload to ensure consistency
                 else:
-                     print(f"Warning: Updated task list '{task_list.name}' in DB but not found/updated in memory cache.")
-                     
+                    print(
+                        f"Warning: Updated task list '{task_list.name}' in DB but not found/updated in memory cache."
+                    )
+
         except sqlite3.Error as e:
             print(f"Database error while updating task list '{task_list.name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(f"Unexpected error while updating task list '{task_list.name}': {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
 
     def update_task_list_order(self, task_list_name, new_order):
         try:
@@ -1393,8 +1441,12 @@ class TaskManager:
                     task.name,
                     task.description,
                     task.notes,
-                    safe_json_dumps(task.tags, '[]', 'tags') if task.tags else None,
-                    safe_json_dumps(task.resources, '[]', 'resources') if task.resources else None,
+                    safe_json_dumps(task.tags, "[]", "tags") if task.tags else None,
+                    (
+                        safe_json_dumps(task.resources, "[]", "resources")
+                        if task.resources
+                        else None
+                    ),
                     task.start_date.strftime("%Y-%m-%d") if task.start_date else None,
                     (
                         task.due_datetime.strftime("%Y-%m-%d %H:%M")
@@ -1414,25 +1466,45 @@ class TaskManager:
                     task.list_order,
                     task.list_name,
                     int(task.recurring),
-                    safe_json_dumps(task.recur_every, 'null', 'recur_every') if task.recur_every else None,
+                    (
+                        safe_json_dumps(task.recur_every, "null", "recur_every")
+                        if task.recur_every
+                        else None
+                    ),
                     task.recurrences,
                     task.time_estimate,
                     task.time_logged,
                     task.count_required,
                     task.count_completed,
-                    safe_json_dumps(task.chunks, '[]', 'chunks') if task.chunks else "[]",
+                    (
+                        safe_json_dumps(task.chunks, "[]", "chunks")
+                        if task.chunks
+                        else "[]"
+                    ),
                     task.chunk_preference,
                     task.min_chunk_size,
                     task.max_chunk_size,
-                    safe_json_dumps(task.subtasks, '[]', 'subtasks') if task.subtasks else "[]",
-                    safe_json_dumps(task.dependencies, '[]', 'dependencies') if task.dependencies else None,
+                    (
+                        safe_json_dumps(task.subtasks, "[]", "subtasks")
+                        if task.subtasks
+                        else "[]"
+                    ),
+                    (
+                        safe_json_dumps(task.dependencies, "[]", "dependencies")
+                        if task.dependencies
+                        else None
+                    ),
                     task.status,
                     task.flexibility,
                     task.effort_level,
                     task.priority,
                     task.previous_priority,
-                    safe_json_dumps(task.preferred_work_days, '[]', 'preferred_work_days'),
-                    safe_json_dumps(task.time_of_day_preference, '[]', 'time_of_day_preference'),
+                    safe_json_dumps(
+                        task.preferred_work_days, "[]", "preferred_work_days"
+                    ),
+                    safe_json_dumps(
+                        task.time_of_day_preference, "[]", "time_of_day_preference"
+                    ),
                     int(task.include_in_schedule),
                     task.global_weight,
                 ),
@@ -1449,11 +1521,13 @@ class TaskManager:
             print(f"Task '{task.name}' successfully added with ID: {task.id}")
         except sqlite3.Error as e:
             print(f"Database error while adding task '{task.name}': {e}")
-            if self.conn: self.conn.rollback() # Rollback on error
+            if self.conn:
+                self.conn.rollback()  # Rollback on error
             # Optionally re-raise or handle
         except Exception as e:
             print(f"Unexpected error while adding task '{task.name}': {e}")
-            if self.conn: self.conn.rollback() # Rollback on error
+            if self.conn:
+                self.conn.rollback()  # Rollback on error
             # Optionally re-raise or handle
         finally:
             if cursor:
@@ -1496,7 +1570,7 @@ class TaskManager:
         cursor = None
         try:
             # Find old list name *before* starting transaction potentially
-            old_task = self.get_task(task.id) 
+            old_task = self.get_task(task.id)
             old_list_name = old_task.list_name if old_task else None
 
             cursor = self.conn.cursor()
@@ -1550,8 +1624,12 @@ class TaskManager:
                     task.name,
                     task.description,
                     task.notes,
-                    safe_json_dumps(task.tags, '[]', 'tags') if task.tags else None,
-                    safe_json_dumps(task.resources, '[]', 'resources') if task.resources else None,
+                    safe_json_dumps(task.tags, "[]", "tags") if task.tags else None,
+                    (
+                        safe_json_dumps(task.resources, "[]", "resources")
+                        if task.resources
+                        else None
+                    ),
                     task.start_date.isoformat() if task.start_date else None,
                     task.due_datetime.isoformat() if task.due_datetime else None,
                     task.added_date_time.isoformat() if task.added_date_time else None,
@@ -1563,41 +1641,63 @@ class TaskManager:
                     task.list_order,
                     task.list_name,
                     int(task.recurring),
-                    safe_json_dumps(task.recur_every, 'null', 'recur_every') if task.recur_every else None,
+                    (
+                        safe_json_dumps(task.recur_every, "null", "recur_every")
+                        if task.recur_every
+                        else None
+                    ),
                     task.recurrences,
                     task.time_estimate,
                     task.time_logged,
                     task.count_required,
                     task.count_completed,
-                    safe_json_dumps(task.chunks, '[]', 'chunks') if task.chunks else "[]",
+                    (
+                        safe_json_dumps(task.chunks, "[]", "chunks")
+                        if task.chunks
+                        else "[]"
+                    ),
                     task.chunk_preference,
                     task.min_chunk_size,
                     task.max_chunk_size,
-                    safe_json_dumps(task.subtasks, '[]', 'subtasks') if task.subtasks else "[]",
-                    safe_json_dumps(task.dependencies, '[]', 'dependencies') if task.dependencies else None,
+                    (
+                        safe_json_dumps(task.subtasks, "[]", "subtasks")
+                        if task.subtasks
+                        else "[]"
+                    ),
+                    (
+                        safe_json_dumps(task.dependencies, "[]", "dependencies")
+                        if task.dependencies
+                        else None
+                    ),
                     task.status,
                     task.flexibility,
                     task.effort_level,
                     task.priority,
                     task.previous_priority,
-                    safe_json_dumps(task.preferred_work_days, '[]', 'preferred_work_days'),
-                    safe_json_dumps(task.time_of_day_preference, '[]', 'time_of_day_preference'),
+                    safe_json_dumps(
+                        task.preferred_work_days, "[]", "preferred_work_days"
+                    ),
+                    safe_json_dumps(
+                        task.time_of_day_preference, "[]", "time_of_day_preference"
+                    ),
                     int(task.include_in_schedule),
                     task.global_weight,
                     task.id,
                 ),
             )
-            
+
             if cursor.rowcount == 0:
-                 # Handle case where task ID doesn't exist - maybe log warning
-                 print(f"Warning: Task with ID {task.id} not found in database during update.")
-                 # Decide if this should be a fatal error or just a warning
-                 # raise ValueError(f"Task with ID {task.id} does not exist.")
+                # Handle case where task ID doesn't exist - maybe log warning
+                print(
+                    f"Warning: Task with ID {task.id} not found in database during update."
+                )
+                # Decide if this should be a fatal error or just a warning
+                # raise ValueError(f"Task with ID {task.id} does not exist.")
             else:
-                 self.conn.commit() # Commit only if update was successful
+                self.conn.commit()  # Commit only if update was successful
 
             # Update in-memory list references only after successful DB commit
-            if cursor.rowcount > 0: 
+            if cursor.rowcount > 0:
                 if old_list_name and old_list_name != task.list_name:
                     # Remove from old list
                     old_task_list = next(
@@ -1610,29 +1710,37 @@ class TaskManager:
 
                     # Add to new list
                     new_task_list = next(
-                        (tl for tl in self.task_lists if tl.name == task.list_name), None
+                        (tl for tl in self.task_lists if tl.name == task.list_name),
+                        None,
                     )
                     if new_task_list:
                         # Ensure the task object itself is updated if necessary
                         # (though it should be the same object passed in)
-                        new_task_list.add_task_to_model_list(task) # Use the method to handle order etc.
+                        new_task_list.add_task_to_model_list(
+                            task
+                        )  # Use the method to handle order etc.
                 else:
                     # Update within the same list
                     current_list = next(
-                        (tl for tl in self.task_lists if tl.name == task.list_name), None
+                        (tl for tl in self.task_lists if tl.name == task.list_name),
+                        None,
                     )
                     if current_list:
                         for i, t in enumerate(current_list.tasks):
                             if t.id == task.id:
-                                current_list.tasks[i] = task # Replace the old task object
+                                current_list.tasks[i] = (
+                                    task  # Replace the old task object
+                                )
                                 break
 
         except sqlite3.Error as e:
             print(f"Database error while updating task with ID {task.id}: {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         except Exception as e:
             print(f"Unexpected error while updating task with ID {task.id}: {e}")
-            if self.conn: self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
         finally:
             if cursor:
                 cursor.close()
@@ -1646,7 +1754,7 @@ class TaskManager:
 
             if not task_row:
                 return None
-            
+
             task_data = dict(task_row)
             task_data["tags"] = (
                 safe_json_loads(task_data["tags"], [], "tags", f"for task ID {task_id}")
@@ -1727,11 +1835,10 @@ class TaskManager:
     def manage_recurring_tasks(self):
         try:
             cursor = self.conn.cursor()
-
-            # Fetch all recurring tasks
             cursor.execute("SELECT * FROM tasks WHERE recurring = 1")
             rows = cursor.fetchall()
 
+            rollover_statuses = {"Completed", "Failed", "Skipped"}
             weekday_mapping = {
                 "mon": 0,
                 "monday": 0,
@@ -1834,35 +1941,40 @@ class TaskManager:
 
                 task = Task(**task_data)
 
-                if task.status != "Completed":
+                if task.status not in rollover_statuses:
                     continue
 
-                # Handle recurrence based on recur_every
+                now = datetime.now()
+                old_due = task.due_datetime
+
+                # Handle recurrence calculation
                 if isinstance(task.recur_every, int):
-                    next_due = (task.last_completed_date or datetime.now()) + timedelta(
-                        days=task.recur_every
-                    )
+                    anchor = old_due or task.last_completed_date or now
+                    next_due = anchor + timedelta(days=task.recur_every)
+
                 elif isinstance(task.recur_every, list):
-                    today = datetime.now().date()
+                    today = now.date()
                     today_weekday = today.weekday()
                     days_to_next = min(
-                        (weekday_mapping[day.lower()] - today_weekday) % 7
-                        for day in task.recur_every
+                        (weekday_mapping[d.lower()] - today_weekday) % 7
+                        for d in task.recur_every
                     )
+                    start_date = old_due.date() if old_due else today
                     next_due = datetime.combine(
-                        today + timedelta(days=days_to_next), task.due_datetime.time()
+                        start_date + timedelta(days=days_to_next),
+                        (old_due or now).time(),
                     )
+
                 else:
                     continue
 
-                if next_due <= datetime.now():
-                    # Reset task status and attributes
+                if next_due <= now:
                     task.status = "Not Started"
                     task.time_logged = 0 if task.time_estimate else task.time_logged
                     task.count_completed = (
                         0 if task.count_required else task.count_completed
                     )
-                    task.recurrences += 1
+                    task.recurrences = (task.recurrences or 0) + 1
                     task.due_datetime = next_due
 
                     self.update_task(task)
@@ -1871,6 +1983,9 @@ class TaskManager:
             print(f"Database error while managing recurring tasks: {e}")
         except Exception as e:
             print(f"Unexpected error while managing recurring tasks: {e}")
+        finally:
+            if cursor:
+                cursor.close()
 
     def get_task_list_categories(self):
         return list(self.categories.keys())
