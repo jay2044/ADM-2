@@ -7,8 +7,8 @@ import random
 from ortools.sat.python import cp_model
 import math
 
-from core.task_manager import *
-from core.utils import *
+from core.task_manager import TaskChunk, TaskManager
+from core.utils import safe_json_loads, safe_json_dumps, from_bool_int, to_bool_int
 from core.signals import global_signals
 
 
@@ -544,26 +544,27 @@ class ScheduleManager:
             self.conn.rollback()
             raise
 
-    def remove_time_block(self, block_name: int):
+    def remove_time_block(self, block_id: int):
         """
-        Remove a time block from both the database and the in-memory structure.
+        Remove a time block from both the database and the in-memory structure by ID.
         """
         try:
             block_to_remove = None
             for block in self.time_blocks:
-                if block["name"] == block_name:
+                if block["id"] == block_id:
                     block_to_remove = block
                     break
 
             if not block_to_remove:
-                print(f"Time block with ID {block_name} not found in memory")
+                print(f"Time block with ID {block_id} not found in memory")
                 return False
 
             cursor = self.conn.cursor()
-            cursor.execute("DELETE FROM time_blocks WHERE name = ?", (block_name,))
+            cursor.execute("DELETE FROM time_blocks WHERE id = ?", (block_id,))
             if cursor.rowcount == 0:
-                print(f"Time block with ID {block_name} not found in database")
-                return False
+                # This might happen if DB and memory are out of sync, log it but proceed with memory removal
+                print(f"Warning: Time block with ID {block_id} not found in database during removal.")
+                # return False # Decide if this should be a hard failure
             self.conn.commit()
 
             self.time_blocks.remove(block_to_remove)
@@ -584,27 +585,28 @@ class ScheduleManager:
         Update an existing time block in both the database and the in-memory structure.
         The updated_block is a dictionary that must include the "id" key.
         """
-        try:
-            block_name = updated_block["name"]
+        block_id = updated_block.get("id")
+        if block_id is None:
+            print("Error: updated_block dictionary must contain an 'id'.")
+            return False
 
+        cursor = None  # Initialize cursor outside try
+        try:
             # Find the existing block in memory
-            existing_index = None
+            existing_index = -1
             for i, block in enumerate(self.time_blocks):
-                if block["name"] == block_name:
+                if block["id"] == block_id:
                     existing_index = i
                     break
-            if existing_index is None:
-                print(f"Time block with ID {block_name} not found in memory.")
-                return False
+            if existing_index == -1:
+                print(f"Time block with ID {block_id} not found in memory.")
+                return False # Cannot update if not found in memory
 
-            # Convert each field to JSON or string as needed
-            if updated_block.get("schedule", {}):
-                schedule_dict = updated_block["schedule"]
-                # Convert any datetime.time objects to strings
-                schedule_dict = convert_times_in_schedule(schedule_dict)
-                schedule_json = safe_json_dumps(schedule_dict, '{}', 'schedule')
-            else:
-                schedule_json = "{}"
+            # Prepare data for DB update (ensuring schedule times are strings)
+            schedule_dict_for_db = updated_block.get("schedule", {})
+            schedule_dict_for_db = convert_times_in_schedule(schedule_dict_for_db)
+            schedule_json = safe_json_dumps(schedule_dict_for_db, '{}', 'schedule')
+                
             list_cats_json = safe_json_dumps(
                 updated_block.get("list_categories", {"include":[],"exclude":[]}), 
                 '{"include":[],"exclude":[]}', 
@@ -619,7 +621,9 @@ class ScheduleManager:
             if "color" in updated_block and updated_block["color"]:
                 color_str = str(updated_block["color"])
             unavailable = updated_block.get("unavailable", 0)
+            name = updated_block.get("name", self.time_blocks[existing_index].get("name", "")) # Use existing name if not provided
 
+            # Perform DB update
             cursor = self.conn.cursor()
             cursor.execute(
                 """
@@ -631,79 +635,112 @@ class ScheduleManager:
                     task_tags = ?,
                     color = ?,
                     unavailable = ?
+                WHERE id = ?
             """,
                 (
-                    updated_block.get("name", ""),
+                    name,
                     schedule_json,
                     list_cats_json,
                     task_tags_json,
                     color_str,
                     unavailable,
+                    block_id,
                 ),
             )
             if cursor.rowcount == 0:
-                print(f"Time block with ID {block_name} not found in database.")
-                return False
-
+                # Log this, but don't necessarily fail, as memory might be correct
+                print(f"Warning: Time block with ID {block_id} not found in database during update.")
+            
             self.conn.commit()
-            cursor.close()
 
-            # Update the in-memory record
-            self.time_blocks[existing_index] = updated_block
+            # Update the in-memory record carefully
+            # Create a copy to modify for the in-memory update
+            block_for_memory = updated_block.copy()
+            # Ensure the 'schedule' in the copy uses string times, matching DB load format
+            if 'schedule' in block_for_memory:
+                block_for_memory['schedule'] = schedule_dict_for_db 
+            
+            # Update the existing dictionary in the list
+            self.time_blocks[existing_index].update(block_for_memory)
             return True
 
         except sqlite3.Error as e:
             print(f"Database error while updating time block: {e}")
-            self.conn.rollback()
-            raise
+            if self.conn: # Check if connection exists before rollback
+                 self.conn.rollback()
+            # Re-raise or handle as appropriate
+            # raise 
+            return False # Indicate failure on DB error
         except Exception as e:
             print(f"Error updating time block: {e}")
-            self.conn.rollback()
-            raise
+            if self.conn:
+                 self.conn.rollback()
+            # raise
+            return False # Indicate failure on other errors
+        finally:
+            if cursor: # Ensure cursor is closed if it was opened
+                cursor.close()
 
     def get_user_defined_timeblocks_for_date(self, given_date):
-        day_full = given_date.strftime("%A").lower()
         result = []
+        relevant_dates = [given_date - timedelta(days=1), given_date]
 
-        for block in self.time_blocks:
-            schedule = block.get("schedule", {})
-            if day_full in schedule:
-                time_range = schedule[day_full]
-                if isinstance(time_range, (list, tuple)) and len(time_range) == 2:
+        for block_def in self.time_blocks:
+            # Skip if the block is marked as unavailable
+            if block_def.get("unavailable"):
+                continue
+
+            schedule = block_def.get("schedule", {})
+            block_name = block_def.get("name", "")
+            list_categories = block_def.get("list_categories")
+            task_tags = block_def.get("task_tags")
+            color = block_def.get("color")
+
+            for check_date in relevant_dates:
+                day_str = check_date.strftime("%A").lower()
+
+                if day_str in schedule:
+                    time_range = schedule[day_str]
+                    if not (isinstance(time_range, (list, tuple)) and len(time_range) == 2):
+                        continue
+
                     start_val, end_val = time_range
+                    start_time = datetime.strptime(start_val, "%H:%M").time() if isinstance(start_val, str) else start_val
+                    end_time = datetime.strptime(end_val, "%H:%M").time() if isinstance(end_val, str) else end_val
 
-                    # If we already have a time object, great. Otherwise parse string -> time
-                    if isinstance(start_val, time):
-                        start_time = start_val
-                    else:
-                        start_time = datetime.strptime(start_val, "%H:%M").time()
+                    block_start_dt = datetime.combine(check_date, start_time)
+                    block_end_dt = datetime.combine(check_date, end_time)
 
-                    if isinstance(end_val, time):
-                        end_time = end_val
-                    else:
-                        end_time = datetime.strptime(end_val, "%H:%M").time()
+                    # Handle overnight blocks
+                    if block_end_dt <= block_start_dt:
+                        block_end_dt += timedelta(days=1)
 
-                    # Now create your TimeBlock
-                    new_block = TimeBlock(
-                        block_id=None,
-                        name=block.get("name", ""),
-                        date=given_date,
-                        list_categories=block.get("list_categories"),
-                        task_tags=block.get("task_tags"),
-                        block_type="user_defined",
-                        color=block.get("color"),
-                    )
-                    new_block.start_time = start_time
-                    new_block.end_time = end_time
+                    # Determine the intersection of the block with the given_date
+                    target_start_dt = datetime.combine(given_date, time.min)
+                    target_end_dt = datetime.combine(given_date + timedelta(days=1), time.min)
 
-                    # Compute duration (in hours)
-                    start_dt = datetime.combine(given_date, start_time)
-                    end_dt = datetime.combine(given_date, end_time)
-                    if end_dt < start_dt:
-                        end_dt += timedelta(days=1)
-                    new_block.duration = (end_dt - start_dt).total_seconds() / 3600.0
+                    overlap_start = max(block_start_dt, target_start_dt)
+                    overlap_end = min(block_end_dt, target_end_dt)
 
-                    result.append(new_block)
+                    if overlap_start < overlap_end:  # If there is an overlap on the given_date
+                        # Create a TimeBlock instance for the segment
+                        new_block = TimeBlock(
+                            block_id=uuid.uuid4().int, # Generate unique ID for the segment
+                            name=block_name,
+                            date=given_date,
+                            list_categories=list_categories,
+                            task_tags=task_tags,
+                            block_type="user_defined",
+                            color=color,
+                        )
+                        new_block.start_time = overlap_start.time()
+                        new_block.end_time = overlap_end.time()
+                        new_block.duration = (overlap_end - overlap_start).total_seconds() / 3600.0
+
+                        # Avoid adding tiny blocks due to precision
+                        if new_block.duration > 0.001:
+                            result.append(new_block)
+
         return result
 
     def task_weight_formula(self, task, max_added_time, max_time_estimate):
@@ -1225,80 +1262,30 @@ class ScheduleManager:
                 chunk.flagged = True
 
     def generate_schedule(self):
+        # 1) For every chunk, rebuild its timeblock_ratings from the DaySchedules
         for chunk in self.chunks:
-            # Handle placed chunks: they come with a specific date and timeblock.
             if chunk.chunk_type == "placed":
-                # Determine the target date.
-                target_date = chunk.date
-                if isinstance(target_date, str):
-                    try:
-                        target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
-                    except ValueError:
-                        chunk.flagged = True
-                        continue
+                # already bound to a specific block, leave it alone
+                continue
 
-                # Find the DaySchedule matching the target date.
-                matching_day = next(
-                    (day for day in self.day_schedules if day.date == target_date), None
-                )
-                if matching_day is None:
-                    chunk.flagged = True
+            # clear old ratings
+            chunk.timeblock_ratings = []
+
+            # collect ratings from each DaySchedule
+            for day in self.day_schedules:
+                # if there's a due‐date, skip days after it
+                if chunk.task.due_datetime and day.date > chunk.task.due_datetime.date():
+                    break
+                # recurring chunks only go on their exact date
+                if chunk.is_recurring and day.date != chunk.date:
                     continue
+                ratings = day.get_suitable_timeblocks_with_rating(chunk)
+                chunk.timeblock_ratings.extend(ratings)
 
-                # Find the specific timeblock within the DaySchedule.
-                # Assume chunk.timeblock holds the id of the target timeblock.
-                target_block = next(
-                    (
-                        block
-                        for block in matching_day.time_blocks
-                        if str(block.id) == str(chunk.timeblock)
-                    ),
-                    None,
-                )
-                if target_block is None:
-                    chunk.flagged = True
-                    continue
-
-                if chunk.unit == "time":
-                    if target_block.get_available_time() < chunk.size:
-                        chunk.flagged = True
-                        continue
-
-                # Assign the placed chunk to the target timeblock.
-                target_block.add_chunk(
-                    chunk, 10000
-                )  # Using a fixed high rating for placed assignments.
-                continue  # Skip to the next chunk.
-
-            if chunk.is_recurring:
-                chunk.timeblock_ratings = []
-                for day in self.day_schedules:
-                    if (
-                        chunk.task.due_datetime
-                        and day.date > chunk.task.due_datetime.date()
-                    ):
-                        break
-                    if day.date == chunk.date:
-                        ratings = day.get_suitable_timeblocks_with_rating(chunk)
-                        chunk.timeblock_ratings.extend(ratings)
-                        break
-
-            else:
-                # For non-placed chunks, clear any existing timeblock ratings.
-                chunk.timeblock_ratings = []
-                for day in self.day_schedules:
-                    # Skip days beyond the task's due date (if set).
-                    if (
-                        chunk.task.due_datetime
-                        and day.date > chunk.task.due_datetime.date()
-                    ):
-                        break
-                    ratings = day.get_suitable_timeblocks_with_rating(chunk)
-                    chunk.timeblock_ratings.extend(ratings)
-
-            # Sort candidates by rating (highest first) and attempt assignment.
+            # sort highest‐first
             chunk.timeblock_ratings.sort(key=lambda x: x[1], reverse=True)
 
+        # 2) Hand off to the OR‑Tools solver
         self.solve_schedule_with_cp()
 
     def refresh_schedule(self):
@@ -1351,7 +1338,7 @@ class DaySchedule:
         # 2) The awake period ends at (day_start + 24 - sleep_time) => sleep start
         day_end = day_start + timedelta(hours=(24 - self.sleep_time))
 
-        # 3) Create the Sleep block from day_end -> day_end + self.sleep_time
+        # 3) Create the Sleep block details (will be added at the end)
         sleep_block = TimeBlock(
             block_id=None,
             name=f"Sleep ({self.sleep_time:.1f}h)",
@@ -1361,36 +1348,38 @@ class DaySchedule:
         )
         sleep_block.start_time = day_end.time()
         sleep_block.end_time = (day_end + timedelta(hours=self.sleep_time)).time()
-        sleep_block.duration = (
-            timedelta(hours=self.sleep_time).total_seconds()
-        ) / 3600.0
+        sleep_block.duration = (timedelta(hours=self.sleep_time)).total_seconds() / 3600.0
 
-        # 4) Gather user‑defined blocks for this date
-        user_blocks = (
-            self.schedule_manager_instance.get_user_defined_timeblocks_for_date(
-                self.date
-            )
-        )
-        user_blocks.sort(key=lambda b: b.start_time)
+        # 4) Gather user-defined blocks (segments) for this date using the updated method
+        user_blocks = self.schedule_manager_instance.get_user_defined_timeblocks_for_date(self.date)
 
-        final_blocks = []
+        # Initial list to hold all blocks before merging/trimming
+        all_blocks_intermediate = [] 
         current_dt = day_start
 
-        # 5) Insert user blocks (or Open Block gaps) up to day_end
+        # Sort user blocks by start time to process them chronologically
+        user_blocks.sort(key=lambda b: b.start_time)
+
+        # 5) Insert user blocks and fill gaps with Open Blocks up to day_end
         for block in user_blocks:
             block_start_dt = datetime.combine(self.date, block.start_time)
-            block_end_dt = datetime.combine(self.date, block.end_time)
 
-            # If the block starts after the awake period, skip
+            # If the block starts after the awake period, ignore it
             if block_start_dt >= day_end:
-                break
+                continue
 
-            # If user block extends beyond day_end, clamp it
+            # Clamp end time to day_end if it extends beyond
+            block_end_dt = datetime.combine(self.date, block.end_time)
+            if block.end_time <= block.start_time: # Handle midnight crossing for end time
+                block_end_dt += timedelta(days=1)
+
             if block_end_dt > day_end:
-                block.end_time = day_end.time()
                 block_end_dt = day_end
+                block.end_time = day_end.time()
+                block.duration = (block_end_dt - block_start_dt).total_seconds() / 3600.0
+                if block.duration <= 0.001: continue # Skip if clamped duration is negligible
 
-            # Fill any gap before this block
+            # Fill any gap before this block with an "Open Block"
             if current_dt < block_start_dt:
                 gap_block = TimeBlock(
                     block_id=None,
@@ -1401,15 +1390,16 @@ class DaySchedule:
                 )
                 gap_block.start_time = current_dt.time()
                 gap_block.end_time = block_start_dt.time()
-                gap_block.duration = (
-                    block_start_dt - current_dt
-                ).total_seconds() / 3600
-                final_blocks.append(gap_block)
+                gap_duration = (block_start_dt - current_dt).total_seconds() / 3600.0
+                if gap_duration > 0.001: # Avoid tiny gaps
+                   gap_block.duration = gap_duration
+                   all_blocks_intermediate.append(gap_block)
 
-            final_blocks.append(block)
-            current_dt = block_end_dt
+            # Add the user block (or its clamped segment)
+            all_blocks_intermediate.append(block)
+            current_dt = max(current_dt, block_end_dt) # Advance current_dt
 
-        # 6) Fill leftover time (if any) before sleep starts
+        # 6) Fill any remaining time before sleep starts with an "Open Block"
         if current_dt < day_end:
             gap_block = TimeBlock(
                 block_id=None,
@@ -1420,11 +1410,54 @@ class DaySchedule:
             )
             gap_block.start_time = current_dt.time()
             gap_block.end_time = day_end.time()
-            gap_block.duration = (day_end - current_dt).total_seconds() / 3600
-            final_blocks.append(gap_block)
+            gap_duration = (day_end - current_dt).total_seconds() / 3600.0
+            if gap_duration > 0.001:
+                gap_block.duration = gap_duration
+                all_blocks_intermediate.append(gap_block)
 
-        # 7) Finally, add the sleep block to the schedule
-        final_blocks.append(sleep_block)
+        # 7) Sort all collected blocks (user + gaps) by start time for overlap check
+        all_blocks_intermediate.sort(key=lambda b: b.start_time)
+
+        # 8) Process overlaps: Trim subsequent blocks
+        final_blocks = []
+        if not all_blocks_intermediate:
+             if sleep_block.duration > 0.001:
+                 final_blocks.append(sleep_block)
+             return final_blocks # Only sleep block if no other blocks
+
+        final_blocks.append(all_blocks_intermediate[0]) # Add the first block
+
+        for i in range(len(all_blocks_intermediate) - 1):
+            block_i = final_blocks[-1] # Last block added to final_blocks
+            block_j = all_blocks_intermediate[i+1] # Next block to consider
+
+            block_i_start_dt = datetime.combine(self.date, block_i.start_time)
+            block_i_end_dt = block_i_start_dt + timedelta(hours=block_i.duration)
+            block_j_start_dt = datetime.combine(self.date, block_j.start_time)
+
+            if block_j_start_dt < block_i_end_dt: # Overlap detected
+                # Trim block_j: Start it right after block_i ends
+                new_j_start_dt = block_i_end_dt
+                block_j_end_dt = datetime.combine(self.date, block_j.end_time)
+                if block_j.end_time <= block_j.start_time:
+                     block_j_end_dt += timedelta(days=1)
+                
+                new_duration = (block_j_end_dt - new_j_start_dt).total_seconds() / 3600.0
+
+                if new_duration > 0.001: # Only add if it still has duration
+                    block_j.start_time = new_j_start_dt.time()
+                    block_j.duration = new_duration
+                    # Make sure end_time is correct after trimming start_time
+                    block_j.end_time = (new_j_start_dt + timedelta(hours=new_duration)).time()
+                    final_blocks.append(block_j)
+                # Else: block_j is completely swallowed by the overlap, discard it
+            else:
+                # No overlap, add block_j as is
+                final_blocks.append(block_j)
+
+        # 9) Finally, add the sleep block
+        if sleep_block.duration > 0.001:
+            final_blocks.append(sleep_block)
 
         return final_blocks
 
